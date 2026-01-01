@@ -2,12 +2,17 @@ package cmd
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
 	"time"
 
+	agentv1 "github.com/beyondidentity/fabric-console/gen/go/agent/v1"
 	"github.com/beyondidentity/fabric-console/pkg/grpcclient"
+	"github.com/beyondidentity/fabric-console/pkg/store"
 	"github.com/spf13/cobra"
 )
 
@@ -15,6 +20,7 @@ func init() {
 	rootCmd.AddCommand(attestationCmd)
 	attestationCmd.Flags().Bool("pem", false, "Output certificate PEM data")
 	attestationCmd.Flags().String("target", "IRoT", "Attestation target: IRoT (DPU) or ERoT (BMC)")
+	attestationCmd.Flags().Bool("no-save", false, "Don't persist attestation result to database")
 }
 
 var attestationCmd = &cobra.Command{
@@ -23,12 +29,14 @@ var attestationCmd = &cobra.Command{
 	Long: `Display DICE/SPDM attestation information from a DPU.
 
 Shows the certificate chain hierarchy (L0-L6) and current attestation status.
+Successful attestations are saved to enable gate checks for credential distribution.
 
 Examples:
   bluectl attestation bf3-lab
   bluectl attestation bf3-lab --target ERoT
   bluectl attestation bf3-lab --pem
-  bluectl attestation bf3-lab -o json`,
+  bluectl attestation bf3-lab -o json
+  bluectl attestation bf3-lab --no-save`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dpu, err := dpuStore.Get(args[0])
@@ -38,6 +46,7 @@ Examples:
 
 		showPEM, _ := cmd.Flags().GetBool("pem")
 		target, _ := cmd.Flags().GetString("target")
+		noSave, _ := cmd.Flags().GetBool("no-save")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -50,10 +59,27 @@ Examples:
 
 		resp, err := client.GetAttestation(ctx, target)
 		if err != nil {
+			// Save failed attestation state
+			if !noSave {
+				saveAttestationResult(dpuStore, dpu.Name, store.AttestationStatusFailed, nil, nil, map[string]any{
+					"error": err.Error(),
+				})
+				fmt.Printf("\nAttestation saved: status=failed, last_validated=%s\n", time.Now().Format(time.RFC3339))
+			}
 			return fmt.Errorf("failed to get attestation: %w", err)
 		}
 
 		if outputFormat != "table" {
+			// Still save before returning JSON output
+			if !noSave {
+				diceHash, measHash := computeAttestationHashes(resp)
+				saveAttestationResult(dpuStore, dpu.Name, store.AttestationStatusVerified, diceHash, measHash, map[string]any{
+					"target":       target,
+					"status":       resp.Status.String(),
+					"certificates": len(resp.Certificates),
+					"measurements": len(resp.Measurements),
+				})
+			}
 			return formatOutput(resp)
 		}
 
@@ -62,6 +88,13 @@ Examples:
 
 		if len(resp.Certificates) == 0 {
 			fmt.Println("No certificates available")
+			// Save unknown status if no certs
+			if !noSave {
+				saveAttestationResult(dpuStore, dpu.Name, store.AttestationStatusUnknown, nil, nil, map[string]any{
+					"reason": "no certificates",
+				})
+				fmt.Printf("\nAttestation saved: status=unknown, last_validated=%s\n", time.Now().Format(time.RFC3339))
+			}
 			return nil
 		}
 
@@ -94,9 +127,72 @@ Examples:
 			}
 		}
 
+		// Save successful attestation
+		if !noSave {
+			diceHash, measHash := computeAttestationHashes(resp)
+			err = saveAttestationResult(dpuStore, dpu.Name, store.AttestationStatusVerified, diceHash, measHash, map[string]any{
+				"target":       target,
+				"status":       resp.Status.String(),
+				"certificates": len(resp.Certificates),
+				"measurements": len(resp.Measurements),
+			})
+			if err != nil {
+				fmt.Printf("\nWarning: failed to save attestation: %v\n", err)
+			} else {
+				fmt.Printf("\nAttestation saved: status=verified, last_validated=%s\n", time.Now().Format(time.RFC3339))
+			}
+		}
+
 		dpuStore.UpdateStatus(dpu.ID, "healthy")
 		return nil
 	},
+}
+
+// computeAttestationHashes computes SHA256 hashes for DICE chain and measurements.
+func computeAttestationHashes(resp *agentv1.GetAttestationResponse) (*string, *string) {
+	var diceHash, measHash *string
+
+	// Hash DICE chain (concatenate all certificate PEMs)
+	if len(resp.Certificates) > 0 {
+		h := sha256.New()
+		for _, cert := range resp.Certificates {
+			h.Write([]byte(cert.Pem))
+		}
+		hash := hex.EncodeToString(h.Sum(nil))
+		diceHash = &hash
+	}
+
+	// Hash measurements
+	if len(resp.Measurements) > 0 {
+		// Serialize measurements to JSON for consistent hashing
+		measJSON, err := json.Marshal(resp.Measurements)
+		if err == nil {
+			h := sha256.Sum256(measJSON)
+			hash := hex.EncodeToString(h[:])
+			measHash = &hash
+		}
+	}
+
+	return diceHash, measHash
+}
+
+// saveAttestationResult persists attestation result to the database.
+func saveAttestationResult(s *store.Store, dpuName string, status store.AttestationStatus, diceHash, measHash *string, rawData map[string]any) error {
+	att := &store.Attestation{
+		DPUName:       dpuName,
+		Status:        status,
+		LastValidated: time.Now(),
+		RawData:       rawData,
+	}
+
+	if diceHash != nil {
+		att.DICEChainHash = *diceHash
+	}
+	if measHash != nil {
+		att.MeasurementsHash = *measHash
+	}
+
+	return s.SaveAttestation(att)
 }
 
 func truncate(s string, max int) string {

@@ -144,6 +144,34 @@ func (s *Store) migrate() error {
 		created_at INTEGER DEFAULT (strftime('%s', 'now'))
 	);
 	CREATE INDEX IF NOT EXISTS idx_ssh_cas_name ON ssh_cas(name);
+
+	CREATE TABLE IF NOT EXISTS attestations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		dpu_name TEXT NOT NULL UNIQUE,
+		status TEXT NOT NULL,
+		last_validated INTEGER,
+		dice_chain_hash TEXT,
+		measurements_hash TEXT,
+		raw_data TEXT,
+		created_at INTEGER DEFAULT (strftime('%s', 'now')),
+		updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_attestations_dpu ON attestations(dpu_name);
+	CREATE INDEX IF NOT EXISTS idx_attestations_status ON attestations(status);
+
+	CREATE TABLE IF NOT EXISTS audit_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp INTEGER NOT NULL,
+		action TEXT NOT NULL,
+		target TEXT,
+		decision TEXT,
+		attestation_snapshot TEXT,
+		details TEXT,
+		created_at INTEGER DEFAULT (strftime('%s', 'now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target);
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
