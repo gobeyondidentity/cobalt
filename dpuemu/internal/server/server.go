@@ -119,3 +119,17 @@ func (s *Server) HealthCheck(ctx context.Context, req *agentv1.HealthCheckReques
 	}
 	return s.fixture.ToHealthCheckResponse(), nil
 }
+
+// DistributeCredential simulates deploying a credential to the host via the DPU.
+func (s *Server) DistributeCredential(ctx context.Context, req *agentv1.DistributeCredentialRequest) (*agentv1.DistributeCredentialResponse, error) {
+	log.Printf("DistributeCredential called: type=%s, name=%s, key_len=%d",
+		req.GetCredentialType(), req.GetCredentialName(), len(req.GetPublicKey()))
+
+	// Emulator always succeeds
+	return &agentv1.DistributeCredentialResponse{
+		Success:       true,
+		Message:       fmt.Sprintf("Emulated distribution of %s", req.GetCredentialName()),
+		InstalledPath: fmt.Sprintf("/etc/ssh/trusted-user-ca-keys.d/%s.pub", req.GetCredentialName()),
+		SshdReloaded:  true,
+	}, nil
+}

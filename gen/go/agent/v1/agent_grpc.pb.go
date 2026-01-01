@@ -26,6 +26,7 @@ const (
 	DPUAgentService_GetAttestation_FullMethodName        = "/agent.v1.DPUAgentService/GetAttestation"
 	DPUAgentService_GetSignedMeasurements_FullMethodName = "/agent.v1.DPUAgentService/GetSignedMeasurements"
 	DPUAgentService_HealthCheck_FullMethodName           = "/agent.v1.DPUAgentService/HealthCheck"
+	DPUAgentService_DistributeCredential_FullMethodName  = "/agent.v1.DPUAgentService/DistributeCredential"
 )
 
 // DPUAgentServiceClient is the client API for DPUAgentService service.
@@ -48,6 +49,8 @@ type DPUAgentServiceClient interface {
 	GetSignedMeasurements(ctx context.Context, in *GetSignedMeasurementsRequest, opts ...grpc.CallOption) (*GetSignedMeasurementsResponse, error)
 	// HealthCheck verifies the agent is running and responsive.
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
+	// DistributeCredential deploys a credential to the host via the DPU.
+	DistributeCredential(ctx context.Context, in *DistributeCredentialRequest, opts ...grpc.CallOption) (*DistributeCredentialResponse, error)
 }
 
 type dPUAgentServiceClient struct {
@@ -128,6 +131,16 @@ func (c *dPUAgentServiceClient) HealthCheck(ctx context.Context, in *HealthCheck
 	return out, nil
 }
 
+func (c *dPUAgentServiceClient) DistributeCredential(ctx context.Context, in *DistributeCredentialRequest, opts ...grpc.CallOption) (*DistributeCredentialResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DistributeCredentialResponse)
+	err := c.cc.Invoke(ctx, DPUAgentService_DistributeCredential_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DPUAgentServiceServer is the server API for DPUAgentService service.
 // All implementations must embed UnimplementedDPUAgentServiceServer
 // for forward compatibility.
@@ -148,6 +161,8 @@ type DPUAgentServiceServer interface {
 	GetSignedMeasurements(context.Context, *GetSignedMeasurementsRequest) (*GetSignedMeasurementsResponse, error)
 	// HealthCheck verifies the agent is running and responsive.
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
+	// DistributeCredential deploys a credential to the host via the DPU.
+	DistributeCredential(context.Context, *DistributeCredentialRequest) (*DistributeCredentialResponse, error)
 	mustEmbedUnimplementedDPUAgentServiceServer()
 }
 
@@ -178,6 +193,9 @@ func (UnimplementedDPUAgentServiceServer) GetSignedMeasurements(context.Context,
 }
 func (UnimplementedDPUAgentServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
+}
+func (UnimplementedDPUAgentServiceServer) DistributeCredential(context.Context, *DistributeCredentialRequest) (*DistributeCredentialResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DistributeCredential not implemented")
 }
 func (UnimplementedDPUAgentServiceServer) mustEmbedUnimplementedDPUAgentServiceServer() {}
 func (UnimplementedDPUAgentServiceServer) testEmbeddedByValue()                         {}
@@ -326,6 +344,24 @@ func _DPUAgentService_HealthCheck_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DPUAgentService_DistributeCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DistributeCredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DPUAgentServiceServer).DistributeCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DPUAgentService_DistributeCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DPUAgentServiceServer).DistributeCredential(ctx, req.(*DistributeCredentialRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DPUAgentService_ServiceDesc is the grpc.ServiceDesc for DPUAgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -360,6 +396,10 @@ var DPUAgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HealthCheck",
 			Handler:    _DPUAgentService_HealthCheck_Handler,
+		},
+		{
+			MethodName: "DistributeCredential",
+			Handler:    _DPUAgentService_DistributeCredential_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

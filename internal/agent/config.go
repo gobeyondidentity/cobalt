@@ -18,13 +18,23 @@ type Config struct {
 
 	// BMCPassword is the BMC password (from environment)
 	BMCPassword string
+
+	// HostSSHAddr is the host SSH address for credential distribution (e.g., "192.168.1.100:22")
+	HostSSHAddr string
+
+	// HostSSHUser is the SSH user for connecting to the host (default: root)
+	HostSSHUser string
+
+	// HostSSHKeyPath is the path to the SSH private key for host authentication
+	HostSSHKeyPath string
 }
 
 // DefaultConfig returns configuration with defaults.
 func DefaultConfig() *Config {
 	return &Config{
-		ListenAddr: ":50051",
-		BMCUser:    "root",
+		ListenAddr:  ":50051",
+		BMCUser:     "root",
+		HostSSHUser: "root",
 	}
 }
 
@@ -37,6 +47,18 @@ func (c *Config) LoadFromEnv() error {
 			return fmt.Errorf("FC_BMC_PASSWORD environment variable required when --bmc-addr is set")
 		}
 	}
+
+	// Host SSH configuration from environment
+	if addr := os.Getenv("HOST_SSH_ADDR"); addr != "" {
+		c.HostSSHAddr = addr
+	}
+	if user := os.Getenv("HOST_SSH_USER"); user != "" {
+		c.HostSSHUser = user
+	}
+	if keyPath := os.Getenv("HOST_SSH_KEY"); keyPath != "" {
+		c.HostSSHKeyPath = keyPath
+	}
+
 	return nil
 }
 

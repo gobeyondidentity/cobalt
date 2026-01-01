@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { LayoutDashboard, Cpu, KeyRound, Send } from "lucide-react";
 
 const navigation = [
-  { name: "Dashboard", href: "/" },
-  { name: "DPUs", href: "/dpus" },
+  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "DPUs", href: "/dpus", icon: Cpu },
+  { name: "Credentials", href: "/credentials", icon: KeyRound },
+  { name: "Distribution", href: "/distribution", icon: Send },
 ];
 
 export function Sidebar() {
@@ -21,17 +24,19 @@ export function Sidebar() {
         {navigation.map((item) => {
           const isActive = pathname === item.href ||
             (item.href !== "/" && pathname.startsWith(item.href));
+          const Icon = item.icon;
           return (
             <Link
               key={item.name}
               href={item.href}
               className={cn(
-                "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                 isActive
                   ? "bg-zinc-800 text-white"
                   : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
               )}
             >
+              <Icon className="h-4 w-4" />
               {item.name}
             </Link>
           );

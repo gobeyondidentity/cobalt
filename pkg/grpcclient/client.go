@@ -82,3 +82,12 @@ func (c *Client) GetSignedMeasurements(ctx context.Context, nonce string, indice
 		Target:  target,
 	})
 }
+
+// DistributeCredential sends a credential to the DPU agent for installation.
+func (c *Client) DistributeCredential(ctx context.Context, credType, credName string, publicKey []byte) (*agentv1.DistributeCredentialResponse, error) {
+	return c.client.DistributeCredential(ctx, &agentv1.DistributeCredentialRequest{
+		CredentialType: credType,
+		CredentialName: credName,
+		PublicKey:      publicKey,
+	})
+}

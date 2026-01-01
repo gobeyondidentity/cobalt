@@ -1453,6 +1453,134 @@ func (x *ComponentHealth) GetMessage() string {
 	return ""
 }
 
+type DistributeCredentialRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	CredentialType string                 `protobuf:"bytes,1,opt,name=credential_type,json=credentialType,proto3" json:"credential_type,omitempty"` // "ssh-ca" for MVP
+	CredentialName string                 `protobuf:"bytes,2,opt,name=credential_name,json=credentialName,proto3" json:"credential_name,omitempty"` // CA name for identification
+	PublicKey      []byte                 `protobuf:"bytes,3,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`                // The CA public key to deploy
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *DistributeCredentialRequest) Reset() {
+	*x = DistributeCredentialRequest{}
+	mi := &file_agent_v1_agent_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DistributeCredentialRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DistributeCredentialRequest) ProtoMessage() {}
+
+func (x *DistributeCredentialRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DistributeCredentialRequest.ProtoReflect.Descriptor instead.
+func (*DistributeCredentialRequest) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *DistributeCredentialRequest) GetCredentialType() string {
+	if x != nil {
+		return x.CredentialType
+	}
+	return ""
+}
+
+func (x *DistributeCredentialRequest) GetCredentialName() string {
+	if x != nil {
+		return x.CredentialName
+	}
+	return ""
+}
+
+func (x *DistributeCredentialRequest) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+type DistributeCredentialResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`                                  // Human-readable result
+	InstalledPath string                 `protobuf:"bytes,3,opt,name=installed_path,json=installedPath,proto3" json:"installed_path,omitempty"` // Where the credential was installed
+	SshdReloaded  bool                   `protobuf:"varint,4,opt,name=sshd_reloaded,json=sshdReloaded,proto3" json:"sshd_reloaded,omitempty"`   // Whether sshd was reloaded
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DistributeCredentialResponse) Reset() {
+	*x = DistributeCredentialResponse{}
+	mi := &file_agent_v1_agent_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DistributeCredentialResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DistributeCredentialResponse) ProtoMessage() {}
+
+func (x *DistributeCredentialResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DistributeCredentialResponse.ProtoReflect.Descriptor instead.
+func (*DistributeCredentialResponse) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *DistributeCredentialResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *DistributeCredentialResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *DistributeCredentialResponse) GetInstalledPath() string {
+	if x != nil {
+		return x.InstalledPath
+	}
+	return ""
+}
+
+func (x *DistributeCredentialResponse) GetSshdReloaded() bool {
+	if x != nil {
+		return x.SshdReloaded
+	}
+	return false
+}
+
 var File_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_agent_v1_agent_proto_rawDesc = "" +
@@ -1563,12 +1691,22 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x19.agent.v1.ComponentHealthR\x05value:\x028\x01\"E\n" +
 	"\x0fComponentHealth\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage*\x99\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\x8e\x01\n" +
+	"\x1bDistributeCredentialRequest\x12'\n" +
+	"\x0fcredential_type\x18\x01 \x01(\tR\x0ecredentialType\x12'\n" +
+	"\x0fcredential_name\x18\x02 \x01(\tR\x0ecredentialName\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x03 \x01(\fR\tpublicKey\"\x9e\x01\n" +
+	"\x1cDistributeCredentialResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12%\n" +
+	"\x0einstalled_path\x18\x03 \x01(\tR\rinstalledPath\x12#\n" +
+	"\rsshd_reloaded\x18\x04 \x01(\bR\fsshdReloaded*\x99\x01\n" +
 	"\x11AttestationStatus\x12\"\n" +
 	"\x1eATTESTATION_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18ATTESTATION_STATUS_VALID\x10\x01\x12\x1e\n" +
 	"\x1aATTESTATION_STATUS_INVALID\x10\x02\x12\"\n" +
-	"\x1eATTESTATION_STATUS_UNAVAILABLE\x10\x032\xd5\x04\n" +
+	"\x1eATTESTATION_STATUS_UNAVAILABLE\x10\x032\xbc\x05\n" +
 	"\x0fDPUAgentService\x12P\n" +
 	"\rGetSystemInfo\x12\x1e.agent.v1.GetSystemInfoRequest\x1a\x1f.agent.v1.GetSystemInfoResponse\x12V\n" +
 	"\x0fGetDPUInventory\x12 .agent.v1.GetDPUInventoryRequest\x1a!.agent.v1.GetDPUInventoryResponse\x12J\n" +
@@ -1576,7 +1714,8 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\bGetFlows\x12\x19.agent.v1.GetFlowsRequest\x1a\x1a.agent.v1.GetFlowsResponse\x12S\n" +
 	"\x0eGetAttestation\x12\x1f.agent.v1.GetAttestationRequest\x1a .agent.v1.GetAttestationResponse\x12h\n" +
 	"\x15GetSignedMeasurements\x12&.agent.v1.GetSignedMeasurementsRequest\x1a'.agent.v1.GetSignedMeasurementsResponse\x12J\n" +
-	"\vHealthCheck\x12\x1c.agent.v1.HealthCheckRequest\x1a\x1d.agent.v1.HealthCheckResponseBBZ@github.com/beyondidentity/fabric-console/gen/go/agent/v1;agentv1b\x06proto3"
+	"\vHealthCheck\x12\x1c.agent.v1.HealthCheckRequest\x1a\x1d.agent.v1.HealthCheckResponse\x12e\n" +
+	"\x14DistributeCredential\x12%.agent.v1.DistributeCredentialRequest\x1a&.agent.v1.DistributeCredentialResponseBBZ@github.com/beyondidentity/fabric-console/gen/go/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_agent_v1_agent_proto_rawDescOnce sync.Once
@@ -1591,7 +1730,7 @@ func file_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_agent_v1_agent_proto_goTypes = []any{
 	(AttestationStatus)(0),                // 0: agent.v1.AttestationStatus
 	(*GetSystemInfoRequest)(nil),          // 1: agent.v1.GetSystemInfoRequest
@@ -1617,8 +1756,10 @@ var file_agent_v1_agent_proto_goTypes = []any{
 	(*HealthCheckRequest)(nil),            // 21: agent.v1.HealthCheckRequest
 	(*HealthCheckResponse)(nil),           // 22: agent.v1.HealthCheckResponse
 	(*ComponentHealth)(nil),               // 23: agent.v1.ComponentHealth
-	nil,                                   // 24: agent.v1.GetAttestationResponse.MeasurementsEntry
-	nil,                                   // 25: agent.v1.HealthCheckResponse.ComponentsEntry
+	(*DistributeCredentialRequest)(nil),   // 24: agent.v1.DistributeCredentialRequest
+	(*DistributeCredentialResponse)(nil),  // 25: agent.v1.DistributeCredentialResponse
+	nil,                                   // 26: agent.v1.GetAttestationResponse.MeasurementsEntry
+	nil,                                   // 27: agent.v1.HealthCheckResponse.ComponentsEntry
 }
 var file_agent_v1_agent_proto_depIdxs = []int32{
 	5,  // 0: agent.v1.GetDPUInventoryResponse.firmwares:type_name -> agent.v1.FirmwareComponent
@@ -1628,10 +1769,10 @@ var file_agent_v1_agent_proto_depIdxs = []int32{
 	11, // 4: agent.v1.ListBridgesResponse.bridges:type_name -> agent.v1.Bridge
 	14, // 5: agent.v1.GetFlowsResponse.flows:type_name -> agent.v1.Flow
 	17, // 6: agent.v1.GetAttestationResponse.certificates:type_name -> agent.v1.Certificate
-	24, // 7: agent.v1.GetAttestationResponse.measurements:type_name -> agent.v1.GetAttestationResponse.MeasurementsEntry
+	26, // 7: agent.v1.GetAttestationResponse.measurements:type_name -> agent.v1.GetAttestationResponse.MeasurementsEntry
 	0,  // 8: agent.v1.GetAttestationResponse.status:type_name -> agent.v1.AttestationStatus
 	20, // 9: agent.v1.GetSignedMeasurementsResponse.measurements:type_name -> agent.v1.Measurement
-	25, // 10: agent.v1.HealthCheckResponse.components:type_name -> agent.v1.HealthCheckResponse.ComponentsEntry
+	27, // 10: agent.v1.HealthCheckResponse.components:type_name -> agent.v1.HealthCheckResponse.ComponentsEntry
 	23, // 11: agent.v1.HealthCheckResponse.ComponentsEntry.value:type_name -> agent.v1.ComponentHealth
 	1,  // 12: agent.v1.DPUAgentService.GetSystemInfo:input_type -> agent.v1.GetSystemInfoRequest
 	3,  // 13: agent.v1.DPUAgentService.GetDPUInventory:input_type -> agent.v1.GetDPUInventoryRequest
@@ -1640,15 +1781,17 @@ var file_agent_v1_agent_proto_depIdxs = []int32{
 	15, // 16: agent.v1.DPUAgentService.GetAttestation:input_type -> agent.v1.GetAttestationRequest
 	18, // 17: agent.v1.DPUAgentService.GetSignedMeasurements:input_type -> agent.v1.GetSignedMeasurementsRequest
 	21, // 18: agent.v1.DPUAgentService.HealthCheck:input_type -> agent.v1.HealthCheckRequest
-	2,  // 19: agent.v1.DPUAgentService.GetSystemInfo:output_type -> agent.v1.GetSystemInfoResponse
-	4,  // 20: agent.v1.DPUAgentService.GetDPUInventory:output_type -> agent.v1.GetDPUInventoryResponse
-	10, // 21: agent.v1.DPUAgentService.ListBridges:output_type -> agent.v1.ListBridgesResponse
-	13, // 22: agent.v1.DPUAgentService.GetFlows:output_type -> agent.v1.GetFlowsResponse
-	16, // 23: agent.v1.DPUAgentService.GetAttestation:output_type -> agent.v1.GetAttestationResponse
-	19, // 24: agent.v1.DPUAgentService.GetSignedMeasurements:output_type -> agent.v1.GetSignedMeasurementsResponse
-	22, // 25: agent.v1.DPUAgentService.HealthCheck:output_type -> agent.v1.HealthCheckResponse
-	19, // [19:26] is the sub-list for method output_type
-	12, // [12:19] is the sub-list for method input_type
+	24, // 19: agent.v1.DPUAgentService.DistributeCredential:input_type -> agent.v1.DistributeCredentialRequest
+	2,  // 20: agent.v1.DPUAgentService.GetSystemInfo:output_type -> agent.v1.GetSystemInfoResponse
+	4,  // 21: agent.v1.DPUAgentService.GetDPUInventory:output_type -> agent.v1.GetDPUInventoryResponse
+	10, // 22: agent.v1.DPUAgentService.ListBridges:output_type -> agent.v1.ListBridgesResponse
+	13, // 23: agent.v1.DPUAgentService.GetFlows:output_type -> agent.v1.GetFlowsResponse
+	16, // 24: agent.v1.DPUAgentService.GetAttestation:output_type -> agent.v1.GetAttestationResponse
+	19, // 25: agent.v1.DPUAgentService.GetSignedMeasurements:output_type -> agent.v1.GetSignedMeasurementsResponse
+	22, // 26: agent.v1.DPUAgentService.HealthCheck:output_type -> agent.v1.HealthCheckResponse
+	25, // 27: agent.v1.DPUAgentService.DistributeCredential:output_type -> agent.v1.DistributeCredentialResponse
+	20, // [20:28] is the sub-list for method output_type
+	12, // [12:20] is the sub-list for method input_type
 	12, // [12:12] is the sub-list for extension type_name
 	12, // [12:12] is the sub-list for extension extendee
 	0,  // [0:12] is the sub-list for field type_name
@@ -1665,7 +1808,7 @@ func file_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_v1_agent_proto_rawDesc), len(file_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   25,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

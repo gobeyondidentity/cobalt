@@ -26,6 +26,9 @@ service DPUAgentService {
 
   // HealthCheck verifies the agent is running and responsive.
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // DistributeCredential deploys a credential to the host via the DPU.
+  rpc DistributeCredential(DistributeCredentialRequest) returns (DistributeCredentialResponse);
 }
 
 // System Info
@@ -181,4 +184,19 @@ message HealthCheckResponse {
 message ComponentHealth {
   bool healthy = 1;
   string message = 2;
+}
+
+// Credential Distribution
+
+message DistributeCredentialRequest {
+  string credential_type = 1;  // "ssh-ca" for MVP
+  string credential_name = 2;  // CA name for identification
+  bytes public_key = 3;        // The CA public key to deploy
+}
+
+message DistributeCredentialResponse {
+  bool success = 1;
+  string message = 2;          // Human-readable result
+  string installed_path = 3;   // Where the credential was installed
+  bool sshd_reloaded = 4;      // Whether sshd was reloaded
 }

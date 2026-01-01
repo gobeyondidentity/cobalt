@@ -1,6 +1,6 @@
 "use server";
 
-import { api, DPU, SystemInfo, Flow, HealthCheck, Attestation, ChainsResponse, Inventory, MeasurementsResponse, CoRIMValidation } from "./api";
+import { api, DPU, SystemInfo, Flow, HealthCheck, Attestation, ChainsResponse, Inventory, MeasurementsResponse, CoRIMValidation, SSHCA, Distribution, DistributionFilters } from "./api";
 import { revalidatePath } from "next/cache";
 
 export async function listDPUs(): Promise<{ dpus: DPU[]; error?: string }> {
@@ -136,5 +136,40 @@ export async function validateCoRIM(
     return { validation };
   } catch (e) {
     return { error: (e as Error).message };
+  }
+}
+
+// ----- SSH CA Actions -----
+
+export async function listSSHCAs(): Promise<{ cas: SSHCA[]; error?: string }> {
+  try {
+    const cas = await api.listSSHCAs();
+    return { cas };
+  } catch (e) {
+    return { cas: [], error: (e as Error).message };
+  }
+}
+
+export async function getSSHCA(
+  name: string
+): Promise<{ ca?: SSHCA; error?: string }> {
+  try {
+    const ca = await api.getSSHCA(name);
+    return { ca };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+// ----- Distribution History Actions -----
+
+export async function getDistributionHistory(
+  filters?: DistributionFilters
+): Promise<{ distributions: Distribution[]; error?: string }> {
+  try {
+    const distributions = await api.getDistributionHistory(filters);
+    return { distributions };
+  } catch (e) {
+    return { distributions: [], error: (e as Error).message };
   }
 }

@@ -128,6 +128,40 @@ export interface Inventory {
   operationMode: string;
 }
 
+// ----- SSH CA Types -----
+
+export interface SSHCA {
+  id: string;
+  name: string;
+  keyType: string;
+  publicKey?: string; // Only in detail view
+  createdAt: string;
+  distributions: number;
+}
+
+// ----- Distribution Types -----
+
+export interface Distribution {
+  id: number;
+  dpuName: string;
+  credentialType: string;
+  credentialName: string;
+  outcome: "success" | "blocked-stale" | "blocked-failed" | "forced";
+  attestationStatus?: string;
+  attestationAgeSeconds?: number;
+  installedPath?: string;
+  errorMessage?: string;
+  createdAt: string;
+}
+
+export interface DistributionFilters {
+  target?: string;
+  from?: string;
+  to?: string;
+  result?: string;
+  limit?: number;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -205,6 +239,30 @@ class ApiClient {
   async validateCoRIM(id: string, target?: string): Promise<CoRIMValidation> {
     const params = target ? `?target=${target}` : "";
     return this.fetch<CoRIMValidation>(`/api/dpus/${id}/corim/validate${params}`);
+  }
+
+  // ----- SSH CA Methods -----
+
+  async listSSHCAs(): Promise<SSHCA[]> {
+    return this.fetch<SSHCA[]>("/api/credentials/ssh-cas");
+  }
+
+  async getSSHCA(name: string): Promise<SSHCA> {
+    return this.fetch<SSHCA>(`/api/credentials/ssh-cas/${encodeURIComponent(name)}`);
+  }
+
+  // ----- Distribution Methods -----
+
+  async getDistributionHistory(filters?: DistributionFilters): Promise<Distribution[]> {
+    const params = new URLSearchParams();
+    if (filters?.target) params.set("target", filters.target);
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    if (filters?.result) params.set("result", filters.result);
+    if (filters?.limit) params.set("limit", filters.limit.toString());
+
+    const queryString = params.toString();
+    return this.fetch<Distribution[]>(`/api/distribution/history${queryString ? `?${queryString}` : ""}`);
   }
 }
 

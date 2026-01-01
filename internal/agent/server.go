@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	agentv1 "github.com/beyondidentity/fabric-console/gen/go/agent/v1"
@@ -14,7 +15,13 @@ import (
 	"github.com/beyondidentity/fabric-console/pkg/ovs"
 )
 
-var errBMCNotConfigured = errors.New("BMC not configured")
+var (
+	errBMCNotConfigured          = errors.New("BMC not configured")
+	errHostSSHNotConfigured      = errors.New("host SSH not configured")
+	errUnknownCredentialType     = errors.New("unknown credential type")
+	errMissingCredentialName     = errors.New("credential name is required")
+	errMissingPublicKey          = errors.New("public key is required")
+)
 
 // Server implements the DPUAgentService gRPC interface.
 type Server struct {
@@ -323,4 +330,63 @@ func generateNonce() string {
 	bytes := make([]byte, 32)
 	rand.Read(bytes)
 	return hex.EncodeToString(bytes)
+}
+
+// DistributeCredential deploys a credential to the host via the DPU.
+// For MVP, only "ssh-ca" credential type is supported.
+func (s *Server) DistributeCredential(ctx context.Context, req *agentv1.DistributeCredentialRequest) (*agentv1.DistributeCredentialResponse, error) {
+	credType := req.GetCredentialType()
+	credName := req.GetCredentialName()
+	publicKey := req.GetPublicKey()
+
+	// Validate request
+	if credName == "" {
+		return nil, errMissingCredentialName
+	}
+	if len(publicKey) == 0 {
+		return nil, errMissingPublicKey
+	}
+
+	switch credType {
+	case "ssh-ca":
+		return s.distributeSSHCA(ctx, credName, publicKey)
+	default:
+		return nil, errUnknownCredentialType
+	}
+}
+
+// distributeSSHCA handles the ssh-ca credential type distribution.
+func (s *Server) distributeSSHCA(ctx context.Context, caName string, publicKey []byte) (*agentv1.DistributeCredentialResponse, error) {
+	// Check if host SSH is configured
+	if s.config.HostSSHAddr == "" {
+		return nil, errHostSSHNotConfigured
+	}
+
+	// Create SSH executor
+	executor, err := NewSSHExecutor(s.config.HostSSHAddr, s.config.HostSSHUser, s.config.HostSSHKeyPath)
+	if err != nil {
+		return &agentv1.DistributeCredentialResponse{
+			Success: false,
+			Message: fmt.Sprintf("failed to connect to host: %v", err),
+		}, nil
+	}
+	defer executor.Close()
+
+	// Distribute the CA
+	installedPath, sshdReloaded, err := DistributeSSHCA(ctx, executor, publicKey, caName)
+	if err != nil {
+		return &agentv1.DistributeCredentialResponse{
+			Success:       false,
+			Message:       fmt.Sprintf("failed to distribute SSH CA: %v", err),
+			InstalledPath: installedPath,
+			SshdReloaded:  sshdReloaded,
+		}, nil
+	}
+
+	return &agentv1.DistributeCredentialResponse{
+		Success:       true,
+		Message:       "SSH CA distributed successfully",
+		InstalledPath: installedPath,
+		SshdReloaded:  sshdReloaded,
+	}, nil
 }

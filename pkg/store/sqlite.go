@@ -172,6 +172,21 @@ func (s *Store) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
 	CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target);
+
+	CREATE TABLE IF NOT EXISTS distribution_history (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		dpu_name TEXT NOT NULL,
+		credential_type TEXT NOT NULL,
+		credential_name TEXT NOT NULL,
+		outcome TEXT NOT NULL,
+		attestation_status TEXT,
+		attestation_age_seconds INTEGER,
+		installed_path TEXT,
+		error_message TEXT,
+		created_at INTEGER DEFAULT (strftime('%s', 'now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_distribution_history_dpu ON distribution_history(dpu_name);
+	CREATE INDEX IF NOT EXISTS idx_distribution_history_credential ON distribution_history(credential_name);
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
@@ -695,4 +710,10 @@ func (s *Store) scanHostRows(rows *sql.Rows) (*Host, error) {
 	}
 
 	return &host, nil
+}
+
+// QueryRaw executes a raw SQL query and returns the rows.
+// This is intended for API handlers that need flexible queries with dynamic filtering.
+func (s *Store) QueryRaw(query string, args ...interface{}) (*sql.Rows, error) {
+	return s.db.Query(query, args...)
 }

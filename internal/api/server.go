@@ -72,6 +72,13 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// CoRIM routes
 	mux.HandleFunc("GET /api/corim/list", s.handleListCoRIMs)
 
+	// Credential routes
+	mux.HandleFunc("GET /api/credentials/ssh-cas", s.handleListSSHCAs)
+	mux.HandleFunc("GET /api/credentials/ssh-cas/{name}", s.handleGetSSHCA)
+
+	// Distribution routes
+	mux.HandleFunc("GET /api/distribution/history", s.handleDistributionHistory)
+
 	// Health routes
 	mux.HandleFunc("GET /api/health", s.handleAPIHealth)
 }
