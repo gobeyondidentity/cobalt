@@ -1,0 +1,33 @@
+# Fabric Console DPU Agent
+# NOTE: This is for local development/testing only.
+# In production, the agent runs directly on DPU ARM cores.
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache gcc musl-dev
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source
+COPY . .
+
+# Build
+RUN CGO_ENABLED=0 go build -o agent ./cmd/agent
+
+# Runtime image
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates
+
+WORKDIR /app
+
+COPY --from=builder /app/agent .
+
+EXPOSE 50051
+
+ENTRYPOINT ["./agent"]
+CMD ["--listen=:50051"]

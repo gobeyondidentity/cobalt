@@ -1,0 +1,184 @@
+syntax = "proto3";
+
+package agent.v1;
+
+option go_package = "github.com/beyondidentity/fabric-console/gen/go/agent/v1;agentv1";
+
+// DPUAgentService provides read-only introspection of BlueField DPU state.
+service DPUAgentService {
+  // GetSystemInfo returns hardware and software information about the DPU.
+  rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
+
+  // GetDPUInventory returns detailed firmware and software inventory of the DPU.
+  rpc GetDPUInventory(GetDPUInventoryRequest) returns (GetDPUInventoryResponse);
+
+  // ListBridges returns all OVS bridges configured on the DPU.
+  rpc ListBridges(ListBridgesRequest) returns (ListBridgesResponse);
+
+  // GetFlows returns OpenFlow rules for a specific bridge.
+  rpc GetFlows(GetFlowsRequest) returns (GetFlowsResponse);
+
+  // GetAttestation returns DICE/SPDM certificates and measurements.
+  rpc GetAttestation(GetAttestationRequest) returns (GetAttestationResponse);
+
+  // GetSignedMeasurements returns SPDM signed measurements from the DPU.
+  rpc GetSignedMeasurements(GetSignedMeasurementsRequest) returns (GetSignedMeasurementsResponse);
+
+  // HealthCheck verifies the agent is running and responsive.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// System Info
+
+message GetSystemInfoRequest {}
+
+message GetSystemInfoResponse {
+  string hostname = 1;
+  string model = 2;
+  string serial_number = 3;
+  string firmware_version = 4;
+  string doca_version = 5;
+  int32 arm_cores = 6;
+  int32 memory_gb = 7;
+  int64 uptime_seconds = 8;
+  string ovs_version = 9;
+  string kernel_version = 10;
+}
+
+// DPU Inventory (detailed firmware and software inventory)
+
+message GetDPUInventoryRequest {}
+
+message GetDPUInventoryResponse {
+  repeated FirmwareComponent firmwares = 1;
+  repeated InstalledPackage packages = 2;
+  repeated KernelModule modules = 3;
+  BootInfo boot = 4;
+  string operation_mode = 5;  // embedded, separated, or smart-nic
+}
+
+message FirmwareComponent {
+  string name = 1;       // bmc, nic, uefi
+  string version = 2;
+  string build_date = 3;
+}
+
+message InstalledPackage {
+  string name = 1;
+  string version = 2;
+}
+
+message KernelModule {
+  string name = 1;
+  string size = 2;
+  int32 used_by = 3;
+}
+
+message BootInfo {
+  bool uefi_mode = 1;
+  bool secure_boot = 2;
+  string boot_device = 3;
+}
+
+// OVS Bridges
+
+message ListBridgesRequest {}
+
+message ListBridgesResponse {
+  repeated Bridge bridges = 1;
+}
+
+message Bridge {
+  string name = 1;
+  repeated string ports = 2;
+}
+
+// OVS Flows
+
+message GetFlowsRequest {
+  string bridge = 1;
+}
+
+message GetFlowsResponse {
+  repeated Flow flows = 1;
+}
+
+message Flow {
+  int32 table = 1;
+  int32 priority = 2;
+  string match = 3;
+  string actions = 4;
+  int64 packets = 5;
+  int64 bytes = 6;
+  string age = 7;
+  string cookie = 8;
+}
+
+// Attestation
+
+message GetAttestationRequest {
+  string target = 1;  // IRoT or ERoT (default: IRoT if empty)
+}
+
+message GetAttestationResponse {
+  repeated Certificate certificates = 1;
+  map<string, string> measurements = 2;
+  AttestationStatus status = 3;
+}
+
+message Certificate {
+  int32 level = 1;
+  string subject = 2;
+  string issuer = 3;
+  string not_before = 4;
+  string not_after = 5;
+  string algorithm = 6;
+  string pem = 7;
+  string fingerprint_sha256 = 8;
+}
+
+enum AttestationStatus {
+  ATTESTATION_STATUS_UNSPECIFIED = 0;
+  ATTESTATION_STATUS_VALID = 1;
+  ATTESTATION_STATUS_INVALID = 2;
+  ATTESTATION_STATUS_UNAVAILABLE = 3;
+}
+
+// Signed Measurements
+
+message GetSignedMeasurementsRequest {
+  string nonce = 1;               // 64-char hex string for freshness
+  repeated int32 indices = 2;     // Measurement indices to fetch (empty = all)
+  string target = 3;              // IRoT or ERoT (default: IRoT)
+}
+
+message GetSignedMeasurementsResponse {
+  repeated Measurement measurements = 1;
+  string hashing_algorithm = 2;   // e.g., TPM_ALG_SHA_512
+  string signing_algorithm = 3;   // e.g., TPM_ALG_ECDSA_ECC_NIST_P384
+  string spdm_version = 4;        // e.g., 1.1.0
+  bytes signature = 5;            // Raw SPDM signature
+}
+
+message Measurement {
+  int32 index = 1;
+  string description = 2;
+  string algorithm = 3;
+  string digest = 4;              // Hex-encoded hash
+}
+
+// Health Check
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string version = 2;
+  int64 uptime_seconds = 3;
+  map<string, ComponentHealth> components = 4;
+}
+
+message ComponentHealth {
+  bool healthy = 1;
+  string message = 2;
+}

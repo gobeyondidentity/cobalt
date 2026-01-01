@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.api
+    ports:
+      - "8080:8080"
+    volumes:
+      - data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web:
+    build:
+      context: ../../web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Note: Agent runs directly on DPU ARM cores, not in Docker
+  # This simulated agent is for local development/testing only
+  agent-sim:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.agent
+    ports:
+      - "50051:50051"
+    environment:
+      - LISTEN_ADDR=:50051
+    profiles:
+      - dev
+
+volumes:
+  data:
+    name: fabric-console-data

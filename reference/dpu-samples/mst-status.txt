@@ -1,0 +1,10 @@
+MST modules:
+------------
+    MST PCI module is not loaded
+    MST PCI configuration module loaded
+
+MST devices:
+------------
+/dev/mst/mt41692_pciconf0        - PCI configuration cycles access.
+                                   domain:bus:dev.fn=0000:03:00.0 addr.reg=88 data.reg=92 cr_bar.gw_offset=-1
+                                   Chip revision is: 01

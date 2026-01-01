@@ -1,0 +1,147 @@
+{
+  "system_info": {
+    "hostname": "bluefield3",
+    "model": "BlueField-3 E-Series DPU 100GbE/HDR100 dual-port QSFP112, PCIe Gen5.0 x16 FHHL with x16 PCIe ext-option, Crypto Enabled, 32GB DDR5, BMC, Tall Bracket",
+    "serial_number": "MT2542600N23",
+    "firmware_version": "bf-bundle-3.2.1-34_25.11_ubuntu-24.04_64k_prod",
+    "doca_version": "",
+    "arm_cores": 16,
+    "memory_gb": 32,
+    "uptime_seconds": 604800,
+    "ovs_version": "2.17.0",
+    "kernel_version": "6.8.0-1013-bluefield-64k"
+  },
+  "bridges": [
+    {
+      "name": "ovsbr1",
+      "ports": ["p0", "pf0hpf", "en3f0pf0sf0"]
+    }
+  ],
+  "flows": {
+    "ovsbr1": [
+      {
+        "table": 0,
+        "priority": 32768,
+        "match": "in_port=1",
+        "actions": "output:2,output:3",
+        "packets": 1523847,
+        "bytes": 1847293847,
+        "age": "7d",
+        "cookie": "0x0"
+      },
+      {
+        "table": 0,
+        "priority": 32768,
+        "match": "in_port=2",
+        "actions": "output:1,output:3",
+        "packets": 892341,
+        "bytes": 923847123,
+        "age": "7d",
+        "cookie": "0x0"
+      },
+      {
+        "table": 0,
+        "priority": 32768,
+        "match": "in_port=3",
+        "actions": "output:1,output:2",
+        "packets": 234892,
+        "bytes": 234892341,
+        "age": "7d",
+        "cookie": "0x0"
+      }
+    ]
+  },
+  "attestation": {
+    "status": "ATTESTATION_STATUS_VALID",
+    "certificates": [
+      {
+        "level": 0,
+        "subject": "SERIALNUMBER=5C49421FED63EA55922EF7BFA79AE7B1975CFFB9,CN=Internal ROT A0 PSC FMC LF,O=NVIDIA",
+        "issuer": "SERIALNUMBER=4E6655514E870BE6FD1DCCC0309FB48C04CC06BD,CN=Internal ROT A0 PSC FMC CA,O=NVIDIA",
+        "not_before": "2020-10-17T00:00:00Z",
+        "not_after": "9999-12-31T23:59:59Z",
+        "algorithm": "ECDSA-SHA384",
+        "pem": "-----BEGIN CERTIFICATE-----\nMIIDqDCCAy2gAwIBAgIUXElCH+1j6lWSLve/p5rnsZdc/7kwCgYIKoZIzj0EAwMw\ngYIxMTAvBgNVBAUTKDRFNjY1NTUxNEU4NzBCRTZGRDFEQ0NDMDMwOUZCNDhDMDRD\nQzA2QkQxKDAmBgNVBAoMH05WSURJQSAgICAgICAgICAgICAgICAgICAgICAgICAx\nIzAhBgNVBAMMGkludGVybmFsIFJPVCBBMCBQU0MgRk1DIENBMCAXDTIwMTAxNzAw\nMDAwMFoYDzk5OTkxMjMxMjM1OTU5WjCBgjExMC8GA1UEBRMoNUM0OTQyMUZFRDYz\nRUE1NTkyMkVGN0JGQTc5QUU3QjE5NzVDRkZCOTEoMCYGA1UECgwfTlZJRElBICAg\nICAgICAgICAgICAgICAgICAgICAgIDEjMCEGA1UEAwwaSW50ZXJuYWwgUk9UIEEw\nIFBTQyBGTUMgTEYwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAT0VOd6XBQEwdxfotjO\n2I9q8msZwnWSWgAOOy2C3dsUuYvEbt+cIUlKeIY5lHI7p0AD6xR2qry0XpgE7q4b\n5JHwPxGx3GxDISxiwHvVRxhfYKYo7Xu6x2o5QRqeh+1tEcqjggFeMIIBWjAOBgNV\nHQ8BAf8EBAMCB4AwHQYDVR0OBBYEFFxJQh/tY+pVki73v6ea57GXXP+5MB8GA1Ud\nIwQYMBaAFI5mVVFOhwvm/R3MwDCftIwEzAa9MD0GA1UdEQQ2MDSgMgYKKwYBBAGD\nHIISAaAkDCJOVklESUE6Qmx1ZUZpZWxkMzowMTIzNDU2Nzg5QUJDREVGMIHIBgZn\ngQUFBAEEgb0wgboCAQEwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAATHYQrJcVXX4o/K\nKPz6KDy7PGMIRNoN+uA2dGqk1+ZFhyUOjlpxkuEVLsjSbNrT5T2Uvbqqhq/eOiP/\nouPhC9uFAwzx2QhEBhm8PExvkBYa7fTyOeRFMKtWixWkEK2861YwPQYJYIZIAWUD\nBAICBDCXwbbz/H8vAliR6GixXhhE5sOsj09b6sQtH2fgnraGXDO0Y96dCA4rHqir\ntuNTOc0wCgYIKoZIzj0EAwMDaQAwZgIxAM4meJbcdRhNl+Iji1PnjePfYNhEst0Y\n3dJutpwFwVGgJaxLAzIjfwdSb/njCcSzhgIxALSAsPWTsGMHXu2UrbPJA26zx+Sp\nwxeObGi2qnlz2Nbp184yGsCIuI9hF3G/hGWS5w==\n-----END CERTIFICATE-----\n",
+        "fingerprint_sha256": "466a814a86e0651f9efb0b6c6bdfdefb6c84306681254e387b19aa0979f7f869"
+      },
+      {
+        "level": 1,
+        "subject": "SERIALNUMBER=4E6655514E870BE6FD1DCCC0309FB48C04CC06BD,CN=Internal ROT A0 PSC FMC CA,O=NVIDIA",
+        "issuer": "SERIALNUMBER=4B070AC036390000545343470100F30B,CN=Internal ROT A0 PSC ROM,O=NVIDIA",
+        "not_before": "2020-10-17T00:00:00Z",
+        "not_after": "9999-12-31T23:59:59Z",
+        "algorithm": "ECDSA-SHA384",
+        "pem": "-----BEGIN CERTIFICATE-----\nMIIDbjCCAvOgAwIBAgIUTmZVUU6HC+b9HczAMJ+0jATMBr0wCgYIKoZIzj0EAwMw\ndzEpMCcGA1UEBRMgNEIwNzBBQzAzNjM5MDAwMDU0NTM0MzQ3MDEwMEYzMEIxKDAm\nBgNVBAoMH05WSURJQSAgICAgICAgICAgICAgICAgICAgICAgICAxIDAeBgNVBAMM\nF0ludGVybmFsIFJPVCBBMCBQU0MgUk9NMCAXDTIwMTAxNzAwMDAwMFoYDzk5OTkx\nMjMxMjM1OTU5WjCBgjExMC8GA1UEBRMoNEU2NjU1NTE0RTg3MEJFNkZEMURDQ0Mw\nMzA5RkI0OEMwNENDMDZCRDEoMCYGA1UECgwfTlZJRElBICAgICAgICAgICAgICAg\nICAgICAgICAgIDEjMCEGA1UEAwwaSW50ZXJuYWwgUk9UIEEwIFBTQyBGTUMgQ0Ew\ndjAQBgcqhkjOPQIBBgUrgQQAIgNiAATHYQrJcVXX4o/KKPz6KDy7PGMIRNoN+uA2\ndGqk1+ZFhyUOjlpxkuEVLsjSbNrT5T2Uvbqqhq/eOiP/ouPhC9uFAwzx2QhEBhm8\nPExvkBYa7fTyOeRFMKtWixWkEK2861ajggEwMIIBLDAPBgNVHRMBAf8EBTADAQH/\nMA4GA1UdDwEB/wQEAwICBDAdBgNVHQ4EFgQUjmZVUU6HC+b9HczAMJ+0jATMBr0w\nHwYDVR0jBBgwFoAU4zgOdLhKYDnnivqrzWXnE15tD2EwgcgGBmeBBQUEAQSBvTCB\nugIBATB2MBAGByqGSM49AgEGBSuBBAAiA2IABCaVGrGMVX86sKf9tzrp9en8Uf62\niQAX6wUPeXidHoGwcMmtVEnpbYSVWEz/7fJ8oOdH5On01i+YyLc8a1pXBDysoEKr\nfxrDAJSizXSVDER+Ry3JUzYwrsGuWw6IKNW5qTA9BglghkgBZQMEAgIEMBSM4VTz\n2iMplNhwurW0UugwVi501bNuubHYxVYU8koxSCis4iYDSat79pF2ukUJMDAKBggq\nhkjOPQQDAwNpADBmAjEAzfFJtS7XBLY12g7bmGOjyz601Tl1kPdbob183oMA7lNC\nfmZDG3f49FEYcP6H6X7DAjEAljbDbPviEuAt2SX0S/xdPw2G9QNx5d/aaxXysYVV\nYDVy8IDUXKJaMUKsUMiGpt71\n-----END CERTIFICATE-----\n",
+        "fingerprint_sha256": "7acd5d0c0d0223a8ee970bf1dc9942dcde8a13af6022860e2fec4712f8a33214"
+      },
+      {
+        "level": 2,
+        "subject": "SERIALNUMBER=4B070AC036390000545343470100F30B,CN=Internal ROT A0 PSC ROM,O=NVIDIA",
+        "issuer": "SERIALNUMBER=7042F3D1DC1B4846D82EED923FAE63A4503C514D,CN=Provisioner CA,O=NVIDIA",
+        "not_before": "2020-10-17T00:00:00Z",
+        "not_after": "9999-12-31T23:59:59Z",
+        "algorithm": "ECDSA-SHA384",
+        "pem": "-----BEGIN CERTIFICATE-----\nMIICczCCAfqgAwIBAgIQSwcKwDY5AABUU0NHAQDzCzAKBggqhkjOPQQDAzBdMTEw\nLwYDVQQFEyg3MDQyRjNEMURDMUI0ODQ2RDgyRUVEOTIzRkFFNjNBNDUwM0M1MTRE\nMRcwFQYDVQQDDA5Qcm92aXNpb25lciBDQTEPMA0GA1UECgwGTlZJRElBMCAXDTIw\nMTAxNzAwMDAwMFoYDzk5OTkxMjMxMjM1OTU5WjB3MSkwJwYDVQQFEyA0QjA3MEFD\nMDM2MzkwMDAwNTQ1MzQzNDcwMTAwRjMwQjEoMCYGA1UECgwfTlZJRElBICAgICAg\nICAgICAgICAgICAgICAgICAgIDEgMB4GA1UEAwwXSW50ZXJuYWwgUk9UIEEwIFBT\nQyBST00wdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQmlRqxjFV/OrCn/bc66fXp/FH+\ntokAF+sFD3l4nR6BsHDJrVRJ6W2ElVhM/+3yfKDnR+Tp9NYvmMi3PGtaVwQ8rKBC\nq38awwCUos10lQxEfkctyVM2MK7BrlsOiCjVuamjYzBhMA8GA1UdEwEB/wQFMAMB\nAf8wDgYDVR0PAQH/BAQDAgIEMB0GA1UdDgQWBBTjOA50uEpgOeeK+qvNZecTXm0P\nYTAfBgNVHSMEGDAWgBQwQvPR3BtIRtgu7ZI/rmOkUDxRTTAKBggqhkjOPQQDAwNn\nADBkAjB+wAAFubWPrefrYUYaSqmAy6XnZxmHudIXq7Lc4ElKeyWhB69Qw53I2zbb\n1mBK+iECMGm4o9bPZB9RU5mSTe21KSzqpjhHvkf9ScL565nNXrJ2P0Y66RXe4yGk\n9T3oU2IyKw==\n-----END CERTIFICATE-----\n",
+        "fingerprint_sha256": "20a6e4d41312c365c776229b0c53dd14d2eebcdba8d7085d2d6ed33b7b917fec"
+      },
+      {
+        "level": 3,
+        "subject": "SERIALNUMBER=7042F3D1DC1B4846D82EED923FAE63A4503C514D,CN=Provisioner CA,O=NVIDIA",
+        "issuer": "CN=NVIDIA BF3 Identity,O=NVIDIA",
+        "not_before": "2020-10-17T00:00:00Z",
+        "not_after": "9999-12-31T23:59:59Z",
+        "algorithm": "ECDSA-SHA384",
+        "pem": "-----BEGIN CERTIFICATE-----\nMIICqDCCAi2gAwIBAgIUeoaK8lF1Cm2CqgC+KHrHzcpUjdYwCgYIKoZIzj0EAwMw\nLzEcMBoGA1UEAwwTTlZJRElBIEJGMyBJZGVudGl0eTEPMA0GA1UECgwGTlZJRElB\nMCAXDTIwMTAxNzAwMDAwMFoYDzk5OTkxMjMxMjM1OTU5WjBdMTEwLwYDVQQFEyg3\nMDQyRjNEMURDMUI0ODQ2RDgyRUVEOTIzRkFFNjNBNDUwM0M1MTREMRcwFQYDVQQD\nDA5Qcm92aXNpb25lciBDQTEPMA0GA1UECgwGTlZJRElBMHYwEAYHKoZIzj0CAQYF\nK4EEACIDYgAE92NVEi9lKVPfLsWuZehsVNEWpwnw3+/WGIp9DZjArXorL803nehU\nfO55IWgPlle7qZL60LwoOKXEwo3hGATUKWtpqYM4UE5I10kArAwd+unkVv7Ul8S9\nlwaDt6vvn9Bfo4HZMIHWMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEG\nMDoGA1UdHwQzMDEwL6AtoCuGKWh0dHA6Ly9jcmwubmRpcy5udmlkaWEuY29tL2Ny\nbC9sMi1iZjMuY3JsMDcGCCsGAQUFBwEBBCswKTAnBggrBgEFBQcwAYYbaHR0cDov\nL29jc3AubmRpcy5udmlkaWEuY29tMB0GA1UdDgQWBBQwQvPR3BtIRtgu7ZI/rmOk\nUDxRTTAfBgNVHSMEGDAWgBQzSiUc87EKmS7RmexsfBEOxTVqRDAKBggqhkjOPQQD\nAwNpADBmAjEAnGxssn6hg/7UHErFCo0yI1dgl8OhNyDshu6trklusYPp5kTtH0cr\nR0qsxYcHaXyYAjEA45bnGkyzxxu9W6gczjknKZO8Ds9w5gaGrAr+G5j3xYyCGYHQ\nM5b/aEnHb0BZ4InE\n-----END CERTIFICATE-----\n",
+        "fingerprint_sha256": "a72ab1365fb1bb7ec72f910aa278f8b01c26475931116b974fa5208a8034ccb1"
+      },
+      {
+        "level": 4,
+        "subject": "CN=NVIDIA BF3 Identity,O=NVIDIA",
+        "issuer": "CN=NVIDIA Device Identity CA,O=NVIDIA",
+        "not_before": "2022-01-12T00:00:00Z",
+        "not_after": "9999-12-31T23:59:59Z",
+        "algorithm": "ECDSA-SHA384",
+        "pem": "-----BEGIN CERTIFICATE-----\nMIICfTCCAgKgAwIBAgIQD2jEn5bZVXLFL1v4tLZ01DAKBggqhkjOPQQDAzA1MSIw\nIAYDVQQDDBlOVklESUEgRGV2aWNlIElkZW50aXR5IENBMQ8wDQYDVQQKDAZOVklE\nSUEwIBcNMjIwMTEyMDAwMDAwWhgPOTk5OTEyMzEyMzU5NTlaMC8xHDAaBgNVBAMM\nE05WSURJQSBCRjMgSWRlbnRpdHkxDzANBgNVBAoMBk5WSURJQTB2MBAGByqGSM49\nAgEGBSuBBAAiA2IABEEKS94T+g9W3fMd9NZ/nG6H/WkJyPha/9ihQuO7+/ImLujZ\no9Ao3sQ5WQO5BV4Efvun6Yj6vFjOu+TTWz0NdRlO2TtJecfG9GMxUhPTOgmi1dbp\nDvdcfAb91GGgKVYk1qOB2jCB1zAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQE\nAwIBBjA7BgNVHR8ENDAyMDCgLqAshipodHRwOi8vY3JsLm5kaXMubnZpZGlhLmNv\nbS9jcmwvbDEtcm9vdC5jcmwwNwYIKwYBBQUHAQEEKzApMCcGCCsGAQUFBzABhhto\ndHRwOi8vb2NzcC5uZGlzLm52aWRpYS5jb20wHQYDVR0OBBYEFDNKJRzzsQqZLtGZ\n7Gx8EQ7FNWpEMB8GA1UdIwQYMBaAFFeF/4PyY8xlfWi3Olv0jUrL+0lfMAoGCCqG\nSM49BAMDA2kAMGYCMQDht472LhSIs+Jj3LUyJ37MdA+qCff/5F2Jew8WV4oDEvhJ\nfIBNpcAv4Lsd7boApHkCMQDS+IY4dhaZxYjXPHfiY88UC95+Pj91+/LiJQOMnDqR\n2JkVmmLMNhEBLr0Mvqbrrwk=\n-----END CERTIFICATE-----\n",
+        "fingerprint_sha256": "567fa94b2ccd8595437bb712819e0ccaa11a6d465bf28a75527de09b241d1cb9"
+      },
+      {
+        "level": 5,
+        "subject": "CN=NVIDIA Device Identity CA,O=NVIDIA",
+        "issuer": "CN=NVIDIA Device Identity CA,O=NVIDIA",
+        "not_before": "2021-11-05T00:00:00Z",
+        "not_after": "9999-12-31T23:59:59Z",
+        "algorithm": "ECDSA-SHA384",
+        "pem": "-----BEGIN CERTIFICATE-----\nMIICCzCCAZCgAwIBAgIQLTZwscoQBBHB/sDoKgZbVDAKBggqhkjOPQQDAzA1MSIw\nIAYDVQQDDBlOVklESUEgRGV2aWNlIElkZW50aXR5IENBMQ8wDQYDVQQKDAZOVklE\nSUEwIBcNMjExMTA1MDAwMDAwWhgPOTk5OTEyMzEyMzU5NTlaMDUxIjAgBgNVBAMM\nGU5WSURJQSBEZXZpY2UgSWRlbnRpdHkgQ0ExDzANBgNVBAoMBk5WSURJQTB2MBAG\nByqGSM49AgEGBSuBBAAiA2IABA5MFKM7+KViZljbQSlgfky/RRnEQScW9NDZF8SX\ngAW96r6u/Ve8ZggtcYpPi2BS4VFu6KfEIrhN6FcHG7WP05W+oM+hxj7nyA1r1jkB\n2Ry70YfThX3Ba1zOryOP+MJ9vaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8B\nAf8EBAMCAQYwHQYDVR0OBBYEFFeF/4PyY8xlfWi3Olv0jUrL+0lfMB8GA1UdIwQY\nMBaAFFeF/4PyY8xlfWi3Olv0jUrL+0lfMAoGCCqGSM49BAMDA2kAMGYCMQCPeFM3\nTASsKQVaT+8S0sO9u97PVGCpE9d/I42IT7k3UUOLSR/qvJynVOD1vQKVXf0CMQC+\nEY55WYoDBvs2wPAH1Gw4LbcwUN8QCff8bFmV4ZxjCRr4WXTLFHBKjbfneGSBWwA=\n-----END CERTIFICATE-----\n",
+        "fingerprint_sha256": "102bf659d5419614c9d8e6aecebc80454eb26b1df6a769ac720b9a690b167b48"
+      }
+    ],
+    "measurements": {}
+  },
+  "health": {
+    "healthy": true,
+    "version": "0.1.0",
+    "uptime_seconds": 604800,
+    "components": {
+      "ovs": {
+        "healthy": true,
+        "message": "OVS running"
+      },
+      "mlx": {
+        "healthy": true,
+        "message": "mlx5 driver loaded"
+      },
+      "doca": {
+        "healthy": true,
+        "message": "DOCA services running"
+      },
+      "temperature": {
+        "healthy": true,
+        "message": "66C (normal)"
+      },
+      "disk": {
+        "healthy": true,
+        "message": "8% used, SLC/MLC 0-10% lifetime"
+      }
+    }
+  }
+}

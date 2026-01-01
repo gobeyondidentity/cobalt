@@ -1,0 +1,34 @@
+# BlueField-3 System Info
+# Captured: 2025-12-30
+
+## Device
+Model: BlueField-3 B3210E E-Series
+Name: 900-9D3B6-00CC-EA_Ax
+Description: NVIDIA BlueField-3 B3210E E-Series FHHL DPU; 100GbE / HDR100 IB; Dual-port QSFP112; PCIe Gen5.0 x16
+
+## Hardware
+ARM Cores: 16
+Memory: 32GB (32777280 kB)
+Chip: mt41692 (revision 01)
+
+## Software
+DOCA Bundle: bf-bundle-3.2.1-34_25.11_ubuntu-24.04_64k_prod
+Kernel: 6.8.0-1013-bluefield-64k
+OVS Version: 3.2.1005
+
+## Services
+OVS: active (running since Dec 23)
+DPE: active (running since Dec 29)
+DTS: not installed
+
+## OVS Bridges
+- ovsbr1: p0, pf0hpf, en3f0pf0sf0
+- ovsbr2: p1, pf1hpf, en3f1pf1sf0
+
+## Network
+OOB IP: 192.168.1.204
+BMC Internal: 192.168.100.2, 192.168.100.3
+
+## Notes
+- Redfish API behind Blueman web UI (needs investigation)
+- SPDM attestation endpoint TBD

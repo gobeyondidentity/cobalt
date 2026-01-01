@@ -1,0 +1,1 @@
+Linux bluefield3 6.8.0-1013-bluefield-64k #17-Ubuntu SMP PREEMPT_DYNAMIC Wed Nov  5 22:26:14 UTC 2025 aarch64 aarch64 aarch64 GNU/Linux

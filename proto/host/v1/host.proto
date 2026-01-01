@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package host.v1;
+
+option go_package = "github.com/beyondidentity/fabric-console/gen/go/host/v1;hostv1";
+
+// HostAgentService provides read-only introspection of the host machine running DPUs.
+service HostAgentService {
+  // GetHostInfo returns basic information about the host machine.
+  rpc GetHostInfo(GetHostInfoRequest) returns (GetHostInfoResponse);
+
+  // GetGPUInfo returns information about GPUs installed on the host.
+  rpc GetGPUInfo(GetGPUInfoRequest) returns (GetGPUInfoResponse);
+
+  // GetSecurityInfo returns security posture of the host.
+  rpc GetSecurityInfo(GetSecurityInfoRequest) returns (GetSecurityInfoResponse);
+
+  // GetDPUConnections returns info about DPUs connected to this host.
+  rpc GetDPUConnections(GetDPUConnectionsRequest) returns (GetDPUConnectionsResponse);
+
+  // HealthCheck verifies the host agent is running and responsive.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// Host Info
+
+message GetHostInfoRequest {}
+
+message GetHostInfoResponse {
+  string hostname = 1;
+  string os_name = 2;           // e.g., "Ubuntu"
+  string os_version = 3;        // e.g., "24.04 LTS"
+  string kernel_version = 4;    // e.g., "6.8.0-generic"
+  string architecture = 5;      // e.g., "x86_64"
+  int32 cpu_cores = 6;
+  int64 memory_gb = 7;
+  int64 uptime_seconds = 8;
+}
+
+// GPU Info
+
+message GetGPUInfoRequest {}
+
+message GetGPUInfoResponse {
+  repeated GPU gpus = 1;
+}
+
+message GPU {
+  int32 index = 1;
+  string name = 2;              // e.g., "NVIDIA RTX 5080"
+  string uuid = 3;
+  string driver_version = 4;    // e.g., "565.57.01"
+  string cuda_version = 5;      // e.g., "12.6"
+  int64 memory_mb = 6;
+  int32 temperature_c = 7;
+  int32 power_usage_w = 8;
+  int32 utilization_pct = 9;
+}
+
+// Security Info
+
+message GetSecurityInfoRequest {}
+
+message GetSecurityInfoResponse {
+  bool secure_boot_enabled = 1;
+  bool tpm_present = 2;
+  string tpm_version = 3;       // e.g., "2.0"
+  bool uefi_mode = 4;
+  string firewall_status = 5;   // e.g., "active", "inactive"
+  string selinux_status = 6;    // e.g., "enforcing", "permissive", "disabled", "n/a"
+}
+
+// DPU Connections
+
+message GetDPUConnectionsRequest {}
+
+message GetDPUConnectionsResponse {
+  repeated DPUConnection dpus = 1;
+}
+
+message DPUConnection {
+  string name = 1;              // e.g., "bf3-lab"
+  string pci_address = 2;       // e.g., "0000:03:00.0"
+  string rshim_device = 3;      // e.g., "/dev/rshim0"
+  string mac_address = 4;
+  bool connected = 5;
+}
+
+// Health Check
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string version = 2;
+  int64 uptime_seconds = 3;
+  map<string, ComponentHealth> components = 4;
+}
+
+message ComponentHealth {
+  bool healthy = 1;
+  string message = 2;
+}

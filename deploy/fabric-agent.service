@@ -1,0 +1,17 @@
+[Unit]
+Description=Fabric Console DPU Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/fabric-agent
+ExecStart=/opt/fabric-agent/agent --listen :50052 --bmc-addr 192.168.1.203 --bmc-user root
+Environment=FC_BMC_PASSWORD=BluefieldBMC1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

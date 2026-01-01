@@ -1,0 +1,9 @@
+# Recorded sessions (may contain sensitive data from real DPU)
+recordings/*.json
+
+# Keep the directory
+!recordings/.gitkeep
+
+# Built binaries
+/bin/
+*.exe

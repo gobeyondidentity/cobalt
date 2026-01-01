@@ -1,0 +1,22 @@
+bc4f51e1-3464-4e58-a26a-36f1961c3464
+    Bridge ovsbr2
+        Port pf1hpf
+            Interface pf1hpf
+        Port p1
+            Interface p1
+        Port ovsbr2
+            Interface ovsbr2
+                type: internal
+        Port en3f1pf1sf0
+            Interface en3f1pf1sf0
+    Bridge ovsbr1
+        Port p0
+            Interface p0
+        Port pf0hpf
+            Interface pf0hpf
+        Port ovsbr1
+            Interface ovsbr1
+                type: internal
+        Port en3f0pf0sf0
+            Interface en3f0pf0sf0
+    ovs_version: "3.2.1005"

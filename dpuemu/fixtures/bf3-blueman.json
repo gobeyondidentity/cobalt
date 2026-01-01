@@ -1,0 +1,103 @@
+{
+  "system_info": {
+    "hostname": "{{.Hostname}}",
+    "model": "BlueField-3 E-Series DPU 100GbE/HDR100 dual-port QSFP112, PCIe Gen5.0 x16 FHHL with x16 PCIe ext-option, Crypto Enabled, 32GB DDR5, BMC, Tall Bracket",
+    "serial_number": "{{.SerialNumber}}",
+    "firmware_version": "bf-bundle-3.2.1-34_25.11_ubuntu-24.04_64k_prod",
+    "doca_version": "",
+    "arm_cores": 16,
+    "memory_gb": 32,
+    "uptime_seconds": 0,
+    "ovs_version": "2.17.0",
+    "kernel_version": "6.8.0-1013-bluefield-64k"
+  },
+  "bridges": [
+    {
+      "name": "ovsbr1",
+      "ports": ["p0", "pf0hpf", "en3f0pf0sf0"]
+    }
+  ],
+  "flows": {
+    "ovsbr1": [
+      {
+        "table": 0,
+        "priority": 32768,
+        "match": "in_port=1",
+        "actions": "output:2,output:3",
+        "packets": 0,
+        "bytes": 0,
+        "age": "0s",
+        "cookie": "0x0"
+      },
+      {
+        "table": 0,
+        "priority": 32768,
+        "match": "in_port=2",
+        "actions": "output:1,output:3",
+        "packets": 0,
+        "bytes": 0,
+        "age": "0s",
+        "cookie": "0x0"
+      },
+      {
+        "table": 0,
+        "priority": 32768,
+        "match": "in_port=3",
+        "actions": "output:1,output:2",
+        "packets": 0,
+        "bytes": 0,
+        "age": "0s",
+        "cookie": "0x0"
+      }
+    ]
+  },
+  "attestation": {
+    "status": "ATTESTATION_STATUS_UNAVAILABLE",
+    "certificates": [],
+    "measurements": {}
+  },
+  "health": {
+    "healthy": true,
+    "version": "0.1.0",
+    "uptime_seconds": 0,
+    "components": {
+      "ovs": {
+        "healthy": true,
+        "message": "OVS running"
+      },
+      "mlx": {
+        "healthy": true,
+        "message": "mlx5 driver loaded"
+      },
+      "doca": {
+        "healthy": true,
+        "message": "DOCA services running"
+      },
+      "temperature": {
+        "healthy": true,
+        "message": "66°C (normal)"
+      },
+      "disk": {
+        "healthy": true,
+        "message": "8% used, SLC/MLC 0-10% lifetime"
+      }
+    }
+  },
+  "_metadata": {
+    "source": "Blueman export from bluefield3",
+    "recorded_at": "2025-12-30T21:15:57Z",
+    "part_number": "900-9D3B6-00CC-EA0",
+    "lifecycle_state": "GA Secured",
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "driver": "MLNX_OFED_LINUX-25.10-1.7.1",
+    "secureboot": "enabled",
+    "cpu_model": "Cortex-A78AE",
+    "cpu_architecture": "aarch64",
+    "cpu_vendor": "ARM"
+  },
+  "_defaults": {
+    "hostname": "bf3-emu",
+    "serial_number": "MT0000000000"
+  }
+}

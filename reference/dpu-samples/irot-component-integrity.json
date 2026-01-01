@@ -1,0 +1,31 @@
+{
+  "@odata.id": "/redfish/v1/ComponentIntegrity/Bluefield_DPU_IRoT",
+  "@odata.type": "#ComponentIntegrity.v1_0_0.ComponentIntegrity",
+  "Actions": {
+    "#ComponentIntegrity.SPDMGetSignedMeasurements": {
+      "@Redfish.ActionInfo": "/redfish/v1/ComponentIntegrity/Bluefield_DPU_IRoT/SPDMGetSignedMeasurementsActionInfo",
+      "target": "/redfish/v1/ComponentIntegrity/Bluefield_DPU_IRoT/Actions/ComponentIntegrity.SPDMGetSignedMeasurements"
+    }
+  },
+  "ComponentIntegrityEnabled": true,
+  "ComponentIntegrityType": "SPDM",
+  "ComponentIntegrityTypeVersion": "1.1.0",
+  "Id": "Bluefield_DPU_IRoT",
+  "Links": {
+    "ComponentsProtected": []
+  },
+  "Name": "SPDM Integrity for Bluefield_DPU_IRoT",
+  "SPDM": {
+    "IdentityAuthentication": {
+      "ResponderAuthentication": {
+        "ComponentCertificate": {
+          "@odata.id": "/redfish/v1/Chassis/Bluefield_DPU_IRoT/Certificates/CertChain"
+        }
+      }
+    },
+    "Requester": {
+      "@odata.id": "/redfish/v1/Managers/Bluefield_BMC"
+    }
+  },
+  "TargetComponentURI": "/redfish/v1/Chassis/Bluefield_DPU_IRoT"
+}
