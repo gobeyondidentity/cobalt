@@ -134,6 +134,16 @@ func (s *Store) migrate() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_hosts_name ON hosts(name);
 	CREATE INDEX IF NOT EXISTS idx_hosts_dpu ON hosts(dpu_id);
+
+	CREATE TABLE IF NOT EXISTS ssh_cas (
+		id TEXT PRIMARY KEY,
+		name TEXT UNIQUE NOT NULL,
+		public_key BLOB NOT NULL,
+		encrypted_private_key BLOB NOT NULL,
+		key_type TEXT DEFAULT 'ed25519',
+		created_at INTEGER DEFAULT (strftime('%s', 'now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_ssh_cas_name ON ssh_cas(name);
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
