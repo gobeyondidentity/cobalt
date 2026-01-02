@@ -26,11 +26,15 @@ func init() {
 
 var attestationCmd = &cobra.Command{
 	Use:   "attestation <dpu-name-or-id>",
-	Short: "Show DPU attestation status and certificates",
-	Long: `Display DICE/SPDM attestation information from a DPU.
+	Short: "Verify DPU hardware integrity via cryptographic attestation",
+	Long: `Verify that DPU firmware has not been tampered with using DICE/SPDM cryptographic measurements.
 
-Shows the certificate chain hierarchy (L0-L6) and current attestation status.
-Successful attestations are saved to enable gate checks for credential distribution.
+Attestation proves hardware identity and integrity by validating the certificate chain
+built during secure boot (levels L0-L6). Each level cryptographically binds to the next,
+creating an unforgeable chain from silicon to running firmware.
+
+Fresh attestation is required before distributing credentials to a DPU. Successful
+attestations are saved to enable gate checks during credential operations.
 
 Use --include-host to also display the security posture of the host paired with the DPU.
 

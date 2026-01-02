@@ -207,6 +207,44 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Printf("Config saved to %s\n", configPath)
 
+	// Show next steps and access summary
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println("  Run 'km whoami' to verify your identity.")
+
+	// Fetch authorizations to show access summary
+	authorizations, err := getAuthorizations()
+	if err != nil {
+		// Non-fatal: config is saved, just can't fetch authorizations yet
+		fmt.Println()
+		fmt.Println("Unable to fetch authorizations. Run 'km whoami' to check your access.")
+	} else {
+		// Count unique CAs and devices across all authorizations
+		caSet := make(map[string]struct{})
+		deviceSet := make(map[string]struct{})
+		for _, auth := range authorizations {
+			for _, caID := range auth.CAIDs {
+				caSet[caID] = struct{}{}
+			}
+			for _, deviceID := range auth.DeviceIDs {
+				deviceSet[deviceID] = struct{}{}
+			}
+		}
+		caCount := len(caSet)
+		deviceCount := len(deviceSet)
+
+		if caCount > 0 {
+			fmt.Println("  Run 'km ssh-ca list' to see available CAs.")
+		}
+
+		fmt.Println()
+		fmt.Printf("You have access to %d CA(s) and %d device(s).\n", caCount, deviceCount)
+
+		if caCount == 0 {
+			fmt.Printf("Ask your admin to grant access: bluectl operator grant %s <tenant> <ca> <devices>\n", bindResp.OperatorEmail)
+		}
+	}
+
 	return nil
 }
 

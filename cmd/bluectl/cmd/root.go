@@ -58,9 +58,57 @@ view OVS flows, and check attestation status.`,
 	},
 }
 
+var completionCmd = &cobra.Command{
+	Use:   "completion [bash|zsh|fish|powershell]",
+	Short: "Generate shell completion scripts",
+	Long: `Generate shell completion scripts for bluectl.
+
+To load completions:
+
+Bash:
+  # Add to ~/.bashrc:
+  source <(bluectl completion bash)
+
+  # Or install system-wide (Linux):
+  bluectl completion bash > /etc/bash_completion.d/bluectl
+
+Zsh:
+  # Add to ~/.zshrc:
+  source <(bluectl completion zsh)
+
+  # Or if using oh-my-zsh, add to ~/.oh-my-zsh/completions/:
+  bluectl completion zsh > ~/.oh-my-zsh/completions/_bluectl
+
+Fish:
+  # Add to ~/.config/fish/completions/:
+  bluectl completion fish > ~/.config/fish/completions/bluectl.fish
+
+PowerShell:
+  # Add to your PowerShell profile:
+  bluectl completion powershell | Out-String | Invoke-Expression`,
+	DisableFlagsInUseLine: true,
+	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
+	Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		switch args[0] {
+		case "bash":
+			return rootCmd.GenBashCompletion(os.Stdout)
+		case "zsh":
+			return rootCmd.GenZshCompletion(os.Stdout)
+		case "fish":
+			return rootCmd.GenFishCompletion(os.Stdout, true)
+		case "powershell":
+			return rootCmd.GenPowerShellCompletionWithDesc(os.Stdout)
+		default:
+			return fmt.Errorf("unknown shell: %s", args[0])
+		}
+	},
+}
+
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "Output format: table, json, yaml")
 	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.local/share/bluectl/dpus.db)")
+	rootCmd.AddCommand(completionCmd)
 }
 
 // Execute runs the root command.

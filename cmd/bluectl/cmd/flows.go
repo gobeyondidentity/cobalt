@@ -18,8 +18,12 @@ func init() {
 
 var flowsCmd = &cobra.Command{
 	Use:   "flows <dpu-name-or-id>",
-	Short: "Show OVS flows for a DPU",
-	Long: `Display OpenFlow rules from a DPU's OVS bridges.
+	Short: "Show network flow rules from the DPU's software switch",
+	Long: `Display OpenFlow rules from a DPU's OVS (Open vSwitch) bridges.
+
+OVS flows define how the DPU routes network traffic. Each flow specifies match criteria
+(e.g., source IP, port, VLAN) and actions (e.g., forward, drop, modify headers).
+Use this command to inspect and debug network behavior on the DPU.
 
 Examples:
   bluectl flows bf3-lab

@@ -159,11 +159,17 @@ Examples:
 		fmt.Printf("  Status: %s\n", tr.Status)
 		fmt.Println()
 
-		// Success hint per SUGGESTIONS.md
-		fmt.Println("Next: Target host can now SSH to source host using CA-signed certificate.")
-		if trustType == "ssh_host" {
-			fmt.Printf("      Distribute SSH CA to target: km distribute ssh-ca <ca-name> %s\n", targetHostname)
+		fmt.Println("What this enables:")
+		if bidirectional {
+			fmt.Printf("  %s and %s can now authenticate to each other using SSH certificates.\n", sourceHostname, targetHostname)
+		} else {
+			fmt.Printf("  %s can now SSH to %s using a CA-signed host certificate.\n", targetHostname, sourceHostname)
 		}
+		fmt.Println()
+		fmt.Println("Next steps:")
+		fmt.Printf("  1. Ensure both hosts have the SSH CA distributed\n")
+		fmt.Printf("  2. Target host requests certificate: host-agent --request-cert\n")
+		fmt.Printf("  3. Verify with: ssh -o StrictHostKeyChecking=accept-new %s\n", sourceHostname)
 
 		return nil
 	},

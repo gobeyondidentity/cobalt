@@ -33,7 +33,7 @@ func init() {
 
 var corimCmd = &cobra.Command{
 	Use:   "corim",
-	Short: "CoRIM validation commands",
+	Short: "Validate firmware integrity against NVIDIA reference measurements",
 	Long: `Commands for fetching, viewing, and validating CoRIM (Concise Reference Integrity Manifest).
 
 CoRIM files contain golden measurements from NVIDIA that can be compared against

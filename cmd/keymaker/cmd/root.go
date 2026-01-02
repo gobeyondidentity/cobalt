@@ -26,11 +26,22 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "km",
 	Short: "Keymaker - Credential management for Secure Infrastructure",
-	Long: `km (keymaker) is a command-line interface for credential management.
+	Long: `km (keymaker) securely manages and distributes credentials to DPUs and hosts.
 
-It provides commands to create and manage SSH Certificate Authorities,
-distribute credentials to DPUs with attestation gates, and view
-distribution history.`,
+Credential types:
+  - SSH CA:    Certificate authorities for passwordless SSH authentication
+  - Host Cert: Certificates for machine-to-machine SSH trust
+  - (Future)   TLS certificates, MUNGE keys, API keys
+
+All credentials are hardware-protected using TPM or Secure Enclave when available.
+Distribution requires fresh attestation from the target DPU, ensuring credentials
+only reach devices with verified firmware integrity.
+
+Getting started:
+  1. Bind your workstation: km init
+  2. Create an SSH CA:      km ssh-ca create ops-ca
+  3. Distribute to a DPU:   km distribute ssh-ca ops-ca target-dpu
+  4. View history:          km history`,
 	Version:      Version,
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

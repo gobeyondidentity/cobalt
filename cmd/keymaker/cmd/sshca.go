@@ -121,7 +121,13 @@ var sshCAListCmd = &cobra.Command{
 		}
 
 		if len(cas) == 0 {
-			fmt.Println("No SSH CAs configured. Use 'km ssh-ca create' to create one.")
+			fmt.Println("No SSH CAs found.")
+			fmt.Println()
+			fmt.Println("Create one with:")
+			fmt.Println("  km ssh-ca create <name>")
+			fmt.Println()
+			fmt.Println("Example:")
+			fmt.Println("  km ssh-ca create ops-ca")
 			return nil
 		}
 
@@ -137,8 +143,9 @@ var sshCAListCmd = &cobra.Command{
 }
 
 var sshCAShowCmd = &cobra.Command{
-	Use:   "show <name>",
-	Short: "Show SSH CA details",
+	Use:     "show <name>",
+	Aliases: []string{"describe"},
+	Short:   "Show SSH CA details",
 	Long: `Display details about an SSH CA.
 
 Use --public-key to output only the public key, suitable for piping to a file

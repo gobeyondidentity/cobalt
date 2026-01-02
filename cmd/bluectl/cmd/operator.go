@@ -38,8 +38,19 @@ func init() {
 
 var operatorCmd = &cobra.Command{
 	Use:   "operator",
-	Short: "Manage operators",
-	Long:  `Commands to invite, list, suspend, and activate operators.`,
+	Short: "Manage operators who distribute credentials",
+	Long: `Operators are authorized users who can distribute credentials to DPUs.
+
+Admins invite operators to tenants using 'bluectl operator invite'. Operators
+then bind their workstation using the 'km' CLI ('km init'), which creates a
+hardware-bound credential. Once bound, operators can use 'km' to create SSH CAs
+and distribute them to DPUs.
+
+Workflow:
+  1. Admin invites operator:     bluectl operator invite user@example.com tenant-name
+  2. Operator binds workstation: km init (enter invite code)
+  3. Admin grants CA access:     bluectl operator grant user@example.com tenant-name ca-name devices
+  4. Operator distributes creds: km distribute ssh-ca ca-name target-dpu`,
 }
 
 var operatorInviteCmd = &cobra.Command{

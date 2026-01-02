@@ -67,9 +67,17 @@ var dpuAddCmd = &cobra.Command{
 	Short: "Register a new DPU",
 	Long: `Register a new DPU with a name and host address.
 
+The host is the DPU's gRPC agent address (IP or hostname). This is the DPU's management
+interface where the agent runs on the ARM cores, NOT the BMC address. The agent listens
+on port 50051 by default.
+
+After registration, the CLI verifies connectivity by performing a health check against
+the agent. Use 'bluectl tenant assign' to associate the DPU with a tenant.
+
 Examples:
-  bluectl dpu add bf3-lab 192.168.1.204
-  bluectl dpu add bf3-prod dpu.example.com --port 50052`,
+  bluectl dpu add bf3-lab 192.168.1.204              # IP address, default port 50051
+  bluectl dpu add bf3-prod dpu.example.com           # Hostname, default port
+  bluectl dpu add bf3-dev 10.0.0.50 --port 50052     # Custom port`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
@@ -104,6 +112,9 @@ Examples:
 			fmt.Println("Connection verified: agent is healthy")
 		}
 
+		fmt.Println()
+		fmt.Printf("Next: Assign to a tenant with 'bluectl tenant assign <tenant> %s'\n", name)
+
 		return nil
 	},
 }
@@ -122,9 +133,10 @@ var dpuRemoveCmd = &cobra.Command{
 }
 
 var dpuInfoCmd = &cobra.Command{
-	Use:   "info <name-or-id>",
-	Short: "Show DPU system information",
-	Args:  cobra.ExactArgs(1),
+	Use:     "info <name-or-id>",
+	Aliases: []string{"show", "describe"},
+	Short:   "Show DPU system information",
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dpu, err := dpuStore.Get(args[0])
 		if err != nil {
