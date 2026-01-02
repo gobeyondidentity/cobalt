@@ -4,18 +4,44 @@ Attestation-gated credential management for AI infrastructure using NVIDIA BlueF
 
 ## Overview
 
-Secure Infrastructure provides hardware-enforced Zero Trust authentication for GPU clusters. It uses BlueField-3 DPUs as trust anchors, leveraging DICE/SPDM attestation to gate credential deployment to verified infrastructure.
+Secure Infrastructure provides hardware-enforced Zero Trust authentication for GPU clusters. It uses BlueField-3 Data Processing Units (DPUs) as trust anchors, requiring cryptographic attestation before deploying credentials. Attestation proves that hardware is genuine and firmware is unmodified, preventing credential theft even if host systems are compromised.
+
+## Features
+
+- SSH CA lifecycle management (create, list, show, sign)
+- Attestation gate with automatic refresh
+- Distribution history with audit trail
+- Operator identity and authorization
+- Structured CLI output (`-o json`)
+- Idempotent create commands
+
+## Quick Start
+
+```bash
+# Start the DPU emulator for local development
+dpuemu serve --port 50051
+
+# Register the emulated DPU with the control plane
+bluectl dpu add localhost --port 50051
+
+# Create an SSH Certificate Authority
+km ssh-ca create ops-ca
+
+# Push CA to DPU (requires valid attestation)
+km push ssh-ca ops-ca localhost
+```
 
 ## Components
 
 | Component | Description |
 |-----------|-------------|
-| `cmd/agent` | DPU agent running on BlueField ARM cores |
-| `cmd/api` | Control plane API server |
-| `cmd/bluectl` | CLI for managing DPUs, attestation, and flows |
-| `cmd/host-agent` | Host-side agent for inventory collection |
-| `web/` | Next.js dashboard |
-| `dpuemu/` | DPU emulator for local development |
+| `bluectl` | Admin CLI: DPU management, tenants, operators, attestation |
+| `km` | Operator CLI: SSH CA lifecycle, credential distribution |
+| `agent` | DPU agent running on BlueField ARM cores |
+| `host-agent` | Host agent for credential receipt via tmfifo and posture reporting |
+| `api` | Control plane API server |
+| `dpuemu` | DPU emulator for local development |
+| `web/` | Next.js dashboard (in development) |
 
 ## Tech Stack
 
@@ -28,13 +54,14 @@ Secure Infrastructure provides hardware-enforced Zero Trust authentication for G
 ## Development
 
 ```bash
-# Build binaries
-go build -o bin/agent ./cmd/agent
-go build -o bin/bluectl ./cmd/bluectl
-go build -o bin/api ./cmd/api
+# Build all binaries
+make
 
 # Run tests
-go test ./...
+make test
+
+# Build release binaries for all platforms
+make release
 
 # Dashboard
 cd web && npm install && npm run dev
@@ -44,17 +71,14 @@ cd web && npm install && npm run dev
 
 ```
 eng/
-├── cmd/           # CLI entrypoints
+├── cmd/           # CLI and agent entrypoints
 ├── internal/      # Private application code
-├── pkg/           # Public libraries
+├── pkg/           # Shared libraries
 ├── proto/         # Protobuf definitions
 ├── gen/           # Generated gRPC code
+├── dpuemu/        # DPU emulator
 ├── web/           # Dashboard (Next.js)
-├── docs/          # Documentation
-│   ├── reference/ # Technical reference material
-│   └── research/  # Technical feasibility studies
-├── deploy/        # Deployment configs
-└── archive/       # Legacy prototypes
+└── deploy/        # Install scripts
 ```
 
 ## License
