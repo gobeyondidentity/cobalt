@@ -236,6 +236,7 @@ go build -o bin/bluectl ./cmd/bluectl
 go build -o bin/api ./cmd/api
 go build -o bin/km ./cmd/keymaker
 go build -o bin/host-agent ./cmd/host-agent
+go build -o bin/dpuemu ./dpuemu/cmd/dpuemu
 
 # Test (required before merge)
 go test ./...
