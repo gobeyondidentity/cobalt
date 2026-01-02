@@ -1,11 +1,14 @@
 // Fabric Console Host Agent
 // Lightweight agent that runs on Linux hosts, collects security posture,
-// and reports to the control plane.
+// and reports to the DPU Agent's local API.
 package main
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"io"
@@ -13,19 +16,23 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/beyondidentity/fabric-console/pkg/posture"
+	"golang.org/x/crypto/ssh"
 )
 
-var version = "0.1.0"
+var version = "0.2.0"
 
 func main() {
-	controlPlane := flag.String("control-plane", "http://localhost:8080", "Control plane URL")
-	dpuName := flag.String("dpu", "", "DPU name to pair with (required)")
+	dpuAgent := flag.String("dpu-agent", "http://localhost:9443", "DPU Agent local API URL")
 	interval := flag.Duration("interval", 5*time.Minute, "Posture refresh interval")
 	oneshot := flag.Bool("oneshot", false, "Collect and report once, then exit")
+	requestCertFlag := flag.Bool("request-cert", false, "Request and install host SSH certificate")
+	keyType := flag.String("key-type", "ed25519", "SSH key type for certificate request")
+	certDir := flag.String("cert-dir", "/etc/ssh", "Directory for SSH host certificates")
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	flag.Parse()
 
@@ -34,30 +41,34 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *dpuName == "" {
-		log.Fatal("--dpu flag is required")
-	}
-
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
 	}
 
 	log.Printf("Host Agent v%s starting...", version)
-	log.Printf("Control plane: %s", *controlPlane)
+	log.Printf("DPU Agent: %s", *dpuAgent)
 	log.Printf("Hostname: %s", hostname)
-	log.Printf("DPU: %s", *dpuName)
+
+	// Handle certificate request mode
+	if *requestCertFlag {
+		if err := requestCert(*dpuAgent, hostname, *keyType, *certDir); err != nil {
+			log.Fatalf("Certificate request failed: %v", err)
+		}
+		log.Println("Host certificate installed successfully")
+		return
+	}
 
 	// Collect initial posture
 	p := posture.Collect()
 	log.Printf("Initial posture collected: hash=%s", p.Hash())
 
-	// Register with control plane
-	hostID, err := register(*controlPlane, *dpuName, hostname, p)
+	// Register with DPU Agent
+	hostID, err := register(*dpuAgent, hostname, p)
 	if err != nil {
 		log.Fatalf("Registration failed: %v", err)
 	}
-	log.Printf("Registered as host %s, paired with DPU %s", hostID, *dpuName)
+	log.Printf("Registered as host %s via DPU Agent", hostID)
 
 	// If oneshot mode, we're done
 	if *oneshot {
@@ -79,7 +90,7 @@ func main() {
 		select {
 		case <-ticker.C:
 			p := posture.Collect()
-			if err := reportPosture(*controlPlane, hostID, p); err != nil {
+			if err := reportPosture(*dpuAgent, hostname, p); err != nil {
 				log.Printf("Warning: posture report failed: %v", err)
 			} else {
 				log.Printf("Posture reported: hash=%s", p.Hash())
@@ -92,17 +103,23 @@ func main() {
 	}
 }
 
-// registerRequest is the JSON body for POST /api/v1/hosts/register
+// registerRequest is the JSON body for POST /local/v1/register
 type registerRequest struct {
-	DPUName  string          `json:"dpu_name"`
 	Hostname string          `json:"hostname"`
 	Posture  *posturePayload `json:"posture,omitempty"`
 }
 
-// registerResponse is the JSON response from POST /api/v1/hosts/register
+// registerResponse is the JSON response from POST /local/v1/register
 type registerResponse struct {
 	HostID          string `json:"host_id"`
-	RefreshInterval string `json:"refresh_interval"`
+	DPUName         string `json:"dpu_name"`
+	RefreshInterval string `json:"refresh_interval,omitempty"`
+}
+
+// postureRequest is the JSON body for POST /local/v1/posture
+type postureRequest struct {
+	Hostname string          `json:"hostname"`
+	Posture  *posturePayload `json:"posture"`
 }
 
 // posturePayload is the JSON structure for posture data
@@ -114,18 +131,31 @@ type posturePayload struct {
 	TPMPresent     *bool  `json:"tpm_present"`
 }
 
+// certRequest is the JSON body for POST /local/v1/cert
+type certRequest struct {
+	Hostname   string   `json:"hostname"`
+	PublicKey  string   `json:"public_key"`
+	Principals []string `json:"principals,omitempty"`
+	KeyType    string   `json:"key_type"`
+}
+
+// certResponse is the JSON response from POST /local/v1/cert
+type certResponse struct {
+	Certificate string `json:"certificate"`
+	ValidUntil  string `json:"valid_until,omitempty"`
+}
+
 // errorResponse is the JSON structure for API errors
 type errorResponse struct {
 	Error string `json:"error"`
 }
 
-// register sends a registration request to the control plane.
+// register sends a registration request to the DPU Agent's local API.
 // Returns the assigned host ID on success.
-func register(controlPlane, dpuName, hostname string, p *posture.Posture) (string, error) {
-	url := controlPlane + "/api/v1/hosts/register"
+func register(dpuAgent, hostname string, p *posture.Posture) (string, error) {
+	url := dpuAgent + "/local/v1/register"
 
 	req := registerRequest{
-		DPUName:  dpuName,
 		Hostname: hostname,
 		Posture:  postureToPayload(p),
 	}
@@ -159,15 +189,23 @@ func register(controlPlane, dpuName, hostname string, p *posture.Posture) (strin
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	if regResp.DPUName != "" {
+		log.Printf("Paired with DPU: %s", regResp.DPUName)
+	}
+
 	return regResp.HostID, nil
 }
 
-// reportPosture sends a posture update to the control plane.
-func reportPosture(controlPlane, hostID string, p *posture.Posture) error {
-	url := fmt.Sprintf("%s/api/v1/hosts/%s/posture", controlPlane, hostID)
+// reportPosture sends a posture update to the DPU Agent's local API.
+func reportPosture(dpuAgent, hostname string, p *posture.Posture) error {
+	url := dpuAgent + "/local/v1/posture"
 
-	payload := postureToPayload(p)
-	body, err := json.Marshal(payload)
+	req := postureRequest{
+		Hostname: hostname,
+		Posture:  postureToPayload(p),
+	}
+
+	body, err := json.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("failed to marshal posture: %w", err)
 	}
@@ -188,6 +226,130 @@ func reportPosture(controlPlane, hostID string, p *posture.Posture) error {
 	}
 
 	return nil
+}
+
+// requestCert requests a host SSH certificate from the DPU Agent.
+// It generates an SSH keypair if needed, requests signing from the DPU Agent,
+// and installs the returned certificate.
+func requestCert(dpuAgent, hostname, keyType, certDir string) error {
+	if keyType != "ed25519" {
+		return fmt.Errorf("unsupported key type: %s (only ed25519 is supported)", keyType)
+	}
+
+	// Key and cert file paths
+	keyPath := filepath.Join(certDir, "ssh_host_ed25519_key")
+	pubKeyPath := keyPath + ".pub"
+	certPath := keyPath + "-cert.pub"
+
+	// Check if key exists, generate if not
+	pubKeyBytes, err := os.ReadFile(pubKeyPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to read public key: %w", err)
+		}
+		// Generate new keypair
+		log.Printf("Generating new %s host keypair...", keyType)
+		pubKeyBytes, err = generateHostKey(keyPath, keyType)
+		if err != nil {
+			return fmt.Errorf("failed to generate host key: %w", err)
+		}
+	}
+
+	pubKeyStr := string(bytes.TrimSpace(pubKeyBytes))
+	log.Printf("Requesting certificate for host: %s", hostname)
+
+	// Request certificate from DPU Agent
+	url := dpuAgent + "/local/v1/cert"
+	req := certRequest{
+		Hostname:   hostname,
+		PublicKey:  pubKeyStr,
+		Principals: []string{hostname},
+		KeyType:    keyType,
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		var errResp errorResponse
+		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != "" {
+			return fmt.Errorf("certificate request failed: %s", errResp.Error)
+		}
+		return fmt.Errorf("certificate request failed: HTTP %d", resp.StatusCode)
+	}
+
+	var certResp certResponse
+	if err := json.Unmarshal(respBody, &certResp); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Write certificate to file
+	certData := []byte(certResp.Certificate + "\n")
+	if err := os.WriteFile(certPath, certData, 0644); err != nil {
+		return fmt.Errorf("failed to write certificate: %w", err)
+	}
+
+	log.Printf("Certificate installed: %s", certPath)
+	if certResp.ValidUntil != "" {
+		log.Printf("Valid until: %s", certResp.ValidUntil)
+	}
+
+	return nil
+}
+
+// generateHostKey generates a new SSH host keypair.
+// Returns the public key in OpenSSH format.
+func generateHostKey(keyPath, keyType string) ([]byte, error) {
+	if keyType != "ed25519" {
+		return nil, fmt.Errorf("unsupported key type: %s", keyType)
+	}
+
+	// Generate ed25519 keypair
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate keypair: %w", err)
+	}
+
+	// Convert to SSH format
+	sshPub, err := ssh.NewPublicKey(pubKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert public key: %w", err)
+	}
+
+	// Marshal private key to OpenSSH format
+	privPEMBlock, err := ssh.MarshalPrivateKey(privKey, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal private key: %w", err)
+	}
+
+	// Write private key with restrictive permissions
+	privKeyBytes := pem.EncodeToMemory(privPEMBlock)
+	if err := os.WriteFile(keyPath, privKeyBytes, 0600); err != nil {
+		return nil, fmt.Errorf("failed to write private key: %w", err)
+	}
+
+	// Write public key
+	pubKeyBytes := ssh.MarshalAuthorizedKey(sshPub)
+	pubKeyPath := keyPath + ".pub"
+	if err := os.WriteFile(pubKeyPath, pubKeyBytes, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write public key: %w", err)
+	}
+
+	log.Printf("Generated host keypair: %s", keyPath)
+	return pubKeyBytes, nil
 }
 
 // postureToPayload converts a posture.Posture to the API payload format.

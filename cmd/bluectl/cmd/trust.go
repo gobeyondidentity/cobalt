@@ -18,12 +18,8 @@ func init() {
 	trustCmd.AddCommand(trustDeleteCmd)
 
 	// Flags for trust create
-	trustCreateCmd.Flags().StringP("source", "s", "", "Source DPU name (required)")
-	trustCreateCmd.Flags().StringP("target", "t", "", "Target DPU name (required)")
 	trustCreateCmd.Flags().String("type", "ssh_host", "Trust type: ssh_host, mtls")
 	trustCreateCmd.Flags().Bool("bidirectional", false, "Create bidirectional trust")
-	trustCreateCmd.MarkFlagRequired("source")
-	trustCreateCmd.MarkFlagRequired("target")
 
 	// Flags for trust list
 	trustListCmd.Flags().String("tenant", "", "Filter by tenant")
@@ -31,29 +27,34 @@ func init() {
 
 var trustCmd = &cobra.Command{
 	Use:   "trust",
-	Short: "Manage trust relationships between DPUs",
-	Long:  `Commands to create, list, and delete M2M trust relationships between DPUs.`,
+	Short: "Manage trust relationships between hosts",
+	Long:  `Commands to create, list, and delete M2M trust relationships between hosts.`,
 }
 
 var trustCreateCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a trust relationship between DPUs",
-	Long: `Create a trust relationship between two DPUs.
+	Use:   "create <source-host> <target-host>",
+	Short: "Create a trust relationship between hosts",
+	Long: `Create a trust relationship between two hosts.
 
-The source DPU is granted access to the target DPU. Use --bidirectional
+The source host accepts connections from the target host. The target host
+initiates connections and receives a CA-signed certificate. Use --bidirectional
 to create mutual trust in both directions.
+
+Both hosts must have registered host agents paired with DPUs. Trust creation
+requires fresh attestation from both paired DPUs.
 
 Trust types:
   ssh_host  - SSH host key trust (allows SSH access)
   mtls      - Mutual TLS trust (allows mTLS connections)
 
 Examples:
-  bluectl trust create --source bf3-01 --target bf3-02
-  bluectl trust create --source bf3-01 --target bf3-02 --type mtls
-  bluectl trust create --source bf3-01 --target bf3-02 --bidirectional`,
+  bluectl trust create compute-01 slurm-head
+  bluectl trust create compute-01 slurm-head --type mtls
+  bluectl trust create compute-01 slurm-head --bidirectional`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sourceName, _ := cmd.Flags().GetString("source")
-		targetName, _ := cmd.Flags().GetString("target")
+		sourceHostname := args[0]
+		targetHostname := args[1]
 		trustType, _ := cmd.Flags().GetString("type")
 		bidirectional, _ := cmd.Flags().GetBool("bidirectional")
 
@@ -62,59 +63,72 @@ Examples:
 			return fmt.Errorf("invalid trust type: %s (must be 'ssh_host' or 'mtls')", trustType)
 		}
 
-		// Look up source DPU
-		sourceDPU, err := dpuStore.Get(sourceName)
-		if err != nil {
-			return fmt.Errorf("source DPU not found: %s", sourceName)
-		}
-
-		// Look up target DPU
-		targetDPU, err := dpuStore.Get(targetName)
-		if err != nil {
-			return fmt.Errorf("target DPU not found: %s", targetName)
-		}
-
 		// Source and target must be different
-		if sourceDPU.ID == targetDPU.ID {
-			return fmt.Errorf("source and target must be different DPUs")
+		if sourceHostname == targetHostname {
+			return fmt.Errorf("source and target must be different hosts")
+		}
+
+		// Look up source host by hostname
+		sourceHost, err := dpuStore.GetAgentHostByHostname(sourceHostname)
+		if err != nil {
+			return fmt.Errorf("source host not found: %s\nHint: Ensure the host agent is registered with 'host-agent' and paired with a DPU", sourceHostname)
+		}
+
+		// Look up target host by hostname
+		targetHost, err := dpuStore.GetAgentHostByHostname(targetHostname)
+		if err != nil {
+			return fmt.Errorf("target host not found: %s\nHint: Ensure the host agent is registered with 'host-agent' and paired with a DPU", targetHostname)
+		}
+
+		// Get paired DPUs for both hosts
+		sourceDPU, err := dpuStore.Get(sourceHost.DPUName)
+		if err != nil {
+			return fmt.Errorf("source host's paired DPU not found: %s", sourceHost.DPUName)
+		}
+
+		targetDPU, err := dpuStore.Get(targetHost.DPUName)
+		if err != nil {
+			return fmt.Errorf("target host's paired DPU not found: %s", targetHost.DPUName)
 		}
 
 		// Both DPUs must belong to a tenant
 		if sourceDPU.TenantID == nil {
-			return fmt.Errorf("source DPU '%s' is not assigned to a tenant", sourceName)
+			return fmt.Errorf("source host's DPU '%s' is not assigned to a tenant", sourceDPU.Name)
 		}
 		if targetDPU.TenantID == nil {
-			return fmt.Errorf("target DPU '%s' is not assigned to a tenant", targetName)
+			return fmt.Errorf("target host's DPU '%s' is not assigned to a tenant", targetDPU.Name)
 		}
 
 		// Both DPUs must belong to the same tenant
 		if *sourceDPU.TenantID != *targetDPU.TenantID {
-			return fmt.Errorf("source and target DPUs must belong to the same tenant")
+			return fmt.Errorf("source and target hosts must belong to the same tenant (via their paired DPUs)")
 		}
 
 		tenantID := *sourceDPU.TenantID
 
-		// Check if trust relationship already exists
-		exists, err := dpuStore.TrustRelationshipExists(sourceDPU.ID, targetDPU.ID, store.TrustType(trustType))
+		// Check if trust relationship already exists (by host)
+		exists, err := dpuStore.TrustRelationshipExistsByHost(sourceHostname, targetHostname, store.TrustType(trustType))
 		if err != nil {
 			return fmt.Errorf("failed to check existing trust: %w", err)
 		}
 		if exists {
-			return fmt.Errorf("trust relationship already exists between %s and %s for type %s", sourceName, targetName, trustType)
+			return fmt.Errorf("trust relationship already exists between %s and %s for type %s", sourceHostname, targetHostname, trustType)
 		}
 
-		// Check attestation status for both DPUs (Phase 4: M2M Trust attestation gate)
-		if err := checkAttestationForTrust(sourceName); err != nil {
-			fmt.Fprintf(os.Stderr, "Hint: Run 'bluectl attestation %s' to verify device attestation\n", sourceName)
+		// Check attestation status for both DPUs (M2M Trust attestation gate)
+		if err := checkAttestationForTrust(sourceDPU.Name); err != nil {
+			fmt.Fprintf(os.Stderr, "Hint: Run 'bluectl attestation %s' to verify device attestation\n", sourceDPU.Name)
 			return err
 		}
-		if err := checkAttestationForTrust(targetName); err != nil {
-			fmt.Fprintf(os.Stderr, "Hint: Run 'bluectl attestation %s' to verify device attestation\n", targetName)
+		if err := checkAttestationForTrust(targetDPU.Name); err != nil {
+			fmt.Fprintf(os.Stderr, "Hint: Run 'bluectl attestation %s' to verify device attestation\n", targetDPU.Name)
 			return err
 		}
 
-		// Create trust relationship
+		// Create trust relationship with host info
 		tr := &store.TrustRelationship{
+			SourceHost:    sourceHostname,
+			TargetHost:    targetHostname,
 			SourceDPUID:   sourceDPU.ID,
 			SourceDPUName: sourceDPU.Name,
 			TargetDPUID:   targetDPU.ID,
@@ -138,11 +152,18 @@ Examples:
 
 		fmt.Println("Trust relationship created:")
 		if bidirectional {
-			fmt.Printf("  %s <--> %s (%s, bidirectional)\n", sourceName, targetName, typeDisplay)
+			fmt.Printf("  %s <--> %s (%s, bidirectional)\n", sourceHostname, targetHostname, typeDisplay)
 		} else {
-			fmt.Printf("  %s --> %s (%s)\n", sourceName, targetName, typeDisplay)
+			fmt.Printf("  %s <-- %s (%s)\n", sourceHostname, targetHostname, typeDisplay)
 		}
 		fmt.Printf("  Status: %s\n", tr.Status)
+		fmt.Println()
+
+		// Success hint per SUGGESTIONS.md
+		fmt.Println("Next: Target host can now SSH to source host using CA-signed certificate.")
+		if trustType == "ssh_host" {
+			fmt.Printf("      Distribute SSH CA to target: km distribute ssh-ca <ca-name> %s\n", targetHostname)
+		}
 
 		return nil
 	},
@@ -191,15 +212,18 @@ Examples:
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "SOURCE\tTARGET\tTYPE\tDIRECTION\tSTATUS")
+		fmt.Fprintln(w, "SOURCE HOST\tTARGET HOST\tDPUs\tTYPE\tDIRECTION\tSTATUS")
 		for _, tr := range relationships {
 			direction := "one-way"
 			if tr.Bidirectional {
 				direction = "bidirectional"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-				tr.SourceDPUName,
-				tr.TargetDPUName,
+			// Show DPU pairing for context
+			dpuInfo := fmt.Sprintf("%s/%s", tr.SourceDPUName, tr.TargetDPUName)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				tr.SourceHost,
+				tr.TargetHost,
+				dpuInfo,
 				tr.TrustType,
 				direction,
 				tr.Status)

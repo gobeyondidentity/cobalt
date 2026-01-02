@@ -105,6 +105,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/hosts", s.handleListAgentHosts)
 	mux.HandleFunc("GET /api/v1/hosts/{id}", s.handleGetAgentHost)
 	mux.HandleFunc("DELETE /api/v1/hosts/{id}", s.handleDeleteAgentHost)
+
+	// Host certificate issuance (DPU Agent calls on behalf of Host Agent)
+	mux.HandleFunc("POST /api/v1/hosts/{hostname}/cert", s.handleHostCertRequest)
 }
 
 // ----- DPU Types -----

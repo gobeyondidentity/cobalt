@@ -341,9 +341,11 @@ func (s *Store) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_authorizations_operator ON authorizations(operator_id);
 	CREATE INDEX IF NOT EXISTS idx_authorizations_tenant ON authorizations(tenant_id);
 
-	-- Trust Relationships (M2M trust)
+	-- Trust Relationships (host-to-host trust, gated by DPU attestation)
 	CREATE TABLE IF NOT EXISTS trust_relationships (
 		id TEXT PRIMARY KEY,
+		source_host TEXT NOT NULL,
+		target_host TEXT NOT NULL,
 		source_dpu_id TEXT NOT NULL,
 		source_dpu_name TEXT NOT NULL,
 		target_dpu_id TEXT NOT NULL,
@@ -353,13 +355,16 @@ func (s *Store) migrate() error {
 		bidirectional INTEGER NOT NULL DEFAULT 0,
 		status TEXT NOT NULL DEFAULT 'active',
 		suspend_reason TEXT,
+		target_cert_serial INTEGER,
 		created_at INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL,
 		FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 	);
 	CREATE INDEX IF NOT EXISTS idx_trust_tenant ON trust_relationships(tenant_id);
-	CREATE INDEX IF NOT EXISTS idx_trust_source ON trust_relationships(source_dpu_id);
-	CREATE INDEX IF NOT EXISTS idx_trust_target ON trust_relationships(target_dpu_id);
+	CREATE INDEX IF NOT EXISTS idx_trust_source_host ON trust_relationships(source_host);
+	CREATE INDEX IF NOT EXISTS idx_trust_target_host ON trust_relationships(target_host);
+	CREATE INDEX IF NOT EXISTS idx_trust_source_dpu ON trust_relationships(source_dpu_id);
+	CREATE INDEX IF NOT EXISTS idx_trust_target_dpu ON trust_relationships(target_dpu_id);
 
 	-- Agent Hosts (Phase 5: hosts with security posture linked to DPUs)
 	CREATE TABLE IF NOT EXISTS agent_hosts (
@@ -402,6 +407,10 @@ func (s *Store) migrate() error {
 		"ALTER TABLE distribution_history ADD COLUMN attestation_snapshot TEXT",
 		"ALTER TABLE distribution_history ADD COLUMN blocked_reason TEXT",
 		"ALTER TABLE distribution_history ADD COLUMN forced_by TEXT",
+		// Host-to-host trust model: add host columns and cert serial
+		"ALTER TABLE trust_relationships ADD COLUMN source_host TEXT DEFAULT ''",
+		"ALTER TABLE trust_relationships ADD COLUMN target_host TEXT DEFAULT ''",
+		"ALTER TABLE trust_relationships ADD COLUMN target_cert_serial INTEGER",
 	}
 
 	for _, m := range migrations {
@@ -412,6 +421,8 @@ func (s *Store) migrate() error {
 	// Create indexes that may not exist
 	indexes := `
 	CREATE INDEX IF NOT EXISTS idx_dpus_tenant ON dpus(tenant_id);
+	CREATE INDEX IF NOT EXISTS idx_trust_source_host ON trust_relationships(source_host);
+	CREATE INDEX IF NOT EXISTS idx_trust_target_host ON trust_relationships(target_host);
 	`
 	_, err := s.db.Exec(indexes)
 	return err
