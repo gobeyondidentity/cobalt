@@ -32,3 +32,4 @@ dist/
 /agent
 /bluectl
 /dpuemu/dpuemu
+bin/
