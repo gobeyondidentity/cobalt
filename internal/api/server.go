@@ -193,7 +193,7 @@ func tenantToResponse(t *store.Tenant, dpuCount int) tenantResponse {
 func (s *Server) handleListDPUs(w http.ResponseWriter, r *http.Request) {
 	dpus, err := s.store.List()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to list DPUs: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to list DPUs: "+err.Error())
 		return
 	}
 
@@ -208,12 +208,12 @@ func (s *Server) handleListDPUs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAddDPU(w http.ResponseWriter, r *http.Request) {
 	var req addDPURequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	if req.Name == "" || req.Host == "" {
-		writeError(w, http.StatusBadRequest, "Name and host are required")
+		writeError(w, r, http.StatusBadRequest, "Name and host are required")
 		return
 	}
 
@@ -225,10 +225,10 @@ func (s *Server) handleAddDPU(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.Add(id, req.Name, req.Host, req.Port); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
-			writeError(w, http.StatusConflict, "DPU with this name already exists")
+			writeError(w, r, http.StatusConflict, "DPU with this name already exists")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "Failed to add DPU: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to add DPU: "+err.Error())
 		return
 	}
 
@@ -256,7 +256,7 @@ func (s *Server) handleGetDPU(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dpu, err := s.store.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, dpuToResponse(dpu))
@@ -265,7 +265,7 @@ func (s *Server) handleGetDPU(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteDPU(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.store.Remove(id); err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -275,7 +275,7 @@ func (s *Server) handleGetSystemInfo(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dpu, err := s.store.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
@@ -285,7 +285,7 @@ func (s *Server) handleGetSystemInfo(w http.ResponseWriter, r *http.Request) {
 	client, err := grpcclient.NewClient(dpu.Address())
 	if err != nil {
 		s.store.UpdateStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -293,7 +293,7 @@ func (s *Server) handleGetSystemInfo(w http.ResponseWriter, r *http.Request) {
 	info, err := client.GetSystemInfo(ctx)
 	if err != nil {
 		s.store.UpdateStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get system info: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get system info: "+err.Error())
 		return
 	}
 
@@ -317,7 +317,7 @@ func (s *Server) handleGetFlows(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dpu, err := s.store.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
@@ -329,7 +329,7 @@ func (s *Server) handleGetFlows(w http.ResponseWriter, r *http.Request) {
 	client, err := grpcclient.NewClient(dpu.Address())
 	if err != nil {
 		s.store.UpdateStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -337,7 +337,7 @@ func (s *Server) handleGetFlows(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.GetFlows(ctx, bridge)
 	if err != nil {
 		s.store.UpdateStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get flows: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get flows: "+err.Error())
 		return
 	}
 
@@ -366,7 +366,7 @@ func (s *Server) handleGetAttestation(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dpu, err := s.store.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
@@ -382,7 +382,7 @@ func (s *Server) handleGetAttestation(w http.ResponseWriter, r *http.Request) {
 	client, err := grpcclient.NewClient(dpu.Address())
 	if err != nil {
 		s.store.UpdateStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -390,7 +390,7 @@ func (s *Server) handleGetAttestation(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.GetAttestation(ctx, target)
 	if err != nil {
 		s.store.UpdateStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get attestation: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get attestation: "+err.Error())
 		return
 	}
 
@@ -421,7 +421,7 @@ func (s *Server) handleGetAttestationChains(w http.ResponseWriter, r *http.Reque
 	id := r.PathValue("id")
 	dpu, err := s.store.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
@@ -431,7 +431,7 @@ func (s *Server) handleGetAttestationChains(w http.ResponseWriter, r *http.Reque
 	client, err := grpcclient.NewClient(dpu.Address())
 	if err != nil {
 		s.store.UpdateStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -514,7 +514,7 @@ func (s *Server) handleGetInventory(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dpu, err := s.store.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
@@ -524,7 +524,7 @@ func (s *Server) handleGetInventory(w http.ResponseWriter, r *http.Request) {
 	client, err := grpcclient.NewClient(dpu.Address())
 	if err != nil {
 		s.store.UpdateStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -532,7 +532,7 @@ func (s *Server) handleGetInventory(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.GetDPUInventory(ctx)
 	if err != nil {
 		s.store.UpdateStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get inventory: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get inventory: "+err.Error())
 		return
 	}
 
@@ -586,7 +586,7 @@ func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dpu, err := s.store.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
@@ -596,7 +596,7 @@ func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	client, err := grpcclient.NewClient(dpu.Address())
 	if err != nil {
 		s.store.UpdateStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -604,7 +604,7 @@ func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.HealthCheck(ctx)
 	if err != nil {
 		s.store.UpdateStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Health check failed: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Health check failed: "+err.Error())
 		return
 	}
 
@@ -641,7 +641,7 @@ func (s *Server) handleGetMeasurements(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dpu, err := s.store.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
@@ -656,7 +656,7 @@ func (s *Server) handleGetMeasurements(w http.ResponseWriter, r *http.Request) {
 	client, err := grpcclient.NewClient(dpu.Address())
 	if err != nil {
 		s.store.UpdateStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -664,7 +664,7 @@ func (s *Server) handleGetMeasurements(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.GetSignedMeasurements(ctx, "", nil, target)
 	if err != nil {
 		s.store.UpdateStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get measurements: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get measurements: "+err.Error())
 		return
 	}
 
@@ -692,7 +692,7 @@ func (s *Server) handleValidateCoRIM(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	dpu, err := s.store.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
@@ -708,7 +708,7 @@ func (s *Server) handleValidateCoRIM(w http.ResponseWriter, r *http.Request) {
 	client, err := grpcclient.NewClient(dpu.Address())
 	if err != nil {
 		s.store.UpdateStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -717,7 +717,7 @@ func (s *Server) handleValidateCoRIM(w http.ResponseWriter, r *http.Request) {
 	inv, err := client.GetDPUInventory(ctx)
 	if err != nil {
 		s.store.UpdateStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get inventory: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get inventory: "+err.Error())
 		return
 	}
 
@@ -731,7 +731,7 @@ func (s *Server) handleValidateCoRIM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if nicVersion == "" {
-		writeError(w, http.StatusBadRequest, "Could not determine NIC firmware version")
+		writeError(w, r, http.StatusBadRequest, "Could not determine NIC firmware version")
 		return
 	}
 
@@ -739,13 +739,13 @@ func (s *Server) handleValidateCoRIM(w http.ResponseWriter, r *http.Request) {
 	rimClient := attestation.NewRIMClient()
 	entry, err := rimClient.FindRIMForFirmware(ctx, nicVersion)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "No CoRIM found for firmware version: "+nicVersion)
+		writeError(w, r, http.StatusNotFound, "No CoRIM found for firmware version: "+nicVersion)
 		return
 	}
 
 	manifest, err := attestation.ParseCoRIM(entry.RIM)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to parse CoRIM: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to parse CoRIM: "+err.Error())
 		return
 	}
 
@@ -753,7 +753,7 @@ func (s *Server) handleValidateCoRIM(w http.ResponseWriter, r *http.Request) {
 	measResp, err := client.GetSignedMeasurements(ctx, "", nil, target)
 	if err != nil {
 		s.store.UpdateStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get measurements: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get measurements: "+err.Error())
 		return
 	}
 
@@ -812,7 +812,7 @@ func (s *Server) handleListCoRIMs(w http.ResponseWriter, r *http.Request) {
 	client := attestation.NewRIMClient()
 	ids, err := client.ListRIMIDs(ctx)
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "Failed to fetch RIM list: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to fetch RIM list: "+err.Error())
 		return
 	}
 
@@ -827,7 +827,7 @@ func (s *Server) handleListCoRIMs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListTenants(w http.ResponseWriter, r *http.Request) {
 	tenants, err := s.store.ListTenants()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to list tenants: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to list tenants: "+err.Error())
 		return
 	}
 
@@ -843,12 +843,12 @@ func (s *Server) handleListTenants(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	var req createTenantRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "Name is required")
+		writeError(w, r, http.StatusBadRequest, "Name is required")
 		return
 	}
 
@@ -860,10 +860,10 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.AddTenant(id, req.Name, req.Description, req.Contact, req.Tags); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
-			writeError(w, http.StatusConflict, "Tenant with this name already exists")
+			writeError(w, r, http.StatusConflict, "Tenant with this name already exists")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "Failed to create tenant: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to create tenant: "+err.Error())
 		return
 	}
 
@@ -875,7 +875,7 @@ func (s *Server) handleGetTenant(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	tenant, err := s.store.GetTenant(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Tenant not found")
+		writeError(w, r, http.StatusNotFound, "Tenant not found")
 		return
 	}
 
@@ -889,13 +889,13 @@ func (s *Server) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 	// Check if tenant exists
 	existing, err := s.store.GetTenant(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Tenant not found")
+		writeError(w, r, http.StatusNotFound, "Tenant not found")
 		return
 	}
 
 	var req updateTenantRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
@@ -911,10 +911,10 @@ func (s *Server) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.UpdateTenant(id, name, req.Description, req.Contact, tags); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
-			writeError(w, http.StatusConflict, "Tenant with this name already exists")
+			writeError(w, r, http.StatusConflict, "Tenant with this name already exists")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "Failed to update tenant: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to update tenant: "+err.Error())
 		return
 	}
 
@@ -929,12 +929,12 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 	// Check for assigned DPUs
 	count, _ := s.store.GetTenantDPUCount(id)
 	if count > 0 {
-		writeError(w, http.StatusConflict, fmt.Sprintf("Cannot delete tenant with %d assigned DPUs", count))
+		writeError(w, r, http.StatusConflict, fmt.Sprintf("Cannot delete tenant with %d assigned DPUs", count))
 		return
 	}
 
 	if err := s.store.RemoveTenant(id); err != nil {
-		writeError(w, http.StatusNotFound, "Tenant not found")
+		writeError(w, r, http.StatusNotFound, "Tenant not found")
 		return
 	}
 
@@ -947,13 +947,13 @@ func (s *Server) handleListTenantDPUs(w http.ResponseWriter, r *http.Request) {
 	// Check if tenant exists
 	_, err := s.store.GetTenant(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Tenant not found")
+		writeError(w, r, http.StatusNotFound, "Tenant not found")
 		return
 	}
 
 	dpus, err := s.store.ListDPUsByTenant(id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to list DPUs: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to list DPUs: "+err.Error())
 		return
 	}
 
@@ -971,30 +971,30 @@ func (s *Server) handleAssignDPUToTenant(w http.ResponseWriter, r *http.Request)
 	// Check if tenant exists
 	_, err := s.store.GetTenant(tenantID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Tenant not found")
+		writeError(w, r, http.StatusNotFound, "Tenant not found")
 		return
 	}
 
 	var req assignDPURequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	if req.DPUID == "" {
-		writeError(w, http.StatusBadRequest, "dpuId is required")
+		writeError(w, r, http.StatusBadRequest, "dpuId is required")
 		return
 	}
 
 	// Check if DPU exists
 	dpu, err := s.store.Get(req.DPUID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
 	if err := s.store.AssignDPUToTenant(dpu.ID, tenantID); err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to assign DPU: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to assign DPU: "+err.Error())
 		return
 	}
 
@@ -1009,24 +1009,24 @@ func (s *Server) handleUnassignDPUFromTenant(w http.ResponseWriter, r *http.Requ
 	// Check if tenant exists
 	_, err := s.store.GetTenant(tenantID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Tenant not found")
+		writeError(w, r, http.StatusNotFound, "Tenant not found")
 		return
 	}
 
 	// Check if DPU exists and belongs to this tenant
 	dpu, err := s.store.Get(dpuID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
 	if dpu.TenantID == nil || *dpu.TenantID != tenantID {
-		writeError(w, http.StatusBadRequest, "DPU is not assigned to this tenant")
+		writeError(w, r, http.StatusBadRequest, "DPU is not assigned to this tenant")
 		return
 	}
 
 	if err := s.store.UnassignDPUFromTenant(dpuID); err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to unassign DPU: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to unassign DPU: "+err.Error())
 		return
 	}
 
@@ -1072,7 +1072,7 @@ func hostToResponse(h *store.Host) hostResponse {
 func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 	hosts, err := s.store.ListHosts()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to list hosts: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to list hosts: "+err.Error())
 		return
 	}
 
@@ -1087,12 +1087,12 @@ func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAddHost(w http.ResponseWriter, r *http.Request) {
 	var req addHostRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	if req.Name == "" || req.Address == "" {
-		writeError(w, http.StatusBadRequest, "Name and address are required")
+		writeError(w, r, http.StatusBadRequest, "Name and address are required")
 		return
 	}
 
@@ -1104,10 +1104,10 @@ func (s *Server) handleAddHost(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.AddHost(id, req.Name, req.Address, req.Port); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
-			writeError(w, http.StatusConflict, "Host with this name already exists")
+			writeError(w, r, http.StatusConflict, "Host with this name already exists")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "Failed to add host: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to add host: "+err.Error())
 		return
 	}
 
@@ -1135,7 +1135,7 @@ func (s *Server) handleGetHost(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	host, err := s.store.GetHost(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, hostToResponse(host))
@@ -1144,7 +1144,7 @@ func (s *Server) handleGetHost(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteHost(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.store.RemoveHost(id); err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1154,7 +1154,7 @@ func (s *Server) handleGetHostInfo(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	host, err := s.store.GetHost(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 
@@ -1164,7 +1164,7 @@ func (s *Server) handleGetHostInfo(w http.ResponseWriter, r *http.Request) {
 	client, err := hostclient.NewClient(host.GRPCAddress())
 	if err != nil {
 		s.store.UpdateHostStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -1172,7 +1172,7 @@ func (s *Server) handleGetHostInfo(w http.ResponseWriter, r *http.Request) {
 	info, err := client.GetHostInfo(ctx)
 	if err != nil {
 		s.store.UpdateHostStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get host info: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get host info: "+err.Error())
 		return
 	}
 
@@ -1194,7 +1194,7 @@ func (s *Server) handleGetHostGPUs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	host, err := s.store.GetHost(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 
@@ -1204,7 +1204,7 @@ func (s *Server) handleGetHostGPUs(w http.ResponseWriter, r *http.Request) {
 	client, err := hostclient.NewClient(host.GRPCAddress())
 	if err != nil {
 		s.store.UpdateHostStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -1212,7 +1212,7 @@ func (s *Server) handleGetHostGPUs(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.GetGPUInfo(ctx)
 	if err != nil {
 		s.store.UpdateHostStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get GPU info: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get GPU info: "+err.Error())
 		return
 	}
 
@@ -1242,7 +1242,7 @@ func (s *Server) handleGetHostSecurity(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	host, err := s.store.GetHost(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 
@@ -1252,7 +1252,7 @@ func (s *Server) handleGetHostSecurity(w http.ResponseWriter, r *http.Request) {
 	client, err := hostclient.NewClient(host.GRPCAddress())
 	if err != nil {
 		s.store.UpdateHostStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -1260,7 +1260,7 @@ func (s *Server) handleGetHostSecurity(w http.ResponseWriter, r *http.Request) {
 	info, err := client.GetSecurityInfo(ctx)
 	if err != nil {
 		s.store.UpdateHostStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Failed to get security info: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to get security info: "+err.Error())
 		return
 	}
 
@@ -1280,7 +1280,7 @@ func (s *Server) handleHostHealthCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	host, err := s.store.GetHost(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 
@@ -1290,7 +1290,7 @@ func (s *Server) handleHostHealthCheck(w http.ResponseWriter, r *http.Request) {
 	client, err := hostclient.NewClient(host.GRPCAddress())
 	if err != nil {
 		s.store.UpdateHostStatus(id, "offline")
-		writeError(w, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -1298,7 +1298,7 @@ func (s *Server) handleHostHealthCheck(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.HealthCheck(ctx)
 	if err != nil {
 		s.store.UpdateHostStatus(id, "unhealthy")
-		writeError(w, http.StatusServiceUnavailable, "Health check failed: "+err.Error())
+		writeError(w, r, http.StatusServiceUnavailable, "Health check failed: "+err.Error())
 		return
 	}
 
@@ -1331,19 +1331,19 @@ func (s *Server) handleLinkHostToDPU(w http.ResponseWriter, r *http.Request) {
 	// Check host exists
 	_, err := s.store.GetHost(hostID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 
 	// Check DPU exists
 	_, err = s.store.Get(dpuID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
 	if err := s.store.LinkHostToDPU(hostID, dpuID); err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to link host to DPU: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to link host to DPU: "+err.Error())
 		return
 	}
 
@@ -1357,17 +1357,17 @@ func (s *Server) handleUnlinkHostFromDPU(w http.ResponseWriter, r *http.Request)
 	// Check host exists
 	host, err := s.store.GetHost(hostID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 
 	if host.DPUID == nil {
-		writeError(w, http.StatusBadRequest, "Host is not linked to any DPU")
+		writeError(w, r, http.StatusBadRequest, "Host is not linked to any DPU")
 		return
 	}
 
 	if err := s.store.UnlinkHostFromDPU(hostID); err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to unlink host from DPU: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to unlink host from DPU: "+err.Error())
 		return
 	}
 
@@ -1380,7 +1380,7 @@ func (s *Server) handleGetDPUHost(w http.ResponseWriter, r *http.Request) {
 	// Check DPU exists
 	_, err := s.store.Get(dpuID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found")
+		writeError(w, r, http.StatusNotFound, "DPU not found")
 		return
 	}
 
@@ -1467,6 +1467,7 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	}
 }
 
-func writeError(w http.ResponseWriter, status int, message string) {
+func writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
+	log.Printf("ERROR: %s %s: %s", r.Method, r.URL.Path, message)
 	writeJSON(w, status, map[string]string{"error": message})
 }

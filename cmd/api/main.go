@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/nmelo/secure-infra/internal/api"
 	"github.com/nmelo/secure-infra/pkg/store"
@@ -47,7 +48,7 @@ func main() {
 
 	httpServer := &http.Server{
 		Addr:    *listenAddr,
-		Handler: corsMiddleware(mux),
+		Handler: loggingMiddleware(corsMiddleware(mux)),
 	}
 
 	// Handle shutdown
@@ -80,5 +81,24 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+type statusResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *statusResponseWriter) WriteHeader(code int) {
+	w.statusCode = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sw := &statusResponseWriter{ResponseWriter: w, statusCode: 200}
+		next.ServeHTTP(sw, r)
+		log.Printf("%s %s %d %dms", r.Method, r.URL.Path, sw.statusCode, time.Since(start).Milliseconds())
 	})
 }

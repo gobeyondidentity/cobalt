@@ -18,10 +18,12 @@ func init() {
 	dpuCmd.AddCommand(dpuAddCmd)
 	dpuCmd.AddCommand(dpuRemoveCmd)
 	dpuCmd.AddCommand(dpuInfoCmd)
+	dpuCmd.AddCommand(dpuHealthCmd)
 
 	// Add flags
 	dpuAddCmd.Flags().IntP("port", "p", 50051, "gRPC port")
 	dpuAddCmd.Flags().Bool("offline", false, "Skip connectivity check and add DPU anyway")
+	dpuHealthCmd.Flags().BoolP("verbose", "v", false, "Show detailed component health status")
 }
 
 var dpuCmd = &cobra.Command{
@@ -211,4 +213,92 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%dh %dm", hours, mins)
 	}
 	return fmt.Sprintf("%dm", mins)
+}
+
+var dpuHealthCmd = &cobra.Command{
+	Use:   "health <name>",
+	Short: "Check DPU agent health and connectivity",
+	Long: `Check connectivity and health status of a DPU agent.
+
+Shows connection status, latency, agent version, and component health.
+Use --verbose to see detailed component status.
+
+Examples:
+  bluectl dpu health bf3-lab
+  bluectl dpu health bf3-lab --verbose`,
+	Args: cobra.ExactArgs(1),
+	RunE: runDPUHealth,
+}
+
+func runDPUHealth(cmd *cobra.Command, args []string) error {
+	verbose, _ := cmd.Flags().GetBool("verbose")
+
+	dpu, err := dpuStore.Get(args[0])
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("DPU: %s (%s)\n", dpu.Name, dpu.Address())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	client, err := grpcclient.NewClient(dpu.Address())
+	if err != nil {
+		dpuStore.UpdateStatus(dpu.ID, "offline")
+		fmt.Println("Status: offline")
+		fmt.Printf("Error: %v\n", err)
+		fmt.Println()
+		fmt.Println("Troubleshooting:")
+		fmt.Printf("  - Verify DPU is powered on and network is connected\n")
+		fmt.Printf("  - Check firewall allows port %d\n", dpu.Port)
+		fmt.Printf("  - Try: ping %s\n", dpu.Host)
+		return nil
+	}
+	defer client.Close()
+
+	resp, err := client.HealthCheck(ctx)
+	latency := time.Since(start)
+
+	if err != nil {
+		dpuStore.UpdateStatus(dpu.ID, "unhealthy")
+		fmt.Println("Status: unhealthy")
+		fmt.Printf("Error: %v\n", err)
+		fmt.Println()
+		fmt.Println("Troubleshooting:")
+		fmt.Println("  - Agent is reachable but health check failed")
+		fmt.Println("  - Check agent logs on the DPU")
+		fmt.Println("  - Try: bluectl dpu info", dpu.Name)
+		return nil
+	}
+
+	status := "healthy"
+	if !resp.Healthy {
+		status = "unhealthy"
+	}
+	dpuStore.UpdateStatus(dpu.ID, status)
+
+	fmt.Printf("Status: %s\n", status)
+	fmt.Printf("Latency: %dms\n", latency.Milliseconds())
+	fmt.Printf("Agent Version: %s\n", resp.Version)
+	fmt.Printf("Uptime: %s\n", formatDuration(resp.UptimeSeconds))
+
+	if verbose && len(resp.Components) > 0 {
+		fmt.Println()
+		fmt.Println("Components:")
+		for name, comp := range resp.Components {
+			compStatus := "healthy"
+			if !comp.Healthy {
+				compStatus = "unhealthy"
+			}
+			msg := comp.Message
+			if msg == "" {
+				msg = "ok"
+			}
+			fmt.Printf("  %-8s %s (%s)\n", name+":", compStatus, msg)
+		}
+	}
+
+	return nil
 }

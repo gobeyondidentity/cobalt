@@ -49,7 +49,7 @@ type DistributionHistoryEntry struct {
 func (s *Server) handleListSSHCAs(w http.ResponseWriter, r *http.Request) {
 	cas, err := s.store.ListSSHCAs()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to list SSH CAs: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to list SSH CAs: "+err.Error())
 		return
 	}
 
@@ -77,7 +77,7 @@ func (s *Server) handleGetSSHCA(w http.ResponseWriter, r *http.Request) {
 	// Use GetSSHCA to validate existence, but we only need public key info
 	ca, err := s.store.GetSSHCA(name)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "SSH CA not found")
+		writeError(w, r, http.StatusNotFound, "SSH CA not found")
 		return
 	}
 
@@ -144,7 +144,7 @@ func (s *Server) handleDistributionHistory(w http.ResponseWriter, r *http.Reques
 	if fromStr != "" {
 		t, err := parseFlexibleTime(fromStr, false)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "Invalid 'from' timestamp format. Use RFC3339 or YYYY-MM-DD.")
+			writeError(w, r, http.StatusBadRequest, "Invalid 'from' timestamp format. Use RFC3339 or YYYY-MM-DD.")
 			return
 		}
 		fromTime = &t
@@ -152,7 +152,7 @@ func (s *Server) handleDistributionHistory(w http.ResponseWriter, r *http.Reques
 	if toStr != "" {
 		t, err := parseFlexibleTime(toStr, true)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "Invalid 'to' timestamp format. Use RFC3339 or YYYY-MM-DD.")
+			writeError(w, r, http.StatusBadRequest, "Invalid 'to' timestamp format. Use RFC3339 or YYYY-MM-DD.")
 			return
 		}
 		toTime = &t
@@ -176,7 +176,7 @@ func (s *Server) handleDistributionHistory(w http.ResponseWriter, r *http.Reques
 		} else {
 			mapped := mapOutcomeFilter(resultFilter)
 			if mapped == nil {
-				writeError(w, http.StatusBadRequest, "Invalid 'result' filter. Valid values: success, blocked, forced, blocked-stale, blocked-failed")
+				writeError(w, r, http.StatusBadRequest, "Invalid 'result' filter. Valid values: success, blocked, forced, blocked-stale, blocked-failed")
 				return
 			}
 			opts.Outcome = mapped
@@ -186,7 +186,7 @@ func (s *Server) handleDistributionHistory(w http.ResponseWriter, r *http.Reques
 	// Query distributions using the store method
 	distributions, err := s.store.ListDistributionsWithFilters(opts)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to query distribution history: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to query distribution history: "+err.Error())
 		return
 	}
 

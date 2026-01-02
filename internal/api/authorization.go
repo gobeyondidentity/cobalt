@@ -52,32 +52,32 @@ type CheckAuthorizationResponse struct {
 func (s *Server) handleCreateAuthorization(w http.ResponseWriter, r *http.Request) {
 	var req CreateAuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	// Validate required fields
 	if req.OperatorEmail == "" {
-		writeError(w, http.StatusBadRequest, "operator_email is required")
+		writeError(w, r, http.StatusBadRequest, "operator_email is required")
 		return
 	}
 	if req.TenantID == "" {
-		writeError(w, http.StatusBadRequest, "tenant_id is required")
+		writeError(w, r, http.StatusBadRequest, "tenant_id is required")
 		return
 	}
 	if len(req.CAIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "ca_ids is required")
+		writeError(w, r, http.StatusBadRequest, "ca_ids is required")
 		return
 	}
 	if len(req.DeviceIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "device_ids is required")
+		writeError(w, r, http.StatusBadRequest, "device_ids is required")
 		return
 	}
 
 	// Look up operator by email
 	operator, err := s.store.GetOperatorByEmail(req.OperatorEmail)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "operator not found")
+		writeError(w, r, http.StatusNotFound, "operator not found")
 		return
 	}
 
@@ -86,7 +86,7 @@ func (s *Server) handleCreateAuthorization(w http.ResponseWriter, r *http.Reques
 	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
 		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid expires_at format, expected RFC3339")
+			writeError(w, r, http.StatusBadRequest, "invalid expires_at format, expected RFC3339")
 			return
 		}
 		expiresAt = &t
@@ -99,14 +99,14 @@ func (s *Server) handleCreateAuthorization(w http.ResponseWriter, r *http.Reques
 	// For now, use "system" as created_by since we don't have JWT auth yet
 	createdBy := "system"
 	if err := s.store.CreateAuthorization(authID, operator.ID, req.TenantID, req.CAIDs, req.DeviceIDs, createdBy, expiresAt); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create authorization: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "failed to create authorization: "+err.Error())
 		return
 	}
 
 	// Fetch the created authorization
 	auth, err := s.store.GetAuthorization(authID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to fetch created authorization: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "failed to fetch created authorization: "+err.Error())
 		return
 	}
 
@@ -119,7 +119,7 @@ func (s *Server) handleListAuthorizations(w http.ResponseWriter, r *http.Request
 	tenantID := r.URL.Query().Get("tenant_id")
 
 	if operatorID == "" && tenantID == "" {
-		writeError(w, http.StatusBadRequest, "operator_id or tenant_id query parameter is required")
+		writeError(w, r, http.StatusBadRequest, "operator_id or tenant_id query parameter is required")
 		return
 	}
 
@@ -133,7 +133,7 @@ func (s *Server) handleListAuthorizations(w http.ResponseWriter, r *http.Request
 	}
 
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list authorizations: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "failed to list authorizations: "+err.Error())
 		return
 	}
 
@@ -151,7 +151,7 @@ func (s *Server) handleGetAuthorization(w http.ResponseWriter, r *http.Request) 
 
 	auth, err := s.store.GetAuthorization(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "authorization not found")
+		writeError(w, r, http.StatusNotFound, "authorization not found")
 		return
 	}
 
@@ -163,7 +163,7 @@ func (s *Server) handleDeleteAuthorization(w http.ResponseWriter, r *http.Reques
 	id := r.PathValue("id")
 
 	if err := s.store.DeleteAuthorization(id); err != nil {
-		writeError(w, http.StatusNotFound, "authorization not found")
+		writeError(w, r, http.StatusNotFound, "authorization not found")
 		return
 	}
 
@@ -174,17 +174,17 @@ func (s *Server) handleDeleteAuthorization(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleCheckAuthorization(w http.ResponseWriter, r *http.Request) {
 	var req CheckAuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	// Validate required fields
 	if req.OperatorID == "" {
-		writeError(w, http.StatusBadRequest, "operator_id is required")
+		writeError(w, r, http.StatusBadRequest, "operator_id is required")
 		return
 	}
 	if req.CAID == "" {
-		writeError(w, http.StatusBadRequest, "ca_id is required")
+		writeError(w, r, http.StatusBadRequest, "ca_id is required")
 		return
 	}
 
@@ -200,7 +200,7 @@ func (s *Server) handleCheckAuthorization(w http.ResponseWriter, r *http.Request
 	}
 
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to check authorization: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "failed to check authorization: "+err.Error())
 		return
 	}
 

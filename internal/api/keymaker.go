@@ -44,7 +44,7 @@ type TenantRole struct {
 func (s *Server) handleBindKeyMaker(w http.ResponseWriter, r *http.Request) {
 	var req BindRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
@@ -55,25 +55,25 @@ func (s *Server) handleBindKeyMaker(w http.ResponseWriter, r *http.Request) {
 	invite, err := s.store.GetInviteCodeByHash(codeHash)
 	if err != nil {
 		// Invite code not found
-		writeError(w, http.StatusBadRequest, "invalid invite code")
+		writeError(w, r, http.StatusBadRequest, "invalid invite code")
 		return
 	}
 
 	// Step 3: Validate invite status and expiration
 	if invite.Status != "pending" {
-		writeError(w, http.StatusBadRequest, "invite code has already been used")
+		writeError(w, r, http.StatusBadRequest, "invite code has already been used")
 		return
 	}
 
 	if time.Now().After(invite.ExpiresAt) {
-		writeError(w, http.StatusBadRequest, "invite code has expired")
+		writeError(w, r, http.StatusBadRequest, "invite code has expired")
 		return
 	}
 
 	// Step 4: Look up the operator by email from the invite
 	operator, err := s.store.GetOperatorByEmail(invite.OperatorEmail)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to lookup operator: %v", err))
+		writeError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to lookup operator: %v", err))
 		return
 	}
 
@@ -109,26 +109,26 @@ func (s *Server) handleBindKeyMaker(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.CreateKeyMaker(keymaker); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to create keymaker: %v", err))
+		writeError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create keymaker: %v", err))
 		return
 	}
 
 	// Step 7: Mark invite as used
 	if err := s.store.MarkInviteCodeUsed(invite.ID, keymakerID); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to mark invite as used: %v", err))
+		writeError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to mark invite as used: %v", err))
 		return
 	}
 
 	// Step 8: Update operator status to "active"
 	if err := s.store.UpdateOperatorStatus(operator.ID, "active"); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to update operator status: %v", err))
+		writeError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to update operator status: %v", err))
 		return
 	}
 
 	// Step 9: Get operator's tenants
 	operatorTenants, err := s.store.GetOperatorTenants(operator.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get operator tenants: %v", err))
+		writeError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to get operator tenants: %v", err))
 		return
 	}
 

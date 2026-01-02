@@ -66,24 +66,24 @@ type agentPostureResponse struct {
 func (s *Server) handleHostRegister(w http.ResponseWriter, r *http.Request) {
 	var req hostRegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	// Validate required fields
 	if req.DPUName == "" {
-		writeError(w, http.StatusBadRequest, "dpu_name is required")
+		writeError(w, r, http.StatusBadRequest, "dpu_name is required")
 		return
 	}
 	if req.Hostname == "" {
-		writeError(w, http.StatusBadRequest, "hostname is required")
+		writeError(w, r, http.StatusBadRequest, "hostname is required")
 		return
 	}
 
 	// Look up DPU by name
 	dpu, err := s.store.Get(req.DPUName)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found: "+req.DPUName)
+		writeError(w, r, http.StatusNotFound, "DPU not found: "+req.DPUName)
 		return
 	}
 
@@ -131,10 +131,10 @@ func (s *Server) handleHostRegister(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.RegisterAgentHost(host); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
-			writeError(w, http.StatusConflict, "Host with this hostname already registered")
+			writeError(w, r, http.StatusConflict, "Host with this hostname already registered")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "Failed to register host: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to register host: "+err.Error())
 		return
 	}
 
@@ -169,19 +169,19 @@ func (s *Server) handleHostPostureUpdate(w http.ResponseWriter, r *http.Request)
 	// Verify host exists
 	host, err := s.store.GetAgentHost(hostID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 
 	var req postureRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	// Update last seen
 	if err := s.store.UpdateAgentHostLastSeen(host.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to update last seen: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to update last seen: "+err.Error())
 		return
 	}
 
@@ -200,14 +200,14 @@ func (s *Server) handleHostPostureUpdate(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := s.store.UpdateAgentHostPosture(posture); err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to update posture: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to update posture: "+err.Error())
 		return
 	}
 
 	// Fetch updated posture
 	updatedPosture, err := s.store.GetAgentHostPosture(host.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to fetch updated posture: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to fetch updated posture: "+err.Error())
 		return
 	}
 
@@ -220,7 +220,7 @@ func (s *Server) handleListAgentHosts(w http.ResponseWriter, r *http.Request) {
 
 	hosts, err := s.store.ListAgentHosts(tenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to list hosts: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to list hosts: "+err.Error())
 		return
 	}
 
@@ -244,7 +244,7 @@ func (s *Server) handleGetAgentHost(w http.ResponseWriter, r *http.Request) {
 
 	host, err := s.store.GetAgentHost(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 
@@ -264,7 +264,7 @@ func (s *Server) handleDeleteAgentHost(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	if err := s.store.DeleteAgentHost(id); err != nil {
-		writeError(w, http.StatusNotFound, "Host not found")
+		writeError(w, r, http.StatusNotFound, "Host not found")
 		return
 	}
 

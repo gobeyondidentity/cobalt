@@ -17,6 +17,8 @@ import (
 	"github.com/nmelo/secure-infra/internal/agent"
 	"github.com/nmelo/secure-infra/internal/agent/localapi"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -61,6 +63,11 @@ func main() {
 	grpcServer := grpc.NewServer()
 	agentServer := agent.NewServer(cfg)
 	agentv1.RegisterDPUAgentServiceServer(grpcServer, agentServer)
+
+	// Register standard gRPC health service for grpc-health-probe and Kubernetes health checks
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	// Enable reflection for grpcurl
 	reflection.Register(grpcServer)

@@ -18,6 +18,7 @@ func setupTestServer(t *testing.T) (*Server, *http.ServeMux) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
+	store.SetInsecureMode(true)
 	s, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatalf("failed to open test store: %v", err)

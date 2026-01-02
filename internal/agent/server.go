@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
@@ -57,6 +58,7 @@ func NewServer(cfg *Config) *Server {
 
 // GetSystemInfo returns DPU hardware and software information.
 func (s *Server) GetSystemInfo(ctx context.Context, req *agentv1.GetSystemInfoRequest) (*agentv1.GetSystemInfoResponse, error) {
+	log.Printf("GetSystemInfo called")
 	info, err := s.sysCollect.Collect(ctx)
 	if err != nil {
 		return nil, err
@@ -78,6 +80,7 @@ func (s *Server) GetSystemInfo(ctx context.Context, req *agentv1.GetSystemInfoRe
 
 // GetDPUInventory returns detailed firmware and software inventory.
 func (s *Server) GetDPUInventory(ctx context.Context, req *agentv1.GetDPUInventoryRequest) (*agentv1.GetDPUInventoryResponse, error) {
+	log.Printf("GetDPUInventory called")
 	inv, err := s.invCollect.Collect(ctx)
 	if err != nil {
 		return nil, err
@@ -140,6 +143,7 @@ func (s *Server) GetDPUInventory(ctx context.Context, req *agentv1.GetDPUInvento
 
 // ListBridges returns all OVS bridges configured on the DPU.
 func (s *Server) ListBridges(ctx context.Context, req *agentv1.ListBridgesRequest) (*agentv1.ListBridgesResponse, error) {
+	log.Printf("ListBridges called")
 	bridges, err := s.ovsClient.ListBridges(ctx)
 	if err != nil {
 		return nil, err
@@ -162,6 +166,7 @@ func (s *Server) GetFlows(ctx context.Context, req *agentv1.GetFlowsRequest) (*a
 	if bridge == "" {
 		bridge = "ovsbr1" // default bridge
 	}
+	log.Printf("GetFlows called for bridge: %s", bridge)
 
 	flows, err := s.ovsClient.GetFlows(ctx, bridge)
 	if err != nil {
@@ -187,6 +192,7 @@ func (s *Server) GetFlows(ctx context.Context, req *agentv1.GetFlowsRequest) (*a
 
 // GetAttestation returns DICE/SPDM certificates and measurements.
 func (s *Server) GetAttestation(ctx context.Context, req *agentv1.GetAttestationRequest) (*agentv1.GetAttestationResponse, error) {
+	log.Printf("GetAttestation called for target: %s", req.GetTarget())
 	if s.redfishCli == nil {
 		return &agentv1.GetAttestationResponse{
 			Status: agentv1.AttestationStatus_ATTESTATION_STATUS_UNAVAILABLE,
@@ -226,6 +232,7 @@ func (s *Server) GetAttestation(ctx context.Context, req *agentv1.GetAttestation
 
 // GetSignedMeasurements returns SPDM signed measurements from the DPU.
 func (s *Server) GetSignedMeasurements(ctx context.Context, req *agentv1.GetSignedMeasurementsRequest) (*agentv1.GetSignedMeasurementsResponse, error) {
+	log.Printf("GetSignedMeasurements called for target: %s", req.GetTarget())
 	if s.redfishCli == nil {
 		return nil, errBMCNotConfigured
 	}
@@ -279,6 +286,7 @@ func (s *Server) GetSignedMeasurements(ctx context.Context, req *agentv1.GetSign
 
 // HealthCheck verifies the agent is running and responsive.
 func (s *Server) HealthCheck(ctx context.Context, req *agentv1.HealthCheckRequest) (*agentv1.HealthCheckResponse, error) {
+	log.Printf("HealthCheck called")
 	components := make(map[string]*agentv1.ComponentHealth)
 
 	// Check OVS
@@ -338,6 +346,7 @@ func (s *Server) DistributeCredential(ctx context.Context, req *agentv1.Distribu
 	credType := req.GetCredentialType()
 	credName := req.GetCredentialName()
 	publicKey := req.GetPublicKey()
+	log.Printf("DistributeCredential called: type=%s, name=%s", credType, credName)
 
 	// Validate request
 	if credName == "" {

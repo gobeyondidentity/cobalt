@@ -3,6 +3,7 @@ package hostagent
 
 import (
 	"context"
+	"log"
 	"time"
 
 	hostv1 "github.com/nmelo/secure-infra/gen/go/host/v1"
@@ -31,6 +32,7 @@ func NewServer(cfg *Config) *Server {
 
 // GetHostInfo returns basic information about the host machine.
 func (s *Server) GetHostInfo(ctx context.Context, req *hostv1.GetHostInfoRequest) (*hostv1.GetHostInfoResponse, error) {
+	log.Printf("GetHostInfo called")
 	info, err := s.collector.CollectHostInfo(ctx)
 	if err != nil {
 		return nil, err
@@ -50,6 +52,7 @@ func (s *Server) GetHostInfo(ctx context.Context, req *hostv1.GetHostInfoRequest
 
 // GetGPUInfo returns information about GPUs installed on the host.
 func (s *Server) GetGPUInfo(ctx context.Context, req *hostv1.GetGPUInfoRequest) (*hostv1.GetGPUInfoResponse, error) {
+	log.Printf("GetGPUInfo called")
 	gpus, err := s.collector.CollectGPUInfo(ctx)
 	if err != nil {
 		return nil, err
@@ -75,6 +78,7 @@ func (s *Server) GetGPUInfo(ctx context.Context, req *hostv1.GetGPUInfoRequest) 
 
 // GetSecurityInfo returns security posture of the host.
 func (s *Server) GetSecurityInfo(ctx context.Context, req *hostv1.GetSecurityInfoRequest) (*hostv1.GetSecurityInfoResponse, error) {
+	log.Printf("GetSecurityInfo called")
 	info, err := s.collector.CollectSecurityInfo(ctx)
 	if err != nil {
 		return nil, err
@@ -92,6 +96,7 @@ func (s *Server) GetSecurityInfo(ctx context.Context, req *hostv1.GetSecurityInf
 
 // GetDPUConnections returns info about DPUs connected to this host.
 func (s *Server) GetDPUConnections(ctx context.Context, req *hostv1.GetDPUConnectionsRequest) (*hostv1.GetDPUConnectionsResponse, error) {
+	log.Printf("GetDPUConnections called")
 	connections, err := s.collector.CollectDPUConnections(ctx)
 	if err != nil {
 		return nil, err
@@ -113,6 +118,7 @@ func (s *Server) GetDPUConnections(ctx context.Context, req *hostv1.GetDPUConnec
 
 // HealthCheck verifies the host agent is running and responsive.
 func (s *Server) HealthCheck(ctx context.Context, req *hostv1.HealthCheckRequest) (*hostv1.HealthCheckResponse, error) {
+	log.Printf("HealthCheck called")
 	uptime := time.Now().Unix() - s.startTime
 
 	components := make(map[string]*hostv1.ComponentHealth)

@@ -15,9 +15,13 @@ func init() {
 	hostCmd.AddCommand(hostListCmd)
 	hostCmd.AddCommand(hostPostureCmd)
 	hostCmd.AddCommand(hostDeleteCmd)
+	hostCmd.AddCommand(hostHealthCmd)
 
 	// Flags for host list
 	hostListCmd.Flags().String("tenant", "", "Filter by tenant")
+
+	// Flags for host health
+	hostHealthCmd.Flags().BoolP("verbose", "v", false, "Show component details")
 }
 
 var hostCmd = &cobra.Command{
@@ -259,6 +263,121 @@ Examples:
 		fmt.Println("Host deleted.")
 		return nil
 	},
+}
+
+var hostHealthCmd = &cobra.Command{
+	Use:   "health <dpu-name>",
+	Short: "Check host agent health",
+	Long: `Check connectivity and health status of a host agent.
+
+The host is identified by the DPU it's paired with. Since hosts register
+via the DPU agent and do not expose a direct gRPC endpoint, this command
+shows cached health information based on last seen timestamps and posture
+updates.
+
+Examples:
+  bluectl host health bf3-lab
+  bluectl host health bf3-lab --verbose`,
+	Args: cobra.ExactArgs(1),
+	RunE: runHostHealth,
+}
+
+func runHostHealth(cmd *cobra.Command, args []string) error {
+	dpuName := args[0]
+	verbose, _ := cmd.Flags().GetBool("verbose")
+
+	// Look up host by DPU name
+	host, err := dpuStore.GetAgentHostByDPU(dpuName)
+	if err != nil {
+		return fmt.Errorf("no host agent found for DPU '%s'", dpuName)
+	}
+
+	// Get posture for additional health signals
+	posture, _ := dpuStore.GetAgentHostPosture(host.ID)
+
+	// Determine health status based on last seen
+	status := determineHealthStatus(host.LastSeenAt)
+
+	if outputFormat != "table" {
+		output := map[string]interface{}{
+			"host":     host.Hostname,
+			"dpuName":  host.DPUName,
+			"status":   status,
+			"lastSeen": host.LastSeenAt,
+		}
+		if posture != nil {
+			output["lastPosture"] = posture.CollectedAt
+		}
+		return formatOutput(output)
+	}
+
+	// Display header
+	fmt.Printf("Host: %s (paired with %s)\n", host.Hostname, host.DPUName)
+	fmt.Printf("Status: %s\n", status)
+	fmt.Printf("Last Seen: %s\n", formatRelativeTime(host.LastSeenAt))
+
+	if posture != nil {
+		fmt.Printf("Last Posture: %s\n", formatRelativeTime(posture.CollectedAt))
+	}
+
+	if verbose && posture != nil {
+		fmt.Println()
+		fmt.Println("Posture Summary:")
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		// Secure Boot
+		secureBoot := "unknown"
+		if posture.SecureBoot != nil {
+			if *posture.SecureBoot {
+				secureBoot = "enabled"
+			} else {
+				secureBoot = "disabled"
+			}
+		}
+		fmt.Fprintf(w, "  Secure Boot:\t%s\n", secureBoot)
+
+		// Disk Encryption
+		diskEnc := "unknown"
+		if posture.DiskEncryption != "" {
+			diskEnc = strings.ToUpper(posture.DiskEncryption)
+		}
+		fmt.Fprintf(w, "  Disk Encryption:\t%s\n", diskEnc)
+
+		// OS Version
+		if posture.OSVersion != "" {
+			fmt.Fprintf(w, "  OS Version:\t%s\n", posture.OSVersion)
+		}
+
+		// TPM
+		if posture.TPMPresent != nil {
+			tpm := "not present"
+			if *posture.TPMPresent {
+				tpm = "present"
+			}
+			fmt.Fprintf(w, "  TPM:\t%s\n", tpm)
+		}
+
+		w.Flush()
+	}
+
+	return nil
+}
+
+// determineHealthStatus returns a health status based on last seen time.
+func determineHealthStatus(lastSeen time.Time) string {
+	if lastSeen.IsZero() {
+		return "unknown"
+	}
+
+	since := time.Since(lastSeen)
+	switch {
+	case since < 2*time.Minute:
+		return "healthy"
+	case since < 10*time.Minute:
+		return "degraded"
+	default:
+		return "offline"
+	}
 }
 
 // formatRelativeTime formats a time as a human-readable relative duration.

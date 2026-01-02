@@ -45,67 +45,67 @@ type TrustResponse struct {
 func (s *Server) handleCreateTrust(w http.ResponseWriter, r *http.Request) {
 	var req CreateTrustRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	// Validate required fields
 	if req.SourceDPU == "" {
-		writeError(w, http.StatusBadRequest, "source_dpu is required")
+		writeError(w, r, http.StatusBadRequest, "source_dpu is required")
 		return
 	}
 	if req.TargetDPU == "" {
-		writeError(w, http.StatusBadRequest, "target_dpu is required")
+		writeError(w, r, http.StatusBadRequest, "target_dpu is required")
 		return
 	}
 	if req.TrustType == "" {
-		writeError(w, http.StatusBadRequest, "trust_type is required")
+		writeError(w, r, http.StatusBadRequest, "trust_type is required")
 		return
 	}
 
 	// Validate trust type
 	trustType := store.TrustType(req.TrustType)
 	if trustType != store.TrustTypeSSHHost && trustType != store.TrustTypeMTLS {
-		writeError(w, http.StatusBadRequest, "trust_type must be 'ssh_host' or 'mtls'")
+		writeError(w, r, http.StatusBadRequest, "trust_type must be 'ssh_host' or 'mtls'")
 		return
 	}
 
 	// Look up source DPU by name
 	sourceDPU, err := s.store.Get(req.SourceDPU)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "source DPU not found: "+req.SourceDPU)
+		writeError(w, r, http.StatusNotFound, "source DPU not found: "+req.SourceDPU)
 		return
 	}
 
 	// Look up target DPU by name
 	targetDPU, err := s.store.Get(req.TargetDPU)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "target DPU not found: "+req.TargetDPU)
+		writeError(w, r, http.StatusNotFound, "target DPU not found: "+req.TargetDPU)
 		return
 	}
 
 	// Verify both DPUs are assigned to the same tenant
 	if sourceDPU.TenantID == nil {
-		writeError(w, http.StatusBadRequest, "source DPU is not assigned to any tenant")
+		writeError(w, r, http.StatusBadRequest, "source DPU is not assigned to any tenant")
 		return
 	}
 	if targetDPU.TenantID == nil {
-		writeError(w, http.StatusBadRequest, "target DPU is not assigned to any tenant")
+		writeError(w, r, http.StatusBadRequest, "target DPU is not assigned to any tenant")
 		return
 	}
 	if *sourceDPU.TenantID != *targetDPU.TenantID {
-		writeError(w, http.StatusBadRequest, "source and target DPUs must be in the same tenant")
+		writeError(w, r, http.StatusBadRequest, "source and target DPUs must be in the same tenant")
 		return
 	}
 
 	// Check if trust relationship already exists
 	exists, err := s.store.TrustRelationshipExists(sourceDPU.ID, targetDPU.ID, trustType)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to check trust relationship existence: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "failed to check trust relationship existence: "+err.Error())
 		return
 	}
 	if exists {
-		writeError(w, http.StatusConflict, "trust relationship already exists between these DPUs for this trust type")
+		writeError(w, r, http.StatusConflict, "trust relationship already exists between these DPUs for this trust type")
 		return
 	}
 
@@ -134,7 +134,7 @@ func (s *Server) handleCreateTrust(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.CreateTrustRelationship(tr); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create trust relationship: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "failed to create trust relationship: "+err.Error())
 		return
 	}
 
@@ -155,7 +155,7 @@ func (s *Server) handleListTrust(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list trust relationships: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "failed to list trust relationships: "+err.Error())
 		return
 	}
 
@@ -173,7 +173,7 @@ func (s *Server) handleGetTrust(w http.ResponseWriter, r *http.Request) {
 
 	tr, err := s.store.GetTrustRelationship(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "trust relationship not found")
+		writeError(w, r, http.StatusNotFound, "trust relationship not found")
 		return
 	}
 
@@ -185,7 +185,7 @@ func (s *Server) handleDeleteTrust(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	if err := s.store.DeleteTrustRelationship(id); err != nil {
-		writeError(w, http.StatusNotFound, "trust relationship not found")
+		writeError(w, r, http.StatusNotFound, "trust relationship not found")
 		return
 	}
 
@@ -199,25 +199,25 @@ func (s *Server) handleUpdateTrustStatus(w http.ResponseWriter, r *http.Request)
 	// Check if trust relationship exists
 	_, err := s.store.GetTrustRelationship(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "trust relationship not found")
+		writeError(w, r, http.StatusNotFound, "trust relationship not found")
 		return
 	}
 
 	var req UpdateTrustStatusRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	// Validate status
 	if req.Status == "" {
-		writeError(w, http.StatusBadRequest, "status is required")
+		writeError(w, r, http.StatusBadRequest, "status is required")
 		return
 	}
 
 	status := store.TrustStatus(req.Status)
 	if status != store.TrustStatusActive && status != store.TrustStatusSuspended {
-		writeError(w, http.StatusBadRequest, "status must be 'active' or 'suspended'")
+		writeError(w, r, http.StatusBadRequest, "status must be 'active' or 'suspended'")
 		return
 	}
 
@@ -228,14 +228,14 @@ func (s *Server) handleUpdateTrustStatus(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := s.store.UpdateTrustStatus(id, status, reason); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update trust status: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "failed to update trust status: "+err.Error())
 		return
 	}
 
 	// Fetch updated trust relationship
 	tr, err := s.store.GetTrustRelationship(id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to fetch updated trust relationship: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "failed to fetch updated trust relationship: "+err.Error())
 		return
 	}
 

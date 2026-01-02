@@ -46,34 +46,34 @@ type HostCertResponse struct {
 func (s *Server) handleHostCertRequest(w http.ResponseWriter, r *http.Request) {
 	hostname := r.PathValue("hostname")
 	if hostname == "" {
-		writeError(w, http.StatusBadRequest, "hostname is required in path")
+		writeError(w, r, http.StatusBadRequest, "hostname is required in path")
 		return
 	}
 
 	var req HostCertRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
 		return
 	}
 
 	// Validate required fields
 	if req.PublicKey == "" {
-		writeError(w, http.StatusBadRequest, "public_key is required")
+		writeError(w, r, http.StatusBadRequest, "public_key is required")
 		return
 	}
 	if req.DPUName == "" {
-		writeError(w, http.StatusBadRequest, "dpu_name is required")
+		writeError(w, r, http.StatusBadRequest, "dpu_name is required")
 		return
 	}
 	if len(req.Principals) == 0 {
-		writeError(w, http.StatusBadRequest, "at least one principal is required")
+		writeError(w, r, http.StatusBadRequest, "at least one principal is required")
 		return
 	}
 
 	// Step 1: Verify the DPU exists
 	dpu, err := s.store.Get(req.DPUName)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "DPU not found: "+req.DPUName)
+		writeError(w, r, http.StatusNotFound, "DPU not found: "+req.DPUName)
 		return
 	}
 
@@ -82,22 +82,22 @@ func (s *Server) handleHostCertRequest(w http.ResponseWriter, r *http.Request) {
 	attestation, err := s.store.GetAttestation(dpu.Name)
 	if err != nil {
 		// No attestation record found
-		writeError(w, http.StatusForbidden, "DPU attestation not found; attestation required before issuing host certificates")
+		writeError(w, r, http.StatusForbidden, "DPU attestation not found; attestation required before issuing host certificates")
 		return
 	}
 	if attestation.Status != store.AttestationStatusVerified {
-		writeError(w, http.StatusForbidden, fmt.Sprintf("DPU attestation status is '%s'; must be 'verified' to issue host certificates", attestation.Status))
+		writeError(w, r, http.StatusForbidden, fmt.Sprintf("DPU attestation status is '%s'; must be 'verified' to issue host certificates", attestation.Status))
 		return
 	}
 
 	// Step 3: Verify the host is paired with this DPU (lookup in agent_hosts table)
 	agentHost, err := s.store.GetAgentHostByHostname(hostname)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "Host not registered: "+hostname)
+		writeError(w, r, http.StatusNotFound, "Host not registered: "+hostname)
 		return
 	}
 	if agentHost.DPUName != dpu.Name {
-		writeError(w, http.StatusForbidden, fmt.Sprintf("Host '%s' is not paired with DPU '%s'", hostname, dpu.Name))
+		writeError(w, r, http.StatusForbidden, fmt.Sprintf("Host '%s' is not paired with DPU '%s'", hostname, dpu.Name))
 		return
 	}
 
@@ -116,7 +116,7 @@ func (s *Server) handleHostCertRequest(w http.ResponseWriter, r *http.Request) {
 			// Use the first CA with a private key (need to fetch full CA with private key)
 			sshCA, err = s.store.GetSSHCAByID(cas[0].ID)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, "Failed to retrieve SSH CA: "+err.Error())
+				writeError(w, r, http.StatusInternalServerError, "Failed to retrieve SSH CA: "+err.Error())
 				return
 			}
 		}
@@ -126,7 +126,7 @@ func (s *Server) handleHostCertRequest(w http.ResponseWriter, r *http.Request) {
 	if sshCA == nil {
 		cas, err := s.store.ListSSHCAs()
 		if err != nil || len(cas) == 0 {
-			writeError(w, http.StatusInternalServerError, "No SSH CA available for signing")
+			writeError(w, r, http.StatusInternalServerError, "No SSH CA available for signing")
 			return
 		}
 		// Find a CA without tenant assignment (global) or use the first available
@@ -142,7 +142,7 @@ func (s *Server) handleHostCertRequest(w http.ResponseWriter, r *http.Request) {
 		if sshCA == nil {
 			sshCA, err = s.store.GetSSHCAByID(cas[0].ID)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, "Failed to retrieve SSH CA: "+err.Error())
+				writeError(w, r, http.StatusInternalServerError, "Failed to retrieve SSH CA: "+err.Error())
 				return
 			}
 		}
@@ -154,14 +154,14 @@ func (s *Server) handleHostCertRequest(w http.ResponseWriter, r *http.Request) {
 
 	cert, serial, err := signHostCertificate(sshCA, req.PublicKey, req.Principals, hostname, validAfter, validBefore)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Failed to sign certificate: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Failed to sign certificate: "+err.Error())
 		return
 	}
 
 	// Get CA public key in OpenSSH format
 	caPublicKey, err := getCAPublicKeyString(sshCA)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to encode CA public key: "+err.Error())
+		writeError(w, r, http.StatusInternalServerError, "Failed to encode CA public key: "+err.Error())
 		return
 	}
 
