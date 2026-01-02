@@ -30,7 +30,8 @@ var rootCmd = &cobra.Command{
 
 It provides commands to register DPUs, query system information,
 view OVS flows, and check attestation status.`,
-	Version: Version,
+	Version:      Version,
+	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip store initialization for completion commands
 		if cmd.Name() == "completion" || cmd.Name() == "help" {

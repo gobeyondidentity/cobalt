@@ -23,9 +23,7 @@ func init() {
 	distributeCmd.AddCommand(distributeSSHCACmd)
 
 	// Flags for distribute ssh-ca
-	distributeSSHCACmd.Flags().StringP("target", "t", "", "Target DPU name (required)")
 	distributeSSHCACmd.Flags().Bool("force", false, "Force distribution even with stale attestation (audited)")
-	distributeSSHCACmd.MarkFlagRequired("target")
 }
 
 var distributeCmd = &cobra.Command{
@@ -38,7 +36,7 @@ Use --force to bypass stale attestation (this action is audited).`,
 }
 
 var distributeSSHCACmd = &cobra.Command{
-	Use:   "ssh-ca <ca-name>",
+	Use:   "ssh-ca <ca-name> <target>",
 	Short: "Distribute an SSH CA to a DPU",
 	Long: `Distribute an SSH CA's public key to a target DPU.
 
@@ -51,12 +49,12 @@ Attestation Requirements:
 - Use --force to bypass stale attestation (logged to audit trail)
 
 Examples:
-  km distribute ssh-ca ops-ca --target bf3-lab
-  km distribute ssh-ca ops-ca --target bf3-lab --force`,
-	Args: cobra.ExactArgs(1),
+  km distribute ssh-ca ops-ca bf3-lab
+  km distribute ssh-ca ops-ca bf3-lab --force`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		caName := args[0]
-		targetDPU, _ := cmd.Flags().GetString("target")
+		targetDPU := args[1]
 		force, _ := cmd.Flags().GetBool("force")
 
 		// Load operator context from config

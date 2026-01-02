@@ -31,7 +31,8 @@ var rootCmd = &cobra.Command{
 It provides commands to create and manage SSH Certificate Authorities,
 distribute credentials to DPUs with attestation gates, and view
 distribution history.`,
-	Version: Version,
+	Version:      Version,
+	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip store initialization for commands that don't need it
 		if cmd.Name() == "completion" || cmd.Name() == "help" || cmd.Name() == "init" || cmd.Name() == "whoami" {

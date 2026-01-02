@@ -23,20 +23,11 @@ func init() {
 	operatorCmd.AddCommand(operatorRevokeCmd)
 
 	// Flags for operator invite
-	operatorInviteCmd.Flags().String("tenant", "", "Tenant to invite operator to (required)")
 	operatorInviteCmd.Flags().String("role", "operator", "Role: admin or operator")
-	operatorInviteCmd.MarkFlagRequired("tenant")
 
 	// Flags for operator list
 	operatorListCmd.Flags().String("tenant", "", "Filter by tenant")
 
-	// Flags for operator grant
-	operatorGrantCmd.Flags().String("tenant", "", "Tenant name (required)")
-	operatorGrantCmd.Flags().String("ca", "", "CA name to grant access to (required)")
-	operatorGrantCmd.Flags().String("devices", "", "Device selector: comma-separated names or 'all' (required)")
-	operatorGrantCmd.MarkFlagRequired("tenant")
-	operatorGrantCmd.MarkFlagRequired("ca")
-	operatorGrantCmd.MarkFlagRequired("devices")
 
 	// Flags for operator revoke
 	operatorRevokeCmd.Flags().String("tenant", "", "Tenant name (required)")
@@ -52,7 +43,7 @@ var operatorCmd = &cobra.Command{
 }
 
 var operatorInviteCmd = &cobra.Command{
-	Use:   "invite <email>",
+	Use:   "invite <email> <tenant>",
 	Short: "Invite an operator to a tenant",
 	Long: `Generate an invite code for an operator to join a tenant.
 
@@ -60,12 +51,12 @@ The invite code should be shared with the operator, who will use it
 with 'km init' to bind their KeyMaker to the control plane.
 
 Examples:
-  bluectl operator invite nelson@acme.com --tenant acme
-  bluectl operator invite marcus@acme.com --tenant acme --role admin`,
-	Args: cobra.ExactArgs(1),
+  bluectl operator invite nelson@acme.com acme
+  bluectl operator invite marcus@acme.com acme --role admin`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
-		tenantName, _ := cmd.Flags().GetString("tenant")
+		tenantName := args[1]
 		role, _ := cmd.Flags().GetString("role")
 
 		// Validate role
@@ -248,19 +239,26 @@ Examples:
 }
 
 var operatorGrantCmd = &cobra.Command{
-	Use:   "grant <email>",
+	Use:   "grant <email> <tenant> <ca> <devices>",
 	Short: "Grant authorization to an operator",
 	Long: `Grant an operator access to a CA and set of devices within a tenant.
 
+Arguments:
+  email    Operator email address
+  tenant   Tenant name
+  ca       CA name to grant access to
+  devices  Device selector: comma-separated names or 'all'
+
 Examples:
-  bluectl operator grant nelson@acme.com --tenant acme --ca ops-ca --devices bf3-lab-01,bf3-lab-02
-  bluectl operator grant nelson@acme.com --tenant acme --ca dev-ca --devices all`,
-	Args: cobra.ExactArgs(1),
+  bluectl operator grant nelson@acme.com acme ops-ca bf3-lab-01
+  bluectl operator grant nelson@acme.com acme ops-ca bf3-lab-01,bf3-lab-02
+  bluectl operator grant nelson@acme.com acme dev-ca all`,
+	Args: cobra.ExactArgs(4),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
-		tenantName, _ := cmd.Flags().GetString("tenant")
-		caName, _ := cmd.Flags().GetString("ca")
-		devicesFlag, _ := cmd.Flags().GetString("devices")
+		tenantName := args[1]
+		caName := args[2]
+		devicesArg := args[3]
 
 		// Look up operator by email
 		op, err := dpuStore.GetOperatorByEmail(email)
@@ -287,12 +285,12 @@ Examples:
 		// Parse device selector
 		var deviceIDs []string
 		var deviceNames []string
-		if strings.ToLower(devicesFlag) == "all" {
+		if strings.ToLower(devicesArg) == "all" {
 			deviceIDs = []string{"all"}
 			deviceNames = []string{"all"}
 		} else {
 			// Split on comma and validate each device exists
-			names := strings.Split(devicesFlag, ",")
+			names := strings.Split(devicesArg, ",")
 			for _, name := range names {
 				name = strings.TrimSpace(name)
 				if name == "" {

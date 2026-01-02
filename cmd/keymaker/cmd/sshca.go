@@ -20,9 +20,7 @@ func init() {
 	sshCACmd.AddCommand(sshCASignCmd)
 
 	// Flags for create
-	sshCACreateCmd.Flags().StringP("name", "n", "", "CA name (required)")
 	sshCACreateCmd.Flags().String("type", "ed25519", "Key type")
-	sshCACreateCmd.MarkFlagRequired("name")
 
 	// Flags for show
 	sshCAShowCmd.Flags().Bool("public-key", false, "Output only public key")
@@ -46,7 +44,7 @@ trust certificates signed by this CA.`,
 }
 
 var sshCACreateCmd = &cobra.Command{
-	Use:   "create",
+	Use:   "create <name>",
 	Short: "Create a new SSH CA",
 	Long: `Generate a new SSH Certificate Authority key pair.
 
@@ -55,10 +53,11 @@ can be retrieved using 'km ssh-ca show <name> --public-key'
 and added to servers' sshd_config TrustedUserCAKeys directive.
 
 Examples:
-  km ssh-ca create --name ops-ca
-  km ssh-ca create --name prod-ca --type ed25519`,
+  km ssh-ca create ops-ca
+  km ssh-ca create prod-ca --type ed25519`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name, _ := cmd.Flags().GetString("name")
+		name := args[0]
 		keyType, _ := cmd.Flags().GetString("type")
 
 		// Validate key type
