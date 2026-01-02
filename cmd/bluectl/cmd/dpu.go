@@ -7,8 +7,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/grpcclient"
 	"github.com/google/uuid"
+	"github.com/nmelo/secure-infra/pkg/clierror"
+	"github.com/nmelo/secure-infra/pkg/grpcclient"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +42,12 @@ var dpuListCmd = &cobra.Command{
 			return err
 		}
 
+		// Return empty array for JSON/YAML when no DPUs
 		if outputFormat != "table" {
+			if len(dpus) == 0 {
+				fmt.Println("[]")
+				return nil
+			}
 			return formatOutput(dpus)
 		}
 
@@ -93,13 +99,20 @@ Examples:
 		port, _ := cmd.Flags().GetInt("port")
 		offline, _ := cmd.Flags().GetBool("offline")
 
-		// Check for duplicate address:port
+		// Check for duplicate address:port - idempotent: return success if exists
 		existing, err := dpuStore.GetDPUByAddress(host, port)
 		if err != nil {
 			return fmt.Errorf("failed to check for duplicates: %w", err)
 		}
 		if existing != nil {
-			return fmt.Errorf("a DPU already exists at %s:%d (name: '%s')\nUse a different address or remove the existing DPU first", host, port, existing.Name)
+			if outputFormat == "json" || outputFormat == "yaml" {
+				return formatOutput(map[string]any{
+					"status": "already_exists",
+					"dpu":    existing,
+				})
+			}
+			fmt.Printf("DPU already exists at %s:%d: %s\n", host, port, existing.Name)
+			return nil
 		}
 
 		// Check connectivity BEFORE adding (unless --offline)
@@ -134,6 +147,16 @@ Examples:
 		}
 		dpuStore.UpdateStatus(id, status)
 
+		// Get the created DPU for output
+		created, _ := dpuStore.Get(name)
+
+		if outputFormat == "json" || outputFormat == "yaml" {
+			return formatOutput(map[string]any{
+				"status": "created",
+				"dpu":    created,
+			})
+		}
+
 		fmt.Printf("Added DPU '%s' at %s:%d (id: %s)\n", name, host, port, id)
 		fmt.Println()
 		fmt.Printf("Next: Assign to a tenant with 'bluectl tenant assign <tenant> %s'\n", name)
@@ -163,7 +186,7 @@ var dpuInfoCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dpu, err := dpuStore.Get(args[0])
 		if err != nil {
-			return err
+			return clierror.DeviceNotFound(args[0])
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

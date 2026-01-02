@@ -46,18 +46,18 @@ Improvement ideas captured during hands-on walkthrough. Will address after compl
 - [ ] `bluectl tenant list` shows empty columns (DESCRIPTION, CONTACT) as blank. Show `<empty>` or `-` placeholder instead of blank. Good that TAGS exists - expand tagging support across all entities (DPUs, operators, CAs, hosts).
 - [ ] `km ssh-ca show` should explain key storage. Add field like "Private Key: Hardware-protected (TPM 2.0)" or "Private Key: Software (encrypted)". Operators need to understand where keys live and how they're protected. Builds trust in security model.
 - [ ] `km` help text only mentions SSH CAs. Should describe all credential types. Add parallel commands: `km tls-ca`, `km munge`, `km api-key`, etc.
-- [ ] `km` description is too vague: "credential management" doesn't explain what or why. Better: "km securely distributes SSH CAs, TLS certificates, and API keys to DPUs and hosts. Credentials are hardware-protected and require device attestation before distribution."
+- [ ] `km` description is too vague: "credential management" doesn't explain what or why. Better: "km securely pushes SSH CAs, TLS certificates, and API keys to DPUs and hosts. Credentials are hardware-protected and require device attestation before push."
 - [ ] `km init` description too vague. Better: "Set up operator identity using invite code. Generates keypair, registers with server, and saves config to ~/.km/".
-- [ ] `km distribute` description too vague. Better: "Push SSH CA public keys or certificates to a DPU/host. Requires fresh attestation; blocks if device integrity check fails."
+- [x] ~~`km distribute` description too vague.~~ DONE: Renamed to `km push` per ADR-006. Description updated.
 - [ ] `km history` description too vague. Better: "View your distribution history: what you pushed, to which devices, and whether attestation passed."
 - [ ] Add `bluectl distribution history` for admin view of all distributions across all operators. `km history` is operator's personal view; admins need fleet-wide audit trail.
-- [ ] "distribute" is unnatural jargon. People say "push", "deploy", or "install". Consider `km push`, `km deploy`, or `km install` instead of `km distribute`.
-- [ ] **[HIGH]** `km distribute ssh-ca --target` should be positional: `km distribute ssh-ca <ca-name> <target>`. Required args shouldn't be flags.
+- [x] ~~"distribute" is unnatural jargon.~~ DONE: Renamed to `km push` per ADR-006.
+- [x] ~~**[HIGH]** `km distribute ssh-ca --target` should be positional.~~ DONE: Now `km push ssh-ca <ca-name> <target>`. Already positional.
 - [ ] **[HIGH]** After `km init`, operator should see what they can do: "You have access to 0 CAs and 0 devices. Ask your admin to grant access." Or `km status` showing current permissions.
 - [ ] **[HIGH]** `bluectl operator grant` has too many required flags. Should be positional: `bluectl operator grant <email> <ca> <devices>`. Tenant could be inferred from operator's membership.
 - [ ] **[HIGH]** `bluectl trust create` required flags should be positional: `bluectl trust create <source> <target>` instead of `--source` and `--target` flags.
-- [ ] `bluectl trust create` should have `--force` flag to bypass attestation check (like `km distribute --force`). Currently no way to create trust without fresh attestation.
-- [ ] **[HIGH]** `bluectl trust create` success should hint next steps and explain what trust enables. E.g., "Trust created. The source DPU can now SSH to the target using CA-signed certificates. Next: Run `km distribute ssh-ca <ca> <target>` to push credentials."
+- [ ] `bluectl trust create` should have `--force` flag to bypass attestation check (like `km push --force`). Currently no way to create trust without fresh attestation.
+- [ ] **[HIGH]** `bluectl trust create` success should hint next steps and explain what trust enables. E.g., "Trust created. The source DPU can now SSH to the target using CA-signed certificates. Next: Run `km push ssh-ca <ca> <target>` to push credentials."
 - [ ] **[HIGH]** `host-agent` required flags should be positional: `host-agent <control-plane-url> <dpu-name>` instead of `host-agent --control-plane <url> --dpu <name>`.
 
 ## Security
@@ -82,17 +82,17 @@ Improvement ideas captured during hands-on walkthrough. Will address after compl
 
 ## Architecture
 
-- [ ] **Design question**: Who triggers attestation? Current: admin manually runs `bluectl attestation`. Alternative: `km distribute` auto-triggers attestation if stale/missing. Trade-offs: (1) manual = admin controls when devices are verified, (2) auto = smoother operator UX but may bypass admin oversight. Need architect decision.
-- [ ] **Setup gap**: `km distribute ssh-ca` fails with "host SSH not configured" if DPU agent isn't set up for SSH. Agent needs `HOST_SSH_ADDR`, `HOST_SSH_USER`, `HOST_SSH_KEY` env vars. Need: (1) document in setup guide including SSH key setup from DPU to host, (2) clearer error message showing which env vars to set, (3) consider agent flags instead of env vars for discoverability.
-- [ ] **Conceptual gap**: DPU vs Host relationship not explained. Operators think they're managing a "device" but then see "host SSH" errors. Need to explain upfront: DPU is a card inside a host server; agent runs on DPU; credentials get distributed to the host. Add architecture diagram or explanation in docs and CLI help.
+- [ ] **Design question**: Who triggers attestation? Current: admin manually runs `bluectl attestation`. Alternative: `km push` auto-triggers attestation if stale/missing. Trade-offs: (1) manual = admin controls when devices are verified, (2) auto = smoother operator UX but may bypass admin oversight. Need architect decision.
+- [ ] **Setup gap**: `km push ssh-ca` fails with "host SSH not configured" if DPU agent isn't set up for SSH. Agent needs `HOST_SSH_ADDR`, `HOST_SSH_USER`, `HOST_SSH_KEY` env vars. Need: (1) document in setup guide including SSH key setup from DPU to host, (2) clearer error message showing which env vars to set, (3) consider agent flags instead of env vars for discoverability.
+- [ ] **Conceptual gap**: DPU vs Host relationship not explained. Operators think they're managing a "device" but then see "host SSH" errors. Need to explain upfront: DPU is a card inside a host server; agent runs on DPU; credentials get pushed to the host. Add architecture diagram or explanation in docs and CLI help.
 - [ ] **Setup gap**: Attestation shows "unavailable" on real hardware - no TPM/attestation configured. Document how to set up attestation on BlueField (NVIDIA Attestation SDK, SPDM measurements). For testing, provide mock/dev mode.
-- [ ] **Attestation UX confusion**: (1) `bluectl attestation` says "UNAVAILABLE" but "Attestation saved" - contradictory; (2) `km distribute` says "stale (1m ago)" for same device - status terminology inconsistent; (3) "No certificates available" doesn't say WHICH certificates (TPM? attestation?). Clarify terminology and make status consistent across commands.
-- [ ] **[HIGH] Architecture rethink**: Why does DPU agent SSH into host to distribute credentials? Host-agent already exists but is push-only (reports posture). Better flow: extend host-agent to listen for credential distribution requests, install SSH CAs, configure sshd. Eliminates SSH key setup complexity, cleaner separation. DPU agent handles DPU tasks; host-agent handles host tasks.
-- [ ] **Host agent enrollment**: How does host-agent get authorized to receive credentials? Need enrollment flow similar to `km init` for operators. Consider: invite code, mTLS with auto-provisioned certs, or trust-on-first-use tied to DPU attestation. Explore tmfifo as secure pipe between DPU and host for enrollment/credential distribution.
+- [ ] **Attestation UX confusion**: (1) `bluectl attestation` says "UNAVAILABLE" but "Attestation saved" - contradictory; (2) `km push` says "stale (1m ago)" for same device - status terminology inconsistent; (3) "No certificates available" doesn't say WHICH certificates (TPM? attestation?). Clarify terminology and make status consistent across commands.
+- [ ] **[HIGH] Architecture rethink**: Why does DPU agent SSH into host to push credentials? Host-agent already exists but is push-only (reports posture). Better flow: extend host-agent to listen for credential push requests, install SSH CAs, configure sshd. Eliminates SSH key setup complexity, cleaner separation. DPU agent handles DPU tasks; host-agent handles host tasks.
+- [ ] **Host agent enrollment**: How does host-agent get authorized to receive credentials? Need enrollment flow similar to `km init` for operators. Consider: invite code, mTLS with auto-provisioned certs, or trust-on-first-use tied to DPU attestation. Explore tmfifo as secure pipe between DPU and host for enrollment/credential push.
 - [ ] **Host agent as SSH agent**: Consider making host-agent act as an SSH agent (like ssh-agent). Could manage SSH keys/certs in-memory, integrate with sshd via AuthorizedKeysCommand, avoid writing keys to disk. Cleaner security model.
-- [ ] `km distribute` success output should show details: where CA was installed (e.g., `/etc/ssh/trusted-user-ca-keys.d/test-ca.pub`), what command reloaded sshd (e.g., `systemctl reload sshd`). Helps operators verify and troubleshoot.
+- [x] ~~`km distribute` success output should show details.~~ DONE: `km push` now shows installed path and sshd reload status per ADR-006.
 - [ ] Document that SSH CA trust enables machine-to-machine (M2M) communication, not just human SSH access. Workloads can authenticate to each other using CA-signed certificates. Important for HPC/AI pipelines. Surface this in CLI help and docs.
-- [ ] Add `km ssh-ca test <ca-name> <host>` to verify distribution worked. Signs a temp cert, attempts SSH connection, reports success/failure. Hint to use this after `km distribute` succeeds.
+- [ ] Add `km ssh-ca test <ca-name> <host>` to verify push worked. Signs a temp cert, attempts SSH connection, reports success/failure. Hint to use this after `km push` succeeds.
 
 ## Testing
 

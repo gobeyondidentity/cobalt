@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nmelo/secure-infra/pkg/clierror"
 	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -27,7 +28,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "km",
 	Short: "Keymaker - Credential management for Secure Infrastructure",
-	Long: `km (keymaker) securely manages and distributes credentials to DPUs and hosts.
+	Long: `km (keymaker) securely manages and pushes credentials to DPUs and hosts.
 
 Credential types:
   - SSH CA:    Certificate authorities for passwordless SSH authentication
@@ -35,13 +36,13 @@ Credential types:
   - (Future)   TLS certificates, MUNGE keys, API keys
 
 All credentials are hardware-protected using TPM or Secure Enclave when available.
-Distribution requires fresh attestation from the target DPU, ensuring credentials
+Push requires fresh attestation from the target DPU, ensuring credentials
 only reach devices with verified firmware integrity.
 
 Getting started:
   1. Bind your workstation: km init
   2. Create an SSH CA:      km ssh-ca create ops-ca
-  3. Distribute to a DPU:   km distribute ssh-ca ops-ca target-dpu
+  3. Push to a DPU:         km push ssh-ca ops-ca target-dpu
   4. View history:          km history`,
 	Version:      Version,
 	SilenceUsage: true,
@@ -118,4 +119,22 @@ func outputYAML(data interface{}) error {
 	}
 	fmt.Print(string(out))
 	return nil
+}
+
+// handleError handles command errors with proper exit codes and structured output.
+// It checks if the error is already a CLIError and formats it appropriately,
+// otherwise wraps unknown errors as InternalError.
+func handleError(cmd *cobra.Command, err error) {
+	format, _ := cmd.Flags().GetString("output")
+
+	// Check if it's already a CLIError
+	if cliErr, ok := err.(*clierror.CLIError); ok {
+		clierror.PrintError(cliErr, format)
+		os.Exit(cliErr.ExitCode)
+	}
+
+	// Wrap unknown errors as InternalError
+	cliErr := clierror.InternalError(err)
+	clierror.PrintError(cliErr, format)
+	os.Exit(cliErr.ExitCode)
 }

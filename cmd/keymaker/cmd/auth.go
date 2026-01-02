@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/nmelo/secure-infra/pkg/clierror"
 )
 
 // AuthorizationCheckRequest is sent to the control plane to check authorization.
@@ -43,13 +45,13 @@ type Authorization struct {
 func checkAuthorization(caName, deviceName string) error {
 	config, err := loadConfig()
 	if err != nil {
-		return fmt.Errorf("KeyMaker not initialized. Run 'km init' first")
+		return clierror.TokenExpired()
 	}
 
 	// Look up CA ID by name
 	caResp, err := http.Get(config.ControlPlaneURL + "/api/credentials/ssh-cas/" + url.QueryEscape(caName))
 	if err != nil {
-		return fmt.Errorf("failed to connect to control plane: %w", err)
+		return clierror.ConnectionFailed("control plane")
 	}
 	defer caResp.Body.Close()
 
@@ -57,14 +59,14 @@ func checkAuthorization(caName, deviceName string) error {
 		return &AuthorizationError{Type: "ca", Resource: caName}
 	}
 	if caResp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to look up CA: HTTP %d", caResp.StatusCode)
+		return clierror.InternalError(fmt.Errorf("failed to look up CA: HTTP %d", caResp.StatusCode))
 	}
 
 	var caInfo struct {
 		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(caResp.Body).Decode(&caInfo); err != nil {
-		return fmt.Errorf("failed to parse CA response: %w", err)
+		return clierror.InternalError(fmt.Errorf("failed to parse CA response: %w", err))
 	}
 
 	// Look up device ID by name if a device is specified
@@ -72,7 +74,7 @@ func checkAuthorization(caName, deviceName string) error {
 	if deviceName != "" {
 		dpuResp, err := http.Get(config.ControlPlaneURL + "/api/dpus/" + url.QueryEscape(deviceName))
 		if err != nil {
-			return fmt.Errorf("failed to connect to control plane: %w", err)
+			return clierror.ConnectionFailed("control plane")
 		}
 		defer dpuResp.Body.Close()
 
@@ -80,14 +82,14 @@ func checkAuthorization(caName, deviceName string) error {
 			return &AuthorizationError{Type: "device", Resource: deviceName}
 		}
 		if dpuResp.StatusCode != http.StatusOK {
-			return fmt.Errorf("failed to look up device: HTTP %d", dpuResp.StatusCode)
+			return clierror.InternalError(fmt.Errorf("failed to look up device: HTTP %d", dpuResp.StatusCode))
 		}
 
 		var dpuInfo struct {
 			ID string `json:"id"`
 		}
 		if err := json.NewDecoder(dpuResp.Body).Decode(&dpuInfo); err != nil {
-			return fmt.Errorf("failed to parse device response: %w", err)
+			return clierror.InternalError(fmt.Errorf("failed to parse device response: %w", err))
 		}
 		deviceID = dpuInfo.ID
 	}
@@ -103,7 +105,7 @@ func checkAuthorization(caName, deviceName string) error {
 
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return fmt.Errorf("failed to marshal authorization request: %w", err)
+		return clierror.InternalError(fmt.Errorf("failed to marshal authorization request: %w", err))
 	}
 
 	resp, err := http.Post(
@@ -112,13 +114,13 @@ func checkAuthorization(caName, deviceName string) error {
 		bytes.NewReader(jsonBody),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to connect to control plane: %w", err)
+		return clierror.ConnectionFailed("control plane")
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read authorization response: %w", err)
+		return clierror.InternalError(fmt.Errorf("failed to read authorization response: %w", err))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -126,14 +128,14 @@ func checkAuthorization(caName, deviceName string) error {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
-			return fmt.Errorf("authorization check failed: %s", errResp.Error)
+			return clierror.InternalError(fmt.Errorf("authorization check failed: %s", errResp.Error))
 		}
-		return fmt.Errorf("authorization check failed: HTTP %d", resp.StatusCode)
+		return clierror.InternalError(fmt.Errorf("authorization check failed: HTTP %d", resp.StatusCode))
 	}
 
 	var authResp AuthorizationCheckResponse
 	if err := json.Unmarshal(body, &authResp); err != nil {
-		return fmt.Errorf("failed to parse authorization response: %w", err)
+		return clierror.InternalError(fmt.Errorf("failed to parse authorization response: %w", err))
 	}
 
 	if !authResp.Authorized {
@@ -156,7 +158,7 @@ func checkAuthorization(caName, deviceName string) error {
 func getAuthorizations() ([]Authorization, error) {
 	config, err := loadConfig()
 	if err != nil {
-		return nil, fmt.Errorf("KeyMaker not initialized. Run 'km init' first")
+		return nil, clierror.TokenExpired()
 	}
 
 	reqURL := fmt.Sprintf("%s/api/v1/authorizations?operator_id=%s",
@@ -164,13 +166,13 @@ func getAuthorizations() ([]Authorization, error) {
 
 	resp, err := http.Get(reqURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to control plane: %w", err)
+		return nil, clierror.ConnectionFailed("control plane")
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read authorizations response: %w", err)
+		return nil, clierror.InternalError(fmt.Errorf("failed to read authorizations response: %w", err))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -178,14 +180,14 @@ func getAuthorizations() ([]Authorization, error) {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
-			return nil, fmt.Errorf("failed to fetch authorizations: %s", errResp.Error)
+			return nil, clierror.InternalError(fmt.Errorf("failed to fetch authorizations: %s", errResp.Error))
 		}
-		return nil, fmt.Errorf("failed to fetch authorizations: HTTP %d", resp.StatusCode)
+		return nil, clierror.InternalError(fmt.Errorf("failed to fetch authorizations: HTTP %d", resp.StatusCode))
 	}
 
 	var authorizations []Authorization
 	if err := json.Unmarshal(body, &authorizations); err != nil {
-		return nil, fmt.Errorf("failed to parse authorizations response: %w", err)
+		return nil, clierror.InternalError(fmt.Errorf("failed to parse authorizations response: %w", err))
 	}
 
 	return authorizations, nil

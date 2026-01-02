@@ -7,8 +7,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/google/uuid"
+	"github.com/nmelo/secure-infra/pkg/clierror"
+	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/spf13/cobra"
 )
 
@@ -81,9 +82,21 @@ Examples:
 			return fmt.Errorf("tenant not found: %s", tenantName)
 		}
 
-		// Check if operator exists, create if not
+		// Check if operator exists
 		op, err := dpuStore.GetOperatorByEmail(email)
-		if err != nil {
+		if err == nil && op != nil {
+			// Operator exists - idempotent: if not pending_invite, return success
+			if op.Status != "pending_invite" {
+				if outputFormat == "json" || outputFormat == "yaml" {
+					return formatOutput(map[string]any{
+						"status":   "already_exists",
+						"operator": op,
+					})
+				}
+				fmt.Printf("Operator '%s' already exists (status: %s)\n", email, op.Status)
+				return nil
+			}
+		} else {
 			// Create new operator with pending status
 			opID := "op_" + uuid.New().String()[:8]
 			if err := dpuStore.CreateOperator(opID, email, ""); err != nil {
@@ -127,6 +140,15 @@ Examples:
 			return fmt.Errorf("failed to create invite: %w", err)
 		}
 
+		if outputFormat == "json" || outputFormat == "yaml" {
+			return formatOutput(map[string]any{
+				"status":      "invited",
+				"operator":    op,
+				"invite_code": code,
+				"expires_at":  invite.ExpiresAt,
+			})
+		}
+
 		fmt.Printf("Invite created for %s\n", email)
 		fmt.Printf("Code: %s\n", code)
 		fmt.Printf("Expires: %s\n", invite.ExpiresAt.Format(time.RFC3339))
@@ -168,7 +190,12 @@ Examples:
 			}
 		}
 
+		// Return empty array for JSON/YAML when no operators
 		if outputFormat != "table" {
+			if len(operators) == 0 {
+				fmt.Println("[]")
+				return nil
+			}
 			return formatOutput(operators)
 		}
 
@@ -274,7 +301,7 @@ Examples:
 		// Look up operator by email
 		op, err := dpuStore.GetOperatorByEmail(email)
 		if err != nil {
-			return fmt.Errorf("operator '%s' not found", email)
+			return clierror.OperatorNotFound(email)
 		}
 
 		// Look up tenant by name
@@ -456,7 +483,7 @@ Examples:
 		// Look up operator by email
 		op, err := dpuStore.GetOperatorByEmail(email)
 		if err != nil {
-			return fmt.Errorf("operator '%s' not found", email)
+			return clierror.OperatorNotFound(email)
 		}
 
 		// Look up tenant by name

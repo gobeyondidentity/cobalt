@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nmelo/secure-infra/pkg/clierror"
 	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -154,4 +155,23 @@ func outputYAML(data interface{}) error {
 	}
 	fmt.Print(string(out))
 	return nil
+}
+
+// HandleError handles CLI errors with proper output formatting and exit codes.
+func HandleError(cmd *cobra.Command, err error) {
+	if err == nil {
+		return
+	}
+
+	outputFormat, _ := cmd.Flags().GetString("output")
+
+	var cliErr *clierror.CLIError
+	if e, ok := err.(*clierror.CLIError); ok {
+		cliErr = e
+	} else {
+		cliErr = clierror.InternalError(err)
+	}
+
+	clierror.PrintError(cliErr, outputFormat)
+	os.Exit(cliErr.ExitCode)
 }

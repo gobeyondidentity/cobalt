@@ -11,6 +11,7 @@ import (
 	"time"
 
 	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
+	"github.com/nmelo/secure-infra/pkg/clierror"
 	"github.com/nmelo/secure-infra/pkg/grpcclient"
 	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/spf13/cobra"
@@ -49,7 +50,7 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dpu, err := dpuStore.Get(args[0])
 		if err != nil {
-			return err
+			return clierror.DeviceNotFound(args[0])
 		}
 
 		showPEM, _ := cmd.Flags().GetBool("pem")
@@ -62,7 +63,7 @@ Examples:
 
 		client, err := grpcclient.NewClient(dpu.Address())
 		if err != nil {
-			return fmt.Errorf("failed to connect: %w", err)
+			return clierror.ConnectionFailed(dpu.Address())
 		}
 		defer client.Close()
 
@@ -75,7 +76,7 @@ Examples:
 				})
 				fmt.Printf("\nAttestation saved: status=failed, last_validated=%s\n", time.Now().Format(time.RFC3339))
 			}
-			return fmt.Errorf("failed to get attestation: %w", err)
+			return clierror.AttestationFailed(err.Error())
 		}
 
 		if outputFormat != "table" {

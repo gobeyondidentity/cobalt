@@ -7,7 +7,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/nmelo/secure-infra/pkg/clierror"
 	"github.com/nmelo/secure-infra/pkg/sshca"
+	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
@@ -65,13 +67,23 @@ Examples:
 			return fmt.Errorf("unsupported key type: %s (only ed25519 is supported)", keyType)
 		}
 
-		// Check if CA already exists
-		exists, err := dpuStore.SSHCAExists(name)
-		if err != nil {
-			return fmt.Errorf("failed to check CA existence: %w", err)
-		}
-		if exists {
-			return fmt.Errorf("SSH CA '%s' already exists", name)
+		// Check if CA already exists - idempotent: return success if exists
+		existing, err := dpuStore.GetSSHCA(name)
+		if err == nil && existing != nil {
+			if outputFormat == "json" || outputFormat == "yaml" {
+				return formatOutput(map[string]any{
+					"status": "already_exists",
+					"ssh_ca": map[string]any{
+						"id":         existing.ID,
+						"name":       existing.Name,
+						"type":       existing.KeyType,
+						"public_key": strings.TrimSpace(string(existing.PublicKey)),
+						"created_at": existing.CreatedAt,
+					},
+				})
+			}
+			fmt.Printf("SSH CA '%s' already exists\n", name)
+			return nil
 		}
 
 		// Generate CA
@@ -102,6 +114,18 @@ Examples:
 			return err
 		}
 
+		if outputFormat == "json" || outputFormat == "yaml" {
+			return formatOutput(map[string]any{
+				"status": "created",
+				"ssh_ca": map[string]any{
+					"id":         id,
+					"name":       name,
+					"type":       keyType,
+					"public_key": strings.TrimSpace(pubKeyStr),
+				},
+			})
+		}
+
 		fmt.Printf("SSH CA '%s' created. ID: %s\n", name, id)
 		return nil
 	},
@@ -113,10 +137,15 @@ var sshCAListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cas, err := dpuStore.ListSSHCAs()
 		if err != nil {
-			return err
+			return clierror.InternalError(err)
 		}
 
+		// For JSON/YAML output, always return a list (empty [] if no CAs)
 		if outputFormat != "table" {
+			// Ensure we return an empty array, not null
+			if cas == nil {
+				cas = []*store.SSHCA{}
+			}
 			return formatOutput(cas)
 		}
 
