@@ -96,6 +96,18 @@ type KeyMaker struct {
 	Status            string // active, revoked
 }
 
+// Authorization grants an operator access to specific CAs and devices.
+type Authorization struct {
+	ID         string
+	OperatorID string
+	TenantID   string
+	CreatedAt  time.Time
+	CreatedBy  string
+	ExpiresAt  *time.Time
+	CAIDs      []string // Populated by join
+	DeviceIDs  []string // Populated by join, "all" means all devices
+}
+
 // GRPCAddress returns the gRPC address for this Host Agent.
 func (h *Host) GRPCAddress() string {
 	return fmt.Sprintf("%s:%d", h.Address, h.Port)
@@ -287,6 +299,31 @@ func (s *Store) migrate() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_invite_codes_hash ON invite_codes(code_hash);
 	CREATE INDEX IF NOT EXISTS idx_invite_codes_email ON invite_codes(operator_email);
+
+	-- Authorization
+	CREATE TABLE IF NOT EXISTS authorizations (
+		id TEXT PRIMARY KEY,
+		operator_id TEXT NOT NULL REFERENCES operators(id),
+		tenant_id TEXT NOT NULL REFERENCES tenants(id),
+		created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+		created_by TEXT NOT NULL,
+		expires_at INTEGER
+	);
+
+	CREATE TABLE IF NOT EXISTS authorization_cas (
+		authorization_id TEXT NOT NULL REFERENCES authorizations(id) ON DELETE CASCADE,
+		ca_id TEXT NOT NULL,
+		PRIMARY KEY (authorization_id, ca_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS authorization_devices (
+		authorization_id TEXT NOT NULL REFERENCES authorizations(id) ON DELETE CASCADE,
+		device_id TEXT NOT NULL,
+		PRIMARY KEY (authorization_id, device_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_authorizations_operator ON authorizations(operator_id);
+	CREATE INDEX IF NOT EXISTS idx_authorizations_tenant ON authorizations(tenant_id);
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err

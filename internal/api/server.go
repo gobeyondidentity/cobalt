@@ -84,6 +84,13 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// KeyMaker routes
 	mux.HandleFunc("POST /api/v1/keymakers/bind", s.handleBindKeyMaker)
+
+	// Authorization routes
+	mux.HandleFunc("POST /api/v1/authorizations", s.handleCreateAuthorization)
+	mux.HandleFunc("GET /api/v1/authorizations", s.handleListAuthorizations)
+	mux.HandleFunc("GET /api/v1/authorizations/{id}", s.handleGetAuthorization)
+	mux.HandleFunc("DELETE /api/v1/authorizations/{id}", s.handleDeleteAuthorization)
+	mux.HandleFunc("POST /api/v1/authorizations/check", s.handleCheckAuthorization)
 }
 
 // ----- DPU Types -----

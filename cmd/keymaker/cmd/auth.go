@@ -1,0 +1,179 @@
+package cmd
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+)
+
+// AuthorizationCheckRequest is sent to the control plane to check authorization.
+type AuthorizationCheckRequest struct {
+	OperatorID string `json:"operator_id"`
+	CAID       string `json:"ca_id"`
+	DeviceID   string `json:"device_id,omitempty"`
+}
+
+// AuthorizationCheckResponse is returned from the control plane.
+type AuthorizationCheckResponse struct {
+	Authorized bool   `json:"authorized"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+// Authorization represents a single authorization entry from the control plane.
+type Authorization struct {
+	ID        string   `json:"id"`
+	OperatorID string  `json:"operator_id"`
+	TenantID  string   `json:"tenant_id"`
+	CAIDs     []string `json:"ca_ids"`
+	DeviceIDs []string `json:"device_ids"`
+	CreatedAt string   `json:"created_at"`
+	// Legacy fields for backward compatibility with existing code
+	CAID    string   `json:"ca_id"`
+	CAName  string   `json:"ca_name"`
+	Devices []string `json:"devices"`
+}
+
+// checkAuthorization verifies that the operator is authorized for the given CA and optionally device.
+// Returns nil if authorized, or an error with appropriate message if not.
+// caName is the human-readable CA name (e.g., "test-ca"), which is resolved to a CA ID via API lookup.
+func checkAuthorization(caName, deviceID string) error {
+	config, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("KeyMaker not initialized. Run 'km init' first")
+	}
+
+	// Look up CA ID by name
+	caResp, err := http.Get(config.ControlPlaneURL + "/api/credentials/ssh-cas/" + url.QueryEscape(caName))
+	if err != nil {
+		return fmt.Errorf("failed to connect to control plane: %w", err)
+	}
+	defer caResp.Body.Close()
+
+	if caResp.StatusCode == http.StatusNotFound {
+		return &AuthorizationError{Type: "ca", Resource: caName}
+	}
+	if caResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to look up CA: HTTP %d", caResp.StatusCode)
+	}
+
+	var caInfo struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(caResp.Body).Decode(&caInfo); err != nil {
+		return fmt.Errorf("failed to parse CA response: %w", err)
+	}
+
+	// Now use caInfo.ID for the authorization check
+	reqBody := AuthorizationCheckRequest{
+		OperatorID: config.OperatorID,
+		CAID:       caInfo.ID,
+	}
+	if deviceID != "" {
+		reqBody.DeviceID = deviceID
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal authorization request: %w", err)
+	}
+
+	resp, err := http.Post(
+		config.ControlPlaneURL+"/api/v1/authorizations/check",
+		"application/json",
+		bytes.NewReader(jsonBody),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to connect to control plane: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read authorization response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
+			return fmt.Errorf("authorization check failed: %s", errResp.Error)
+		}
+		return fmt.Errorf("authorization check failed: HTTP %d", resp.StatusCode)
+	}
+
+	var authResp AuthorizationCheckResponse
+	if err := json.Unmarshal(body, &authResp); err != nil {
+		return fmt.Errorf("failed to parse authorization response: %w", err)
+	}
+
+	if !authResp.Authorized {
+		if deviceID != "" && authResp.Reason != "" && authResp.Reason == "device_not_authorized" {
+			return &AuthorizationError{
+				Type:     "device",
+				Resource: deviceID,
+			}
+		}
+		return &AuthorizationError{
+			Type:     "ca",
+			Resource: caName,
+		}
+	}
+
+	return nil
+}
+
+// getAuthorizations fetches the list of authorizations for the current operator.
+func getAuthorizations() ([]Authorization, error) {
+	config, err := loadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("KeyMaker not initialized. Run 'km init' first")
+	}
+
+	reqURL := fmt.Sprintf("%s/api/v1/authorizations?operator_id=%s",
+		config.ControlPlaneURL, url.QueryEscape(config.OperatorID))
+
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to control plane: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read authorizations response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
+			return nil, fmt.Errorf("failed to fetch authorizations: %s", errResp.Error)
+		}
+		return nil, fmt.Errorf("failed to fetch authorizations: HTTP %d", resp.StatusCode)
+	}
+
+	var authorizations []Authorization
+	if err := json.Unmarshal(body, &authorizations); err != nil {
+		return nil, fmt.Errorf("failed to parse authorizations response: %w", err)
+	}
+
+	return authorizations, nil
+}
+
+// AuthorizationError represents an authorization failure with structured information.
+type AuthorizationError struct {
+	Type     string // "ca" or "device"
+	Resource string // The CA name or device name that was not authorized
+}
+
+func (e *AuthorizationError) Error() string {
+	if e.Type == "device" {
+		return fmt.Sprintf("Error: Not authorized for device '%s'\nHint: Contact your tenant admin for access.", e.Resource)
+	}
+	return fmt.Sprintf("Error: Not authorized for CA '%s'\nHint: Contact your tenant admin for access.", e.Resource)
+}

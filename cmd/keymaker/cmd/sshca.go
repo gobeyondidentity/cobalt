@@ -218,6 +218,15 @@ Examples:
 		validityStr, _ := cmd.Flags().GetString("validity")
 		pubkeyPath, _ := cmd.Flags().GetString("pubkey")
 
+		// Check authorization before signing
+		if err := checkAuthorization(caName, ""); err != nil {
+			if authErr, ok := err.(*AuthorizationError); ok {
+				fmt.Fprintln(os.Stderr, authErr.Error())
+				os.Exit(1)
+			}
+			return err
+		}
+
 		// Parse validity duration
 		validity, err := sshca.ParseDuration(validityStr)
 		if err != nil {

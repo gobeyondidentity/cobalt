@@ -53,6 +53,15 @@ Examples:
 		targetDPU, _ := cmd.Flags().GetString("target")
 		force, _ := cmd.Flags().GetBool("force")
 
+		// Check authorization before distributing (CA + device)
+		if err := checkAuthorization(caName, targetDPU); err != nil {
+			if authErr, ok := err.(*AuthorizationError); ok {
+				fmt.Fprintln(cmd.ErrOrStderr(), authErr.Error())
+				return fmt.Errorf("authorization denied")
+			}
+			return err
+		}
+
 		// Verify SSH CA exists and get it
 		ca, err := dpuStore.GetSSHCA(caName)
 		if err != nil {

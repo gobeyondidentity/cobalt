@@ -18,6 +18,9 @@ func init() {
 	operatorCmd.AddCommand(operatorListCmd)
 	operatorCmd.AddCommand(operatorSuspendCmd)
 	operatorCmd.AddCommand(operatorActivateCmd)
+	operatorCmd.AddCommand(operatorGrantCmd)
+	operatorCmd.AddCommand(operatorAuthorizationsCmd)
+	operatorCmd.AddCommand(operatorRevokeCmd)
 
 	// Flags for operator invite
 	operatorInviteCmd.Flags().String("tenant", "", "Tenant to invite operator to (required)")
@@ -26,6 +29,20 @@ func init() {
 
 	// Flags for operator list
 	operatorListCmd.Flags().String("tenant", "", "Filter by tenant")
+
+	// Flags for operator grant
+	operatorGrantCmd.Flags().String("tenant", "", "Tenant name (required)")
+	operatorGrantCmd.Flags().String("ca", "", "CA name to grant access to (required)")
+	operatorGrantCmd.Flags().String("devices", "", "Device selector: comma-separated names or 'all' (required)")
+	operatorGrantCmd.MarkFlagRequired("tenant")
+	operatorGrantCmd.MarkFlagRequired("ca")
+	operatorGrantCmd.MarkFlagRequired("devices")
+
+	// Flags for operator revoke
+	operatorRevokeCmd.Flags().String("tenant", "", "Tenant name (required)")
+	operatorRevokeCmd.Flags().String("ca", "", "CA name to revoke access from (required)")
+	operatorRevokeCmd.MarkFlagRequired("tenant")
+	operatorRevokeCmd.MarkFlagRequired("ca")
 }
 
 var operatorCmd = &cobra.Command{
@@ -226,6 +243,260 @@ Examples:
 		}
 
 		fmt.Printf("Operator %s activated.\n", email)
+		return nil
+	},
+}
+
+var operatorGrantCmd = &cobra.Command{
+	Use:   "grant <email>",
+	Short: "Grant authorization to an operator",
+	Long: `Grant an operator access to a CA and set of devices within a tenant.
+
+Examples:
+  bluectl operator grant nelson@acme.com --tenant acme --ca ops-ca --devices bf3-lab-01,bf3-lab-02
+  bluectl operator grant nelson@acme.com --tenant acme --ca dev-ca --devices all`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+		tenantName, _ := cmd.Flags().GetString("tenant")
+		caName, _ := cmd.Flags().GetString("ca")
+		devicesFlag, _ := cmd.Flags().GetString("devices")
+
+		// Look up operator by email
+		op, err := dpuStore.GetOperatorByEmail(email)
+		if err != nil {
+			return fmt.Errorf("operator '%s' not found", email)
+		}
+
+		// Look up tenant by name
+		tenant, err := dpuStore.GetTenant(tenantName)
+		if err != nil {
+			return fmt.Errorf("tenant '%s' not found", tenantName)
+		}
+
+		// Look up CA by name and verify it belongs to this tenant
+		ca, err := dpuStore.GetSSHCA(caName)
+		if err != nil {
+			return fmt.Errorf("CA '%s' not found in tenant '%s'", caName, tenantName)
+		}
+		// Verify CA belongs to tenant (if tenant-scoped)
+		if ca.TenantID != nil && *ca.TenantID != tenant.ID {
+			return fmt.Errorf("CA '%s' not found in tenant '%s'", caName, tenantName)
+		}
+
+		// Parse device selector
+		var deviceIDs []string
+		var deviceNames []string
+		if strings.ToLower(devicesFlag) == "all" {
+			deviceIDs = []string{"all"}
+			deviceNames = []string{"all"}
+		} else {
+			// Split on comma and validate each device exists
+			names := strings.Split(devicesFlag, ",")
+			for _, name := range names {
+				name = strings.TrimSpace(name)
+				if name == "" {
+					continue
+				}
+				// Look up device (DPU) by name
+				dpu, err := dpuStore.Get(name)
+				if err != nil {
+					return fmt.Errorf("device '%s' not found", name)
+				}
+				deviceIDs = append(deviceIDs, dpu.ID)
+				deviceNames = append(deviceNames, dpu.Name)
+			}
+		}
+
+		// Create authorization
+		authID := "auth_" + uuid.New().String()[:8]
+		err = dpuStore.CreateAuthorization(
+			authID,
+			op.ID,
+			tenant.ID,
+			[]string{ca.ID},
+			deviceIDs,
+			"admin", // TODO: get from auth context in Phase 3
+			nil,     // no expiration
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create authorization: %w", err)
+		}
+
+		fmt.Println("Authorization granted:")
+		fmt.Printf("  Operator: %s\n", email)
+		fmt.Printf("  Tenant:   %s\n", tenantName)
+		fmt.Printf("  CA:       %s\n", caName)
+		fmt.Printf("  Devices:  %s\n", strings.Join(deviceNames, ", "))
+		return nil
+	},
+}
+
+var operatorAuthorizationsCmd = &cobra.Command{
+	Use:   "authorizations <email>",
+	Short: "List operator's authorizations",
+	Long: `List all authorizations granted to an operator.
+
+Examples:
+  bluectl operator authorizations nelson@acme.com`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+
+		// Look up operator by email
+		op, err := dpuStore.GetOperatorByEmail(email)
+		if err != nil {
+			return fmt.Errorf("operator '%s' not found", email)
+		}
+
+		// List authorizations for this operator
+		auths, err := dpuStore.ListAuthorizationsByOperator(op.ID)
+		if err != nil {
+			return fmt.Errorf("failed to list authorizations: %w", err)
+		}
+
+		if len(auths) == 0 {
+			fmt.Printf("No authorizations found for %s.\n", email)
+			return nil
+		}
+
+		// Build a lookup map for tenants and CAs
+		tenants := make(map[string]string) // ID -> name
+		cas := make(map[string]string)     // ID -> name
+		devices := make(map[string]string) // ID -> name
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "TENANT\tCA\tDEVICES\tEXPIRES")
+
+		for _, auth := range auths {
+			// Get tenant name (cache lookup)
+			tenantName := tenants[auth.TenantID]
+			if tenantName == "" {
+				if t, err := dpuStore.GetTenant(auth.TenantID); err == nil {
+					tenantName = t.Name
+					tenants[auth.TenantID] = tenantName
+				} else {
+					tenantName = auth.TenantID
+				}
+			}
+
+			// Get CA names
+			var caNames []string
+			for _, caID := range auth.CAIDs {
+				caName := cas[caID]
+				if caName == "" {
+					if c, err := dpuStore.GetSSHCAByID(caID); err == nil {
+						caName = c.Name
+						cas[caID] = caName
+					} else {
+						caName = caID
+					}
+				}
+				caNames = append(caNames, caName)
+			}
+
+			// Get device names
+			var deviceNames []string
+			for _, deviceID := range auth.DeviceIDs {
+				if deviceID == "all" {
+					deviceNames = append(deviceNames, "all")
+					continue
+				}
+				deviceName := devices[deviceID]
+				if deviceName == "" {
+					if d, err := dpuStore.Get(deviceID); err == nil {
+						deviceName = d.Name
+						devices[deviceID] = deviceName
+					} else {
+						deviceName = deviceID
+					}
+				}
+				deviceNames = append(deviceNames, deviceName)
+			}
+
+			// Format expiration
+			expires := "never"
+			if auth.ExpiresAt != nil {
+				expires = auth.ExpiresAt.Format("2006-01-02")
+			}
+
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+				tenantName,
+				strings.Join(caNames, ", "),
+				strings.Join(deviceNames, ", "),
+				expires)
+		}
+		w.Flush()
+		return nil
+	},
+}
+
+var operatorRevokeCmd = &cobra.Command{
+	Use:   "revoke <email>",
+	Short: "Revoke specific authorization",
+	Long: `Revoke an operator's authorization for a specific CA within a tenant.
+
+Examples:
+  bluectl operator revoke nelson@acme.com --tenant acme --ca ops-ca`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+		tenantName, _ := cmd.Flags().GetString("tenant")
+		caName, _ := cmd.Flags().GetString("ca")
+
+		// Look up operator by email
+		op, err := dpuStore.GetOperatorByEmail(email)
+		if err != nil {
+			return fmt.Errorf("operator '%s' not found", email)
+		}
+
+		// Look up tenant by name
+		tenant, err := dpuStore.GetTenant(tenantName)
+		if err != nil {
+			return fmt.Errorf("tenant '%s' not found", tenantName)
+		}
+
+		// Look up CA by name
+		ca, err := dpuStore.GetSSHCA(caName)
+		if err != nil {
+			return fmt.Errorf("CA '%s' not found in tenant '%s'", caName, tenantName)
+		}
+
+		// Find authorization matching operator + tenant + CA
+		auths, err := dpuStore.ListAuthorizationsByOperator(op.ID)
+		if err != nil {
+			return fmt.Errorf("failed to list authorizations: %w", err)
+		}
+
+		var authToDelete *store.Authorization
+		for _, auth := range auths {
+			if auth.TenantID != tenant.ID {
+				continue
+			}
+			// Check if this authorization includes the specified CA
+			for _, caID := range auth.CAIDs {
+				if caID == ca.ID {
+					authToDelete = auth
+					break
+				}
+			}
+			if authToDelete != nil {
+				break
+			}
+		}
+
+		if authToDelete == nil {
+			return fmt.Errorf("no authorization found for operator '%s' on CA '%s'", email, caName)
+		}
+
+		// Delete the authorization
+		if err := dpuStore.DeleteAuthorization(authToDelete.ID); err != nil {
+			return fmt.Errorf("failed to revoke authorization: %w", err)
+		}
+
+		fmt.Println("Authorization revoked:")
+		fmt.Printf("  Operator: %s\n", email)
+		fmt.Printf("  CA:       %s\n", caName)
 		return nil
 	},
 }

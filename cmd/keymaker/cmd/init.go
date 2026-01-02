@@ -236,7 +236,28 @@ var whoamiCmd = &cobra.Command{
 		fmt.Printf("Operator ID:    %s\n", config.OperatorID)
 		fmt.Printf("Operator Email: %s\n", config.OperatorEmail)
 		fmt.Printf("Control Plane:  %s\n", config.ControlPlaneURL)
-		fmt.Printf("Private Key:    %s\n", config.PrivateKeyPath)
+
+		// Fetch and display authorizations
+		authorizations, err := getAuthorizations()
+		if err != nil {
+			// Non-fatal: show identity even if authorizations can't be fetched
+			fmt.Printf("\nAuthorizations: (unable to fetch: %v)\n", err)
+		} else if len(authorizations) == 0 {
+			fmt.Printf("\nAuthorizations: none\n")
+		} else {
+			fmt.Printf("\nAuthorizations:\n")
+			for _, auth := range authorizations {
+				devices := strings.Join(auth.DeviceIDs, ", ")
+				if len(auth.DeviceIDs) == 0 {
+					devices = "none"
+				}
+				cas := strings.Join(auth.CAIDs, ", ")
+				if len(auth.CAIDs) == 0 {
+					cas = "none"
+				}
+				fmt.Printf("  CA: %-10s Devices: %s\n", cas, devices)
+			}
+		}
 
 		return nil
 	},
