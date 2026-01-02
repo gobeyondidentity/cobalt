@@ -9,6 +9,10 @@ import (
 
 // TestGetTenantDependencies tests the comprehensive dependency checking for tenants.
 func TestGetTenantDependencies(t *testing.T) {
+	// Enable insecure mode for test (no encryption key set)
+	SetInsecureMode(true)
+	defer SetInsecureMode(false)
+
 	s := setupTestStore(t)
 
 	// Create a tenant

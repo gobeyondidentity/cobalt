@@ -9,9 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
-	"sync"
 )
 
 const (
@@ -24,9 +22,22 @@ const (
 var (
 	// ErrNoEncryptionKey indicates the encryption key environment variable is not set.
 	ErrNoEncryptionKey = errors.New("SECURE_INFRA_KEY environment variable not set")
-	// devModeWarningOnce ensures the dev mode warning is only logged once.
-	devModeWarningOnce sync.Once
+	// insecureModeAllowed controls whether plaintext storage is permitted.
+	// Default is false; must be explicitly enabled via SetInsecureMode(true).
+	insecureModeAllowed bool
 )
+
+// SetInsecureMode enables or disables insecure mode (plaintext key storage).
+// When enabled, encryption functions will return plaintext if no encryption key is set.
+// This should only be used for development/testing.
+func SetInsecureMode(allowed bool) {
+	insecureModeAllowed = allowed
+}
+
+// InsecureModeAllowed returns whether insecure mode (plaintext storage) is enabled.
+func InsecureModeAllowed() bool {
+	return insecureModeAllowed
+}
 
 // deriveKey derives a 32-byte AES-256 key from the SECURE_INFRA_KEY environment variable
 // using SHA-256 hash.
@@ -41,16 +52,19 @@ func deriveKey() ([]byte, bool) {
 
 // EncryptPrivateKey encrypts a private key using AES-256-GCM.
 // The master key is derived from the SECURE_INFRA_KEY environment variable.
-// If the environment variable is not set, returns plaintext with a logged warning (dev mode).
+//
+// If SECURE_INFRA_KEY is not set:
+//   - If insecure mode is enabled (via SetInsecureMode), returns plaintext
+//   - Otherwise, returns ErrNoEncryptionKey
 //
 // Encryption format: nonce (12 bytes) || ciphertext
 func EncryptPrivateKey(plaintext []byte) ([]byte, error) {
 	key, ok := deriveKey()
 	if !ok {
-		devModeWarningOnce.Do(func() {
-			log.Printf("WARNING: %s not set, private keys stored in plaintext (dev mode)", envKeyName)
-		})
-		return plaintext, nil
+		if insecureModeAllowed {
+			return plaintext, nil
+		}
+		return nil, ErrNoEncryptionKey
 	}
 
 	block, err := aes.NewCipher(key)
@@ -73,16 +87,19 @@ func EncryptPrivateKey(plaintext []byte) ([]byte, error) {
 }
 
 // DecryptPrivateKey decrypts a private key that was encrypted with EncryptPrivateKey.
-// If SECURE_INFRA_KEY is not set, assumes plaintext was stored (dev mode) and returns as-is.
+//
+// If SECURE_INFRA_KEY is not set:
+//   - If insecure mode is enabled (via SetInsecureMode), returns data as-is (plaintext)
+//   - Otherwise, returns ErrNoEncryptionKey
 //
 // Expected format: nonce (12 bytes) || ciphertext
 func DecryptPrivateKey(ciphertext []byte) ([]byte, error) {
 	key, ok := deriveKey()
 	if !ok {
-		devModeWarningOnce.Do(func() {
-			log.Printf("WARNING: %s not set, assuming plaintext private keys (dev mode)", envKeyName)
-		})
-		return ciphertext, nil
+		if insecureModeAllowed {
+			return ciphertext, nil
+		}
+		return nil, ErrNoEncryptionKey
 	}
 
 	if len(ciphertext) < nonceSize {

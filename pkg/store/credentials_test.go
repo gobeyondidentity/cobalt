@@ -8,6 +8,10 @@ import (
 
 // TestSSHCACRUD tests basic CRUD operations for SSH CAs.
 func TestSSHCACRUD(t *testing.T) {
+	// Enable insecure mode for test (no encryption key set)
+	SetInsecureMode(true)
+	defer SetInsecureMode(false)
+
 	store := setupTestStore(t)
 
 	testPublicKey := []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample test@example.com")
@@ -197,7 +201,7 @@ func TestEncryptionWithKey(t *testing.T) {
 	}
 }
 
-// TestEncryptionWithoutKey tests behavior when SECURE_INFRA_KEY is not set (dev mode).
+// TestEncryptionWithoutKey tests behavior when SECURE_INFRA_KEY is not set with insecure mode enabled.
 func TestEncryptionWithoutKey(t *testing.T) {
 	// Ensure no encryption key is set
 	oldKey := os.Getenv("SECURE_INFRA_KEY")
@@ -208,26 +212,30 @@ func TestEncryptionWithoutKey(t *testing.T) {
 		}
 	}()
 
+	// Enable insecure mode for plaintext fallback
+	SetInsecureMode(true)
+	defer SetInsecureMode(false)
+
 	testData := []byte("sensitive-private-key-data")
 
-	// Without key, encryption should return plaintext
+	// Without key but with insecure mode, encryption should return plaintext
 	encrypted, err := EncryptPrivateKey(testData)
 	if err != nil {
 		t.Fatalf("EncryptPrivateKey failed: %v", err)
 	}
 
 	if !bytes.Equal(encrypted, testData) {
-		t.Error("without encryption key, data should be returned as-is")
+		t.Error("without encryption key in insecure mode, data should be returned as-is")
 	}
 
-	// Without key, decryption should also return as-is
+	// Without key but with insecure mode, decryption should also return as-is
 	decrypted, err := DecryptPrivateKey(testData)
 	if err != nil {
 		t.Fatalf("DecryptPrivateKey failed: %v", err)
 	}
 
 	if !bytes.Equal(decrypted, testData) {
-		t.Error("without encryption key, data should be returned as-is")
+		t.Error("without encryption key in insecure mode, data should be returned as-is")
 	}
 }
 

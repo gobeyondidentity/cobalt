@@ -18,6 +18,7 @@ var (
 	// Global flags
 	outputFormat string
 	dbPath       string
+	insecure     bool
 
 	// Shared store instance
 	dpuStore *store.Store
@@ -61,6 +62,16 @@ Getting started:
 		if err != nil {
 			return fmt.Errorf("failed to open database: %w", err)
 		}
+
+		// Check encryption configuration
+		if !store.IsEncryptionEnabled() {
+			if insecure {
+				store.SetInsecureMode(true)
+				fmt.Fprintln(os.Stderr, "WARNING: Operating in insecure mode. Private keys are NOT encrypted.")
+			} else {
+				return fmt.Errorf("encryption key not configured. Set SECURE_INFRA_KEY environment variable for encrypted key storage, or use --insecure flag for development (NOT RECOMMENDED for production)")
+			}
+		}
 		return nil
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
@@ -73,6 +84,7 @@ Getting started:
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "Output format: table, json, yaml")
 	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.local/share/bluectl/dpus.db)")
+	rootCmd.PersistentFlags().BoolVar(&insecure, "insecure", false, "Allow plaintext key storage (INSECURE: use only for development)")
 }
 
 // Execute runs the root command.
