@@ -72,6 +72,11 @@ Examples:
 		if err := checkAuthorization(caName, targetDPU); err != nil {
 			if authErr, ok := err.(*AuthorizationError); ok {
 				fmt.Fprintln(cmd.ErrOrStderr(), authErr.Error())
+				if authErr.Type == "ca" {
+					fmt.Fprintln(cmd.ErrOrStderr(), "Contact your tenant admin to grant access to this CA.")
+				} else if authErr.Type == "device" {
+					fmt.Fprintln(cmd.ErrOrStderr(), "Contact your tenant admin to grant access to this device.")
+				}
 				return fmt.Errorf("authorization denied")
 			}
 			return err

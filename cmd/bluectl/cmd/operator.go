@@ -286,7 +286,7 @@ Examples:
 		// Look up CA by name and verify it belongs to this tenant
 		ca, err := dpuStore.GetSSHCA(caName)
 		if err != nil {
-			return fmt.Errorf("CA '%s' not found in tenant '%s'", caName, tenantName)
+			return fmt.Errorf("CA '%s' not found in tenant '%s'\nCreate it first: km ssh-ca create %s", caName, tenantName, caName)
 		}
 		// Verify CA belongs to tenant (if tenant-scoped)
 		if ca.TenantID != nil && *ca.TenantID != tenant.ID {
@@ -310,7 +310,7 @@ Examples:
 				// Look up device (DPU) by name
 				dpu, err := dpuStore.Get(name)
 				if err != nil {
-					return fmt.Errorf("device '%s' not found", name)
+					return fmt.Errorf("device '%s' not found\nRegister it first: bluectl dpu add %s <host>", name, name)
 				}
 				deviceIDs = append(deviceIDs, dpu.ID)
 				deviceNames = append(deviceNames, dpu.Name)

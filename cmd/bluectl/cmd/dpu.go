@@ -21,6 +21,7 @@ func init() {
 
 	// Add flags
 	dpuAddCmd.Flags().IntP("port", "p", 50051, "gRPC port")
+	dpuAddCmd.Flags().Bool("offline", false, "Skip connectivity check and add DPU anyway")
 }
 
 var dpuCmd = &cobra.Command{
@@ -71,11 +72,12 @@ The host is the DPU's gRPC agent address (IP or hostname). This is the DPU's man
 interface where the agent runs on the ARM cores, NOT the BMC address. The agent listens
 on port 50051 by default.
 
-After registration, the CLI verifies connectivity by performing a health check against
-the agent. Use 'bluectl tenant assign' to associate the DPU with a tenant.
+By default, registration requires a successful connectivity check to the DPU agent.
+Use --offline to register a DPU that is not currently reachable.
 
 Examples:
   bluectl dpu add bf3-lab 192.168.1.204              # IP address, default port 50051
+  bluectl dpu add bf3-lab 192.168.1.204 --offline    # Skip connectivity check
   bluectl dpu add bf3-prod dpu.example.com           # Hostname, default port
   bluectl dpu add bf3-dev 10.0.0.50 --port 50052     # Custom port`,
 	Args: cobra.ExactArgs(2),
@@ -83,35 +85,50 @@ Examples:
 		name := args[0]
 		host := args[1]
 		port, _ := cmd.Flags().GetInt("port")
+		offline, _ := cmd.Flags().GetBool("offline")
 
-		id := uuid.New().String()[:8]
-
-		if err := dpuStore.Add(id, name, host, port); err != nil {
-			return fmt.Errorf("failed to add DPU: %w", err)
-		}
-
-		fmt.Printf("Added DPU '%s' at %s:%d (id: %s)\n", name, host, port, id)
-
-		// Try to connect and update status
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		client, err := grpcclient.NewClient(fmt.Sprintf("%s:%d", host, port))
+		// Check for duplicate address:port
+		existing, err := dpuStore.GetDPUByAddress(host, port)
 		if err != nil {
-			dpuStore.UpdateStatus(id, "offline")
-			fmt.Printf("Warning: Could not connect to agent: %v\n", err)
-			return nil
+			return fmt.Errorf("failed to check for duplicates: %w", err)
 		}
-		defer client.Close()
+		if existing != nil {
+			return fmt.Errorf("a DPU already exists at %s:%d (name: '%s')\nUse a different address or remove the existing DPU first", host, port, existing.Name)
+		}
 
-		if _, err := client.HealthCheck(ctx); err != nil {
-			dpuStore.UpdateStatus(id, "unhealthy")
-			fmt.Printf("Warning: Health check failed: %v\n", err)
+		// Check connectivity BEFORE adding (unless --offline)
+		var status string
+		if offline {
+			status = "offline"
+			fmt.Printf("Skipping connectivity check (--offline)\n")
 		} else {
-			dpuStore.UpdateStatus(id, "healthy")
+			fmt.Printf("Checking connectivity to %s:%d...\n", host, port)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			client, err := grpcclient.NewClient(fmt.Sprintf("%s:%d", host, port))
+			if err != nil {
+				return fmt.Errorf("cannot connect to DPU agent at %s:%d: %w\n\nUse --offline to add without connectivity check", host, port, err)
+			}
+			defer client.Close()
+
+			if _, err := client.HealthCheck(ctx); err != nil {
+				return fmt.Errorf("DPU agent health check failed at %s:%d: %w\n\nUse --offline to add without connectivity check", host, port, err)
+			}
+
+			status = "healthy"
 			fmt.Println("Connection verified: agent is healthy")
 		}
 
+		// Now add the DPU
+		id := uuid.New().String()[:8]
+		if err := dpuStore.Add(id, name, host, port); err != nil {
+			return fmt.Errorf("failed to add DPU: %w", err)
+		}
+		dpuStore.UpdateStatus(id, status)
+
+		fmt.Printf("Added DPU '%s' at %s:%d (id: %s)\n", name, host, port, id)
 		fmt.Println()
 		fmt.Printf("Next: Assign to a tenant with 'bluectl tenant assign <tenant> %s'\n", name)
 

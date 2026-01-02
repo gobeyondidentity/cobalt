@@ -108,7 +108,7 @@ var tenantRemoveCmd = &cobra.Command{
 	Use:     "remove <name-or-id>",
 	Aliases: []string{"delete"},
 	Short:   "Remove a tenant",
-	Long: `Remove a tenant. The tenant must not have any assigned DPUs.
+	Long: `Remove a tenant. The tenant must not have any dependencies (DPUs, operators, CAs, or trust relationships).
 
 Examples:
   bluectl tenant remove "Acme Corp"
@@ -120,9 +120,27 @@ Examples:
 			return fmt.Errorf("tenant not found: %s", args[0])
 		}
 
-		count, _ := dpuStore.GetTenantDPUCount(tenant.ID)
-		if count > 0 {
-			return fmt.Errorf("cannot remove tenant with %d assigned DPUs; unassign them first", count)
+		deps, err := dpuStore.GetTenantDependencies(tenant.ID)
+		if err != nil {
+			return fmt.Errorf("failed to check dependencies: %w", err)
+		}
+
+		if deps.HasAny() {
+			fmt.Fprintf(os.Stderr, "Cannot remove tenant '%s'. The following depend on it:\n", tenant.Name)
+			if len(deps.DPUs) > 0 {
+				fmt.Fprintf(os.Stderr, "  DPUs (%d): %s\n", len(deps.DPUs), strings.Join(deps.DPUs, ", "))
+			}
+			if len(deps.Operators) > 0 {
+				fmt.Fprintf(os.Stderr, "  Operators (%d): %s\n", len(deps.Operators), strings.Join(deps.Operators, ", "))
+			}
+			if len(deps.CAs) > 0 {
+				fmt.Fprintf(os.Stderr, "  SSH CAs (%d): %s\n", len(deps.CAs), strings.Join(deps.CAs, ", "))
+			}
+			if deps.TrustRelationships > 0 {
+				fmt.Fprintf(os.Stderr, "  Trust relationships: %d\n", deps.TrustRelationships)
+			}
+			fmt.Fprintf(os.Stderr, "\nTo see details: bluectl tenant show %s\n", tenant.Name)
+			return fmt.Errorf("tenant has dependencies that must be removed first")
 		}
 
 		if err := dpuStore.RemoveTenant(tenant.ID); err != nil {

@@ -25,6 +25,7 @@ func init() {
 	initCmd.Flags().String("name", "", "Custom name for this KeyMaker")
 	initCmd.Flags().String("control-plane", "http://localhost:8080", "Control plane URL")
 	initCmd.Flags().String("invite-code", "", "Invite code (will prompt if not provided)")
+	initCmd.Flags().Bool("force", false, "Force re-initialization (removes existing config)")
 
 	whoamiCmd.Flags().BoolP("verbose", "v", false, "Show internal IDs")
 }
@@ -51,9 +52,12 @@ This command:
 2. Binds the public key to the control plane using your invite code
 3. Stores configuration in ~/.km/config.json
 
+Use --force to re-initialize if already configured (removes existing keypair).
+
 Examples:
   km init
   km init --name workstation-home
+  km init --force                                    # Re-initialize
   km init --control-plane https://fabric.acme.com`,
 	RunE: runInit,
 }
@@ -71,8 +75,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Check if already initialized
 	configPath := getConfigPath()
+	force, _ := cmd.Flags().GetBool("force")
 	if _, err := os.Stat(configPath); err == nil {
-		return fmt.Errorf("KeyMaker already initialized. Remove %s to re-initialize", configPath)
+		if !force {
+			return fmt.Errorf("KeyMaker already initialized. Use --force to re-initialize")
+		}
+		// Remove existing config for re-initialization
+		fmt.Println("Removing existing configuration (--force)...")
+		configDir := getConfigDir()
+		if err := os.RemoveAll(configDir); err != nil {
+			return fmt.Errorf("failed to remove existing config: %w", err)
+		}
 	}
 
 	// Prompt for invite code if not provided
@@ -128,9 +141,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		strings.NewReader(string(reqBody)),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to connect to control plane: %w", err)
+		return fmt.Errorf("cannot connect to control plane at %s: %w\nVerify the URL and check your network connection", controlPlane, err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("invalid or expired invite code. Request a new code from your admin")
+	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		var errResp struct {

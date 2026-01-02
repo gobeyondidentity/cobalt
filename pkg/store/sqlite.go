@@ -471,6 +471,43 @@ func (s *Store) Get(idOrName string) (*DPU, error) {
 	return s.scanDPU(row)
 }
 
+// GetDPUByAddress returns a DPU with the given host:port, or nil if not found.
+func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
+	row := s.db.QueryRow(
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels FROM dpus WHERE host = ? AND port = ?`,
+		host, port,
+	)
+
+	var dpu DPU
+	var lastSeen sql.NullInt64
+	var createdAt int64
+	var tenantID sql.NullString
+	var labelsJSON string
+
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan DPU: %w", err)
+	}
+
+	if lastSeen.Valid {
+		t := time.Unix(lastSeen.Int64, 0)
+		dpu.LastSeen = &t
+	}
+	dpu.CreatedAt = time.Unix(createdAt, 0)
+	if tenantID.Valid {
+		dpu.TenantID = &tenantID.String
+	}
+	dpu.Labels = make(map[string]string)
+	if labelsJSON != "" {
+		json.Unmarshal([]byte(labelsJSON), &dpu.Labels)
+	}
+
+	return &dpu, nil
+}
+
 // List returns all registered DPUs.
 func (s *Store) List() ([]*DPU, error) {
 	rows, err := s.db.Query(
@@ -711,6 +748,95 @@ func (s *Store) GetTenantDPUCount(tenantID string) (int, error) {
 		return 0, fmt.Errorf("failed to count DPUs: %w", err)
 	}
 	return count, nil
+}
+
+// TenantDependencies holds all entities that reference a tenant.
+type TenantDependencies struct {
+	DPUs               []string // DPU names assigned to tenant
+	Operators          []string // Operator emails in tenant
+	CAs                []string // SSH CA names in tenant
+	TrustRelationships int      // Count of trust relationships
+}
+
+// HasAny returns true if the tenant has any dependencies.
+func (d *TenantDependencies) HasAny() bool {
+	return len(d.DPUs) > 0 || len(d.Operators) > 0 || len(d.CAs) > 0 || d.TrustRelationships > 0
+}
+
+// GetTenantDependencies returns all entities that reference the given tenant.
+func (s *Store) GetTenantDependencies(tenantID string) (*TenantDependencies, error) {
+	deps := &TenantDependencies{
+		DPUs:      []string{},
+		Operators: []string{},
+		CAs:       []string{},
+	}
+
+	// Query DPU names
+	dpuRows, err := s.db.Query(`SELECT name FROM dpus WHERE tenant_id = ? ORDER BY name`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query DPUs: %w", err)
+	}
+	defer dpuRows.Close()
+	for dpuRows.Next() {
+		var name string
+		if err := dpuRows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("failed to scan DPU name: %w", err)
+		}
+		deps.DPUs = append(deps.DPUs, name)
+	}
+	if err := dpuRows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating DPU rows: %w", err)
+	}
+
+	// Query operator emails via operator_tenants
+	opRows, err := s.db.Query(
+		`SELECT o.email FROM operators o
+		 INNER JOIN operator_tenants ot ON o.id = ot.operator_id
+		 WHERE ot.tenant_id = ?
+		 ORDER BY o.email`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query operators: %w", err)
+	}
+	defer opRows.Close()
+	for opRows.Next() {
+		var email string
+		if err := opRows.Scan(&email); err != nil {
+			return nil, fmt.Errorf("failed to scan operator email: %w", err)
+		}
+		deps.Operators = append(deps.Operators, email)
+	}
+	if err := opRows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating operator rows: %w", err)
+	}
+
+	// Query SSH CA names
+	caRows, err := s.db.Query(`SELECT name FROM ssh_cas WHERE tenant_id = ? ORDER BY name`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query CAs: %w", err)
+	}
+	defer caRows.Close()
+	for caRows.Next() {
+		var name string
+		if err := caRows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("failed to scan CA name: %w", err)
+		}
+		deps.CAs = append(deps.CAs, name)
+	}
+	if err := caRows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating CA rows: %w", err)
+	}
+
+	// Query trust relationships count
+	var trustCount int
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM trust_relationships WHERE tenant_id = ?`, tenantID).Scan(&trustCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count trust relationships: %w", err)
+	}
+	deps.TrustRelationships = trustCount
+
+	return deps, nil
 }
 
 func (s *Store) scanTenant(row *sql.Row) (*Tenant, error) {
