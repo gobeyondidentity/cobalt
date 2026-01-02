@@ -61,6 +61,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	controlPlane, _ := cmd.Flags().GetString("control-plane")
 	inviteCode, _ := cmd.Flags().GetString("invite-code")
 
+	// Print header with version and platform info
+	fmt.Printf("KeyMaker v%s\n", Version)
+	fmt.Printf("Platform: %s (%s)\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Printf("Secure Element: software (TPM/Secure Enclave not available)\n")
+	fmt.Println()
+
 	// Check if already initialized
 	configPath := getConfigPath()
 	if _, err := os.Stat(configPath); err == nil {
@@ -82,8 +88,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invite code is required")
 	}
 
-	// Generate keypair
+	fmt.Println()
 	fmt.Println("Generating keypair...")
+
+	// Generate keypair
 	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return fmt.Errorf("failed to generate keypair: %w", err)
@@ -96,23 +104,21 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	sshPubKeyStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPubKey)))
 
-	// Auto-generate name if not provided
-	if name == "" {
-		name = fmt.Sprintf("km-%s-%s", runtime.GOOS, uuid.New().String()[:4])
-	}
+	// Generate a short ID for the KeyMaker name (will be updated after bind)
+	shortID := strings.ToLower(uuid.New().String()[:4])
 
-	// Build bind request
+	// Build bind request (name will be finalized after we get the operator email)
 	bindReq := map[string]string{
 		"invite_code":        inviteCode,
 		"public_key":         sshPubKeyStr,
 		"platform":           runtime.GOOS,
 		"secure_element":     "software",
 		"device_fingerprint": uuid.New().String(),
-		"device_name":        name,
+		"device_name":        name, // Temporary, may be updated
 	}
 
 	// POST to control plane
-	fmt.Printf("Binding to %s...\n", controlPlane)
+	fmt.Println("Binding to control plane...")
 	reqBody, _ := json.Marshal(bindReq)
 	resp, err := http.Post(
 		controlPlane+"/api/v1/keymakers/bind",
@@ -135,14 +141,27 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("binding failed: HTTP %d", resp.StatusCode)
 	}
 
-	// Parse response
+	// Parse response with tenants
 	var bindResp struct {
 		KeyMakerID    string `json:"keymaker_id"`
 		OperatorID    string `json:"operator_id"`
 		OperatorEmail string `json:"operator_email"`
+		Tenants       []struct {
+			TenantID   string `json:"tenant_id"`
+			TenantName string `json:"tenant_name"`
+			Role       string `json:"role"`
+		} `json:"tenants"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&bindResp); err != nil {
 		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Extract operator name from email for KeyMaker name generation
+	operatorName := extractNameFromEmail(bindResp.OperatorEmail)
+
+	// Auto-generate meaningful name if not provided
+	if name == "" {
+		name = fmt.Sprintf("km-%s-%s-%s", runtime.GOOS, operatorName, shortID)
 	}
 
 	// Save private key
@@ -173,12 +192,31 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	fmt.Printf("\nKeyMaker bound successfully!\n")
-	fmt.Printf("  KeyMaker ID: %s\n", bindResp.KeyMakerID)
-	fmt.Printf("  Operator:    %s\n", bindResp.OperatorEmail)
-	fmt.Printf("  Config:      %s\n", configPath)
+	// Print success output
+	fmt.Println()
+	fmt.Println("Bound successfully.")
+	fmt.Printf("  Operator: %s\n", bindResp.OperatorEmail)
+
+	// Show tenant info if available
+	if len(bindResp.Tenants) > 0 {
+		tenant := bindResp.Tenants[0]
+		fmt.Printf("  Tenant: %s (%s)\n", tenant.TenantName, tenant.Role)
+	}
+
+	fmt.Printf("  KeyMaker: %s\n", name)
+	fmt.Println()
+	fmt.Printf("Config saved to %s\n", configPath)
 
 	return nil
+}
+
+// extractNameFromEmail extracts the username portion from an email address.
+// For example, "nelson@acme.com" returns "nelson".
+func extractNameFromEmail(email string) string {
+	if idx := strings.Index(email, "@"); idx > 0 {
+		return strings.ToLower(email[:idx])
+	}
+	return "user"
 }
 
 var whoamiCmd = &cobra.Command{

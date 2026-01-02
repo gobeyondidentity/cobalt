@@ -81,6 +81,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Health routes
 	mux.HandleFunc("GET /api/health", s.handleAPIHealth)
+
+	// KeyMaker routes
+	mux.HandleFunc("POST /api/v1/keymakers/bind", s.handleBindKeyMaker)
 }
 
 // ----- DPU Types -----
