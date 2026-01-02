@@ -11,6 +11,8 @@ import (
 	"time"
 
 	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
+	"github.com/nmelo/secure-infra/internal/agent/localapi"
+	"github.com/nmelo/secure-infra/internal/agent/tmfifo"
 	"github.com/nmelo/secure-infra/pkg/attestation"
 	"github.com/nmelo/secure-infra/pkg/doca"
 	"github.com/nmelo/secure-infra/pkg/ovs"
@@ -27,11 +29,13 @@ var (
 type Server struct {
 	agentv1.UnimplementedDPUAgentServiceServer
 
-	config     *Config
-	sysCollect *doca.Collector
-	invCollect *doca.InventoryCollector
-	ovsClient  *ovs.Client
-	redfishCli *attestation.RedfishClient
+	config         *Config
+	sysCollect     *doca.Collector
+	invCollect     *doca.InventoryCollector
+	ovsClient      *ovs.Client
+	redfishCli     *attestation.RedfishClient
+	localAPI       *localapi.Server
+	tmfifoListener *tmfifo.Listener
 
 	startTime int64 // Unix timestamp when server started
 	version   string
@@ -53,6 +57,22 @@ func NewServer(cfg *Config) *Server {
 		startTime:  currentUnixTime(),
 		version:    "0.1.0",
 	}
+}
+
+// SetLocalAPI sets the local API server for Host Agent communication.
+// This must be called before credentials can be distributed via the local API.
+func (s *Server) SetLocalAPI(api *localapi.Server) {
+	s.localAPI = api
+}
+
+// SetTmfifoListener sets the tmfifo listener for host communication.
+func (s *Server) SetTmfifoListener(listener *tmfifo.Listener) {
+	s.tmfifoListener = listener
+}
+
+// GetTmfifoListener returns the configured tmfifo listener.
+func (s *Server) GetTmfifoListener() *tmfifo.Listener {
+	return s.tmfifoListener
 }
 
 // GetSystemInfo returns DPU hardware and software information.
@@ -364,43 +384,33 @@ func (s *Server) DistributeCredential(ctx context.Context, req *agentv1.Distribu
 }
 
 // distributeSSHCA handles the ssh-ca credential type distribution.
+// Per ADR-004, credentials are distributed via the local API to the Host Agent,
+// which installs them locally. The SSH-based distribution path is deprecated.
 func (s *Server) distributeSSHCA(ctx context.Context, caName string, publicKey []byte) (*agentv1.DistributeCredentialResponse, error) {
-	// Check if host SSH is configured
-	if s.config.HostSSHAddr == "" {
+	// Check if we have a paired host via local API
+	if s.localAPI == nil {
 		return &agentv1.DistributeCredentialResponse{
 			Success: false,
-			Message: "Host Agent not registered. To distribute credentials:\n" +
-				"  1. Install host-agent on the host server\n" +
-				"  2. Register host with: host-agent --control-plane <url> --dpu <name>\n" +
-				"  3. Pair the host: bluectl host pair <dpu-name>",
+			Message: "Local API not enabled. Host Agent cannot receive credentials.\n" +
+				"  1. Start agent with --local-api-enabled\n" +
+				"  2. Install host-agent on the host server\n" +
+				"  3. Register host with: host-agent --dpu-addr <dpu-local-api>",
 		}, nil
 	}
 
-	// Create SSH executor
-	executor, err := NewSSHExecutor(s.config.HostSSHAddr, s.config.HostSSHUser, s.config.HostSSHKeyPath)
+	// Push credential via local API (uses tmfifo or HTTP depending on how host connected)
+	result, err := s.localAPI.PushCredential(ctx, "ssh-ca", caName, publicKey)
 	if err != nil {
 		return &agentv1.DistributeCredentialResponse{
 			Success: false,
-			Message: fmt.Sprintf("failed to connect to host: %v", err),
-		}, nil
-	}
-	defer executor.Close()
-
-	// Distribute the CA
-	installedPath, sshdReloaded, err := DistributeSSHCA(ctx, executor, publicKey, caName)
-	if err != nil {
-		return &agentv1.DistributeCredentialResponse{
-			Success:       false,
-			Message:       fmt.Sprintf("failed to distribute SSH CA: %v", err),
-			InstalledPath: installedPath,
-			SshdReloaded:  sshdReloaded,
+			Message: fmt.Sprintf("Failed to push credential: %v", err),
 		}, nil
 	}
 
 	return &agentv1.DistributeCredentialResponse{
-		Success:       true,
-		Message:       "SSH CA distributed successfully",
-		InstalledPath: installedPath,
-		SshdReloaded:  sshdReloaded,
+		Success:       result.Success,
+		Message:       result.Message,
+		InstalledPath: result.InstalledPath,
+		SshdReloaded:  result.SshdReloaded,
 	}, nil
 }

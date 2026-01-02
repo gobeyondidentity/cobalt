@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nmelo/secure-infra/internal/agent/tmfifo"
 )
 
 // Config holds configuration for the local API server.
@@ -58,6 +60,13 @@ type Server struct {
 
 	// controlPlane is the client for proxying requests
 	controlPlane *ControlPlaneClient
+
+	// tmfifoListener is the optional tmfifo listener for host communication
+	tmfifoListener *tmfifo.Listener
+
+	// credentialQueue holds credentials waiting to be retrieved by the Host Agent
+	credentialQueue []*QueuedCredential
+	credentialMu    sync.RWMutex
 }
 
 // NewServer creates a new local API server.
@@ -92,6 +101,7 @@ func NewServer(cfg *Config) (*Server, error) {
 	mux.HandleFunc("POST /local/v1/register", s.handleRegister)
 	mux.HandleFunc("POST /local/v1/posture", s.handlePosture)
 	mux.HandleFunc("POST /local/v1/cert", s.handleCert)
+	mux.HandleFunc("POST /local/v1/credential", s.handleCredentialPush)
 
 	s.server = &http.Server{
 		Handler:      s.loggingMiddleware(s.localhostMiddleware(mux)),
@@ -269,4 +279,77 @@ func (s *Server) getPairedHostID() string {
 	s.pairedMu.RLock()
 	defer s.pairedMu.RUnlock()
 	return s.pairedHostID
+}
+
+// SetTmfifoListener sets the tmfifo listener for credential push operations.
+func (s *Server) SetTmfifoListener(listener *tmfifo.Listener) {
+	s.tmfifoListener = listener
+}
+
+// GetTmfifoListener returns the configured tmfifo listener.
+func (s *Server) GetTmfifoListener() *tmfifo.Listener {
+	return s.tmfifoListener
+}
+
+// PushCredential sends a credential to the paired Host Agent.
+// Uses tmfifo if available, otherwise queues for Host Agent retrieval on next poll.
+func (s *Server) PushCredential(ctx context.Context, credType, credName string, data []byte) (*CredentialPushResult, error) {
+	// Check if host is paired
+	s.pairedMu.RLock()
+	hostname := s.pairedHost
+	s.pairedMu.RUnlock()
+
+	if hostname == "" {
+		return nil, fmt.Errorf("no host paired with this DPU")
+	}
+
+	// If tmfifo listener is available and connected, use it for direct push
+	if s.tmfifoListener != nil {
+		result, err := s.tmfifoListener.PushCredential(credType, credName, data)
+		if err == nil {
+			return &CredentialPushResult{
+				Success:       result.Success,
+				Message:       result.Message,
+				InstalledPath: result.InstalledPath,
+				SshdReloaded:  result.SshdReloaded,
+			}, nil
+		}
+		// tmfifo push failed, fall through to queue
+		log.Printf("tmfifo push failed, queueing for retrieval: %v", err)
+	}
+
+	// Queue the credential for Host Agent retrieval on next poll
+	return s.queueCredentialForHost(hostname, credType, credName, data)
+}
+
+// queueCredentialForHost stores a credential for later retrieval by the Host Agent.
+// This is used when tmfifo is not available or not connected.
+func (s *Server) queueCredentialForHost(hostname, credType, credName string, data []byte) (*CredentialPushResult, error) {
+	s.credentialMu.Lock()
+	defer s.credentialMu.Unlock()
+
+	// Add to queue
+	s.credentialQueue = append(s.credentialQueue, &QueuedCredential{
+		CredType: credType,
+		CredName: credName,
+		Data:     data,
+	})
+
+	log.Printf("Queued %s credential '%s' for host '%s' (queue size: %d)",
+		credType, credName, hostname, len(s.credentialQueue))
+
+	return &CredentialPushResult{
+		Success: true,
+		Message: fmt.Sprintf("Credential queued for host '%s'. Host Agent will install on next poll.", hostname),
+	}, nil
+}
+
+// GetQueuedCredentials returns and clears all queued credentials for the paired host.
+func (s *Server) GetQueuedCredentials() []*QueuedCredential {
+	s.credentialMu.Lock()
+	defer s.credentialMu.Unlock()
+
+	creds := s.credentialQueue
+	s.credentialQueue = nil
+	return creds
 }

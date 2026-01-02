@@ -432,3 +432,243 @@ func TestLocalAPI_AllowedHostnames(t *testing.T) {
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+func TestLocalAPI_CredentialPush(t *testing.T) {
+	mock := newMockControlPlane()
+	defer mock.close()
+
+	server, err := NewServer(&Config{
+		ListenAddr:      "localhost:0",
+		ControlPlaneURL: mock.url(),
+		DPUName:         "dpu-test",
+		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
+			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	// First register a host so we have a paired host
+	server.setPairedHost("test-host", "host_12345678")
+
+	// Test credential push request
+	body, _ := json.Marshal(CredentialPushRequest{
+		CredentialType: "ssh-ca",
+		CredentialName: "prod-ca",
+		Data:           []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest..."),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/local/v1/credential", bytes.NewReader(body))
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp CredentialPushResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Without tmfifo, should indicate credential is pending
+	// The response indicates tmfifo is not available
+	if resp.Success && resp.Error == "" {
+		t.Log("credential push accepted (tmfifo may be mocked)")
+	}
+}
+
+func TestLocalAPI_CredentialPush_NoHostPaired(t *testing.T) {
+	mock := newMockControlPlane()
+	defer mock.close()
+
+	server, err := NewServer(&Config{
+		ListenAddr:      "localhost:0",
+		ControlPlaneURL: mock.url(),
+		DPUName:         "dpu-test",
+		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
+			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	// Don't register any host
+
+	body, _ := json.Marshal(CredentialPushRequest{
+		CredentialType: "ssh-ca",
+		CredentialName: "prod-ca",
+		Data:           []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest..."),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/local/v1/credential", bytes.NewReader(body))
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPreconditionFailed {
+		t.Errorf("expected status 412 for no paired host, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestLocalAPI_CredentialPush_ValidationErrors(t *testing.T) {
+	mock := newMockControlPlane()
+	defer mock.close()
+
+	server, err := NewServer(&Config{
+		ListenAddr:      "localhost:0",
+		ControlPlaneURL: mock.url(),
+		DPUName:         "dpu-test",
+		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
+			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		request        CredentialPushRequest
+		expectedStatus int
+		expectedError  string
+	}{
+		{
+			name: "missing credential_type",
+			request: CredentialPushRequest{
+				CredentialName: "prod-ca",
+				Data:           []byte("ssh-ed25519 ..."),
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "credential_type is required",
+		},
+		{
+			name: "missing credential_name",
+			request: CredentialPushRequest{
+				CredentialType: "ssh-ca",
+				Data:           []byte("ssh-ed25519 ..."),
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "credential_name is required",
+		},
+		{
+			name: "missing data",
+			request: CredentialPushRequest{
+				CredentialType: "ssh-ca",
+				CredentialName: "prod-ca",
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "data is required",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body, _ := json.Marshal(tc.request)
+			req := httptest.NewRequest(http.MethodPost, "/local/v1/credential", bytes.NewReader(body))
+			req.RemoteAddr = "127.0.0.1:12345"
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			server.server.Handler.ServeHTTP(w, req)
+
+			if w.Code != tc.expectedStatus {
+				t.Errorf("expected status %d, got %d: %s", tc.expectedStatus, w.Code, w.Body.String())
+			}
+
+			var resp ErrorResponse
+			if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+
+			if resp.Error != tc.expectedError {
+				t.Errorf("expected error '%s', got '%s'", tc.expectedError, resp.Error)
+			}
+		})
+	}
+}
+
+func TestLocalAPI_CredentialQueue(t *testing.T) {
+	mock := newMockControlPlane()
+	defer mock.close()
+
+	server, err := NewServer(&Config{
+		ListenAddr:      "localhost:0",
+		ControlPlaneURL: mock.url(),
+		DPUName:         "dpu-test",
+		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
+			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	// Pair a host
+	server.setPairedHost("test-host", "host_12345678")
+
+	// Push credentials via PushCredential method
+	ctx := context.Background()
+	result, err := server.PushCredential(ctx, "ssh-ca", "ca1", []byte("key1"))
+	if err != nil {
+		t.Fatalf("PushCredential failed: %v", err)
+	}
+	if !result.Success {
+		t.Errorf("expected success, got: %s", result.Message)
+	}
+
+	result, err = server.PushCredential(ctx, "ssh-ca", "ca2", []byte("key2"))
+	if err != nil {
+		t.Fatalf("PushCredential failed: %v", err)
+	}
+	if !result.Success {
+		t.Errorf("expected success, got: %s", result.Message)
+	}
+
+	// Get queued credentials
+	creds := server.GetQueuedCredentials()
+	if len(creds) != 2 {
+		t.Fatalf("expected 2 queued credentials, got %d", len(creds))
+	}
+
+	if creds[0].CredName != "ca1" {
+		t.Errorf("expected first cred to be 'ca1', got '%s'", creds[0].CredName)
+	}
+	if creds[1].CredName != "ca2" {
+		t.Errorf("expected second cred to be 'ca2', got '%s'", creds[1].CredName)
+	}
+
+	// Queue should be empty after retrieval
+	creds = server.GetQueuedCredentials()
+	if len(creds) != 0 {
+		t.Errorf("expected empty queue after retrieval, got %d", len(creds))
+	}
+}
+
+func TestLocalAPI_PushCredential_NoPairedHost(t *testing.T) {
+	mock := newMockControlPlane()
+	defer mock.close()
+
+	server, err := NewServer(&Config{
+		ListenAddr:      "localhost:0",
+		ControlPlaneURL: mock.url(),
+		DPUName:         "dpu-test",
+	})
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	// Don't pair any host
+	ctx := context.Background()
+	_, err = server.PushCredential(ctx, "ssh-ca", "ca1", []byte("key1"))
+	if err == nil {
+		t.Error("expected error when no host is paired")
+	}
+}

@@ -122,3 +122,34 @@ type ProxiedPostureRequest struct {
 	DPUName           string          `json:"dpu_name"`
 	AttestationStatus string          `json:"attestation_status"`
 }
+
+// CredentialPushRequest is the JSON body for POST /local/v1/credential.
+// Called by the DPU Agent gRPC handler when km distribute triggers.
+type CredentialPushRequest struct {
+	CredentialType string `json:"credential_type"` // "ssh-ca", "tls-cert", etc.
+	CredentialName string `json:"credential_name"`
+	Data           []byte `json:"data"` // Public key or certificate
+}
+
+// CredentialPushResponse is the JSON response from POST /local/v1/credential.
+type CredentialPushResponse struct {
+	Success       bool   `json:"success"`
+	InstalledPath string `json:"installed_path,omitempty"`
+	Error         string `json:"error,omitempty"`
+}
+
+// CredentialPushResult contains the result of pushing a credential to the Host Agent.
+// Used by the DPU Agent's gRPC handler to return results.
+type CredentialPushResult struct {
+	Success       bool
+	Message       string
+	InstalledPath string
+	SshdReloaded  bool
+}
+
+// QueuedCredential represents a credential waiting to be retrieved by the Host Agent.
+type QueuedCredential struct {
+	CredType string
+	CredName string
+	Data     []byte
+}

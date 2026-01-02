@@ -236,3 +236,66 @@ func (s *Server) handleCert(w http.ResponseWriter, r *http.Request) {
 		ValidBefore: resp.ValidBefore,
 	})
 }
+
+// handleCredentialPush handles credential distribution to the Host Agent.
+// POST /local/v1/credential
+// This endpoint is called by the DPU Agent gRPC handler when km distribute triggers.
+// The credential is forwarded to the paired host via tmfifo or the Host Agent HTTP API.
+func (s *Server) handleCredentialPush(w http.ResponseWriter, r *http.Request) {
+	var req CredentialPushRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+
+	// Validate request
+	if req.CredentialType == "" {
+		s.writeError(w, http.StatusBadRequest, "credential_type is required")
+		return
+	}
+	if req.CredentialName == "" {
+		s.writeError(w, http.StatusBadRequest, "credential_name is required")
+		return
+	}
+	if len(req.Data) == 0 {
+		s.writeError(w, http.StatusBadRequest, "data is required")
+		return
+	}
+
+	// Check if a host is paired
+	hostID := s.getPairedHostID()
+	if hostID == "" {
+		s.writeError(w, http.StatusPreconditionFailed, "no host registered; cannot distribute credentials")
+		return
+	}
+
+	log.Printf("Local API: credential push request type=%s name=%s size=%d bytes",
+		req.CredentialType, req.CredentialName, len(req.Data))
+
+	// Try tmfifo first if available
+	if s.tmfifoListener != nil {
+		if err := s.tmfifoListener.SendCredentialPush(req.CredentialType, req.CredentialName, req.Data); err != nil {
+			log.Printf("Local API: tmfifo credential push failed: %v", err)
+			s.writeJSON(w, http.StatusOK, CredentialPushResponse{
+				Success: false,
+				Error:   "tmfifo send failed: " + err.Error(),
+			})
+			return
+		}
+
+		// tmfifo is async; we can't wait for the ack in a synchronous HTTP response
+		log.Printf("Local API: credential pushed via tmfifo")
+		s.writeJSON(w, http.StatusOK, CredentialPushResponse{
+			Success: true,
+		})
+		return
+	}
+
+	// No tmfifo available; credential push requires host-side handling
+	// The Host Agent must be configured to receive credentials via its own mechanism
+	log.Printf("Local API: tmfifo not available, credential push deferred to host agent")
+	s.writeJSON(w, http.StatusOK, CredentialPushResponse{
+		Success: false,
+		Error:   "tmfifo not available; host agent must poll for credentials",
+	})
+}

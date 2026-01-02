@@ -20,11 +20,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nmelo/secure-infra/internal/hostagent"
 	"github.com/nmelo/secure-infra/pkg/posture"
 	"golang.org/x/crypto/ssh"
 )
 
-var version = "0.2.0"
+var version = "0.3.0"
 
 func main() {
 	dpuAgent := flag.String("dpu-agent", "http://localhost:9443", "DPU Agent local API URL")
@@ -34,6 +35,8 @@ func main() {
 	keyType := flag.String("key-type", "ed25519", "SSH key type for certificate request")
 	certDir := flag.String("cert-dir", "/etc/ssh", "Directory for SSH host certificates")
 	showVersion := flag.Bool("version", false, "Show version and exit")
+	forceTmfifo := flag.Bool("force-tmfifo", false, "Fail if tmfifo is not available (no network fallback)")
+	forceNetwork := flag.Bool("force-network", false, "Use network enrollment even if tmfifo is available")
 	flag.Parse()
 
 	if *showVersion {
@@ -47,11 +50,11 @@ func main() {
 	}
 
 	log.Printf("Host Agent v%s starting...", version)
-	log.Printf("DPU Agent: %s", *dpuAgent)
-	log.Printf("Hostname: %s", hostname)
 
-	// Handle certificate request mode
+	// Handle certificate request mode (uses network)
 	if *requestCertFlag {
+		log.Printf("DPU Agent: %s", *dpuAgent)
+		log.Printf("Hostname: %s", hostname)
 		if err := requestCert(*dpuAgent, hostname, *keyType, *certDir); err != nil {
 			log.Fatalf("Certificate request failed: %v", err)
 		}
@@ -59,38 +62,125 @@ func main() {
 		return
 	}
 
+	// Detect tmfifo availability
+	tmfifoPath, tmfifoAvailable := hostagent.DetectTmfifo()
+
+	// Handle force flags
+	if *forceTmfifo && !tmfifoAvailable {
+		log.Fatalf("tmfifo not available at %s (required by --force-tmfifo)", hostagent.DefaultTmfifoPath)
+	}
+	if *forceNetwork {
+		tmfifoAvailable = false
+	}
+
 	// Collect initial posture
 	p := posture.Collect()
 	log.Printf("Initial posture collected: hash=%s", p.Hash())
 
-	// Register with DPU Agent
-	hostID, err := register(*dpuAgent, hostname, p)
+	// Set up signal handling for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	stopCh := make(chan struct{})
+
+	if tmfifoAvailable {
+		// tmfifo mode: hardware-secured enrollment
+		runTmfifoMode(tmfifoPath, hostname, p, *interval, *oneshot, sigCh, stopCh)
+	} else {
+		// Network fallback mode
+		runNetworkMode(*dpuAgent, hostname, p, *interval, *oneshot, sigCh, stopCh)
+	}
+}
+
+// runTmfifoMode runs the Host Agent using tmfifo for DPU communication.
+func runTmfifoMode(tmfifoPath, hostname string, p *posture.Posture, interval time.Duration, oneshot bool, sigCh <-chan os.Signal, stopCh chan struct{}) {
+	log.Printf("Detected BlueField DPU via tmfifo")
+	log.Printf("Enrolling with DPU Agent...")
+	log.Printf("  Hostname: %s", hostname)
+
+	// Create tmfifo client
+	client := hostagent.NewTmfifoClient(tmfifoPath, hostname)
+
+	// Convert posture to JSON for enrollment
+	postureJSON, err := json.Marshal(postureToPayload(p))
+	if err != nil {
+		log.Fatalf("Failed to marshal posture: %v", err)
+	}
+
+	// Enroll via tmfifo
+	hostID, dpuName, err := client.Enroll(postureJSON)
+	if err != nil {
+		log.Fatalf("tmfifo enrollment failed: %v", err)
+	}
+
+	log.Printf("Enrolled via tmfifo (hardware-secured)")
+	log.Printf("Host ID: %s", hostID)
+	if dpuName != "" {
+		log.Printf("Paired with DPU: %s", dpuName)
+	}
+
+	// If oneshot mode, we're done
+	if oneshot {
+		log.Println("Oneshot mode: exiting after successful enrollment")
+		client.Close()
+		return
+	}
+
+	// Start tmfifo listener for credential pushes
+	if err := client.StartListener(); err != nil {
+		log.Printf("Warning: failed to start tmfifo listener: %v", err)
+	} else {
+		log.Printf("Listening for credential pushes via tmfifo")
+	}
+
+	log.Printf("Host Agent running. Posture reports every %s.", interval)
+
+	// Run posture loop via tmfifo
+	go func() {
+		collectPosture := func() json.RawMessage {
+			p := posture.Collect()
+			data, _ := json.Marshal(postureToPayload(p))
+			return data
+		}
+		client.PostureLoop(interval, collectPosture, stopCh)
+	}()
+
+	// Wait for shutdown signal
+	sig := <-sigCh
+	log.Printf("Received signal %v, shutting down...", sig)
+	close(stopCh)
+	client.Close()
+}
+
+// runNetworkMode runs the Host Agent using HTTP for DPU communication.
+func runNetworkMode(dpuAgent, hostname string, p *posture.Posture, interval time.Duration, oneshot bool, sigCh <-chan os.Signal, stopCh chan struct{}) {
+	log.Printf("No tmfifo detected. Using network enrollment.")
+	log.Printf("DPU Agent: %s", dpuAgent)
+	log.Printf("Hostname: %s", hostname)
+
+	// Register with DPU Agent via HTTP
+	hostID, err := register(dpuAgent, hostname, p)
 	if err != nil {
 		log.Fatalf("Registration failed: %v", err)
 	}
 	log.Printf("Registered as host %s via DPU Agent", hostID)
 
 	// If oneshot mode, we're done
-	if *oneshot {
+	if oneshot {
 		log.Println("Oneshot mode: exiting after successful registration")
 		return
 	}
 
-	// Set up signal handling for graceful shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
 	// Create ticker for periodic posture collection
-	ticker := time.NewTicker(*interval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	log.Printf("Starting posture collection loop (interval: %s)", *interval)
+	log.Printf("Host Agent running. Posture reports every %s.", interval)
 
 	for {
 		select {
 		case <-ticker.C:
 			p := posture.Collect()
-			if err := reportPosture(*dpuAgent, hostname, p); err != nil {
+			if err := reportPosture(dpuAgent, hostname, p); err != nil {
 				log.Printf("Warning: posture report failed: %v", err)
 			} else {
 				log.Printf("Posture reported: hash=%s", p.Hash())
@@ -98,6 +188,7 @@ func main() {
 
 		case sig := <-sigCh:
 			log.Printf("Received signal %v, shutting down...", sig)
+			close(stopCh)
 			return
 		}
 	}

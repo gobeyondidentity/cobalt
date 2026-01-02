@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"net"
@@ -16,6 +17,7 @@ import (
 	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
 	"github.com/nmelo/secure-infra/internal/agent"
 	"github.com/nmelo/secure-infra/internal/agent/localapi"
+	"github.com/nmelo/secure-infra/internal/agent/tmfifo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -89,18 +91,36 @@ func main() {
 
 	// Start local API server if enabled
 	var localServer *localapi.Server
+	var tmfifoListener *tmfifo.Listener
 	if cfg.LocalAPIEnabled {
 		localServer, err = startLocalAPI(ctx, cfg, agentServer)
 		if err != nil {
 			log.Fatalf("Failed to start local API: %v", err)
 		}
+
+		// Try to start tmfifo listener for Host Agent communication
+		tmfifoListener = tryStartTmfifo(ctx, localServer)
+		if tmfifoListener != nil {
+			localServer.SetTmfifoListener(tmfifoListener)
+			agentServer.SetTmfifoListener(tmfifoListener)
+		}
+
+		// Wire up local API to agent server for credential distribution
+		agentServer.SetLocalAPI(localServer)
 	}
 
 	go func() {
 		sig := <-sigCh
 		log.Printf("Received signal %v, shutting down...", sig)
 
-		// Shutdown local API server first
+		// Shutdown tmfifo listener first
+		if tmfifoListener != nil {
+			if err := tmfifoListener.Stop(); err != nil {
+				log.Printf("tmfifo shutdown error: %v", err)
+			}
+		}
+
+		// Shutdown local API server
 		if localServer != nil {
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer shutdownCancel()
@@ -152,6 +172,57 @@ func startLocalAPI(ctx context.Context, cfg *agent.Config, agentServer *agent.Se
 	log.Printf("DPU Name: %s", cfg.DPUName)
 
 	return server, nil
+}
+
+// tryStartTmfifo attempts to start the tmfifo listener for direct Host Agent communication.
+// Returns nil if tmfifo is not available (e.g., not running on BlueField hardware).
+func tryStartTmfifo(ctx context.Context, localServer *localapi.Server) *tmfifo.Listener {
+	if !tmfifo.IsAvailable() {
+		log.Printf("tmfifo: device not available, using HTTP API only")
+		return nil
+	}
+
+	// Create the listener with localapi as the message handler
+	handler := newTmfifoHandler(localServer)
+	listener := tmfifo.NewListener("", handler)
+
+	if err := listener.Start(ctx); err != nil {
+		log.Printf("tmfifo: failed to start listener: %v", err)
+		return nil
+	}
+
+	log.Printf("tmfifo: listener started on %s", listener.DevicePath())
+	return listener
+}
+
+// tmfifoHandler bridges tmfifo messages to the local API server.
+type tmfifoHandler struct {
+	localServer *localapi.Server
+}
+
+func newTmfifoHandler(localServer *localapi.Server) *tmfifoHandler {
+	return &tmfifoHandler{localServer: localServer}
+}
+
+// HandleEnroll processes ENROLL_REQUEST messages from the Host Agent.
+func (h *tmfifoHandler) HandleEnroll(ctx context.Context, hostname string, posture json.RawMessage) (*tmfifo.EnrollResponsePayload, error) {
+	// TODO: Bridge to local API registration
+	// For now, return success placeholder
+	log.Printf("tmfifo: enroll request from host '%s'", hostname)
+	return &tmfifo.EnrollResponsePayload{
+		Success: true,
+		DPUName: "dpu-agent",
+	}, nil
+}
+
+// HandlePosture processes POSTURE_REPORT messages from the Host Agent.
+func (h *tmfifoHandler) HandlePosture(ctx context.Context, hostname string, posture json.RawMessage) (*tmfifo.PostureAckPayload, error) {
+	// TODO: Bridge to local API posture update
+	// For now, return accepted placeholder
+	log.Printf("tmfifo: posture report from host '%s'", hostname)
+	return &tmfifo.PostureAckPayload{
+		Accepted: true,
+	}, nil
 }
 
 // fetchAttestation retrieves the current DPU attestation status.
