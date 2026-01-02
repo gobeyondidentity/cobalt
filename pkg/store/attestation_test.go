@@ -117,7 +117,7 @@ func TestAttestationCRUD(t *testing.T) {
 		// Add another attestation
 		att2 := &Attestation{
 			DPUName:       "bf3-lab-02",
-			Status:        AttestationStatusUnknown,
+			Status:        AttestationStatusUnavailable,
 			LastValidated: time.Now(),
 		}
 		store.SaveAttestation(att2)

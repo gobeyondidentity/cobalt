@@ -39,7 +39,7 @@ func NewGate(s *store.Store) *Gate {
 // Returns a decision with the result and reason.
 //
 // Gate logic (fail-secure):
-//   - Attestation not found: blocked with "attestation unknown"
+//   - Attestation not found: blocked with "attestation unavailable"
 //   - Status != verified: blocked with "status: {status}"
 //   - Age > FreshnessWindow: blocked with "stale: {age}"
 //   - Otherwise: allowed
@@ -50,7 +50,7 @@ func (g *Gate) CanDistribute(targetDPU string) (*GateDecision, error) {
 		if strings.Contains(err.Error(), "not found") {
 			return &GateDecision{
 				Allowed:     false,
-				Reason:      "attestation unknown",
+				Reason:      "attestation unavailable",
 				Attestation: nil,
 			}, nil
 		}

@@ -12,9 +12,11 @@ import (
 type AttestationStatus string
 
 const (
-	AttestationStatusVerified AttestationStatus = "verified"
-	AttestationStatusFailed   AttestationStatus = "failed"
-	AttestationStatusUnknown  AttestationStatus = "unknown"
+	AttestationStatusVerified    AttestationStatus = "verified"
+	AttestationStatusFailed      AttestationStatus = "failed"
+	AttestationStatusUnavailable AttestationStatus = "unavailable"
+	AttestationStatusStale       AttestationStatus = "stale"
+	AttestationStatusPending     AttestationStatus = "pending"
 )
 
 // Attestation represents a stored attestation result.

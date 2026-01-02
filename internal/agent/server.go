@@ -17,11 +17,10 @@ import (
 )
 
 var (
-	errBMCNotConfigured          = errors.New("BMC not configured")
-	errHostSSHNotConfigured      = errors.New("host SSH not configured")
-	errUnknownCredentialType     = errors.New("unknown credential type")
-	errMissingCredentialName     = errors.New("credential name is required")
-	errMissingPublicKey          = errors.New("public key is required")
+	errBMCNotConfigured      = errors.New("BMC not configured")
+	errUnknownCredentialType = errors.New("unknown credential type")
+	errMissingCredentialName = errors.New("credential name is required")
+	errMissingPublicKey      = errors.New("public key is required")
 )
 
 // Server implements the DPUAgentService gRPC interface.
@@ -368,7 +367,13 @@ func (s *Server) DistributeCredential(ctx context.Context, req *agentv1.Distribu
 func (s *Server) distributeSSHCA(ctx context.Context, caName string, publicKey []byte) (*agentv1.DistributeCredentialResponse, error) {
 	// Check if host SSH is configured
 	if s.config.HostSSHAddr == "" {
-		return nil, errHostSSHNotConfigured
+		return &agentv1.DistributeCredentialResponse{
+			Success: false,
+			Message: "Host Agent not registered. To distribute credentials:\n" +
+				"  1. Install host-agent on the host server\n" +
+				"  2. Register host with: host-agent --control-plane <url> --dpu <name>\n" +
+				"  3. Pair the host: bluectl host pair <dpu-name>",
+		}, nil
 	}
 
 	// Create SSH executor

@@ -116,7 +116,7 @@ func TestGate_FailedAttestationBlocks(t *testing.T) {
 	}
 }
 
-func TestGate_UnknownAttestationBlocks(t *testing.T) {
+func TestGate_UnavailableAttestationBlocks(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -127,13 +127,13 @@ func TestGate_UnknownAttestationBlocks(t *testing.T) {
 	}
 
 	if decision.Allowed {
-		t.Error("expected Allowed=false for unknown attestation (fail-secure)")
+		t.Error("expected Allowed=false for unavailable attestation (fail-secure)")
 	}
-	if decision.Reason != "attestation unknown" {
-		t.Errorf("expected Reason='attestation unknown', got %q", decision.Reason)
+	if decision.Reason != "attestation unavailable" {
+		t.Errorf("expected Reason='attestation unavailable', got %q", decision.Reason)
 	}
 	if decision.Attestation != nil {
-		t.Error("expected Attestation to be nil for unknown DPU")
+		t.Error("expected Attestation to be nil for unavailable DPU")
 	}
 }
 
@@ -176,14 +176,14 @@ func TestGate_CustomFreshnessWindow(t *testing.T) {
 	}
 }
 
-func TestGate_UnknownStatusBlocks(t *testing.T) {
+func TestGate_UnavailableStatusBlocks(t *testing.T) {
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
-	// Save an attestation with unknown status
+	// Save an attestation with unavailable status
 	att := &store.Attestation{
-		DPUName:       "bf3-unknown-status-01",
-		Status:        store.AttestationStatusUnknown,
+		DPUName:       "bf3-unavailable-status-01",
+		Status:        store.AttestationStatusUnavailable,
 		LastValidated: time.Now(),
 	}
 	if err := s.SaveAttestation(att); err != nil {
@@ -191,16 +191,16 @@ func TestGate_UnknownStatusBlocks(t *testing.T) {
 	}
 
 	gate := NewGate(s)
-	decision, err := gate.CanDistribute("bf3-unknown-status-01")
+	decision, err := gate.CanDistribute("bf3-unavailable-status-01")
 	if err != nil {
 		t.Fatalf("CanDistribute failed: %v", err)
 	}
 
 	if decision.Allowed {
-		t.Error("expected Allowed=false for unknown status attestation")
+		t.Error("expected Allowed=false for unavailable status attestation")
 	}
-	if decision.Reason != "status: unknown" {
-		t.Errorf("expected Reason='status: unknown', got %q", decision.Reason)
+	if decision.Reason != "status: unavailable" {
+		t.Errorf("expected Reason='status: unavailable', got %q", decision.Reason)
 	}
 }
 

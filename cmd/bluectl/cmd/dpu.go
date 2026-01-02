@@ -68,7 +68,11 @@ var dpuListCmd = &cobra.Command{
 var dpuAddCmd = &cobra.Command{
 	Use:   "add <name> <host>",
 	Short: "Register a new DPU",
-	Long: `Register a new DPU with a name and host address.
+	Long: `A DPU (Data Processing Unit) is a smart NIC installed inside a host server.
+The DPU Agent runs on the DPU itself. Credentials are distributed to the
+host server through the paired Host Agent.
+
+Register a new DPU with a name and host address.
 
 The host is the DPU's gRPC agent address (IP or hostname). This is the DPU's management
 interface where the agent runs on the ARM cores, NOT the BMC address. The agent listens

@@ -97,12 +97,12 @@ Examples:
 
 		if len(resp.Certificates) == 0 {
 			fmt.Println("No certificates available")
-			// Save unknown status if no certs
+			// Save unavailable status if no certs
 			if !noSave {
-				saveAttestationResult(dpuStore, dpu.Name, store.AttestationStatusUnknown, nil, nil, map[string]any{
+				saveAttestationResult(dpuStore, dpu.Name, store.AttestationStatusUnavailable, nil, nil, map[string]any{
 					"reason": "no certificates",
 				})
-				fmt.Printf("\nAttestation saved: status=unknown, last_validated=%s\n", time.Now().Format(time.RFC3339))
+				fmt.Printf("\nAttestation saved: status=unavailable, last_validated=%s\n", time.Now().Format(time.RFC3339))
 			}
 			return nil
 		}

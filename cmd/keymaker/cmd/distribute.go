@@ -147,7 +147,7 @@ Examples:
 					age := formatAge(decision.Attestation.Age())
 					fmt.Printf("x Attestation stale (%s ago)\n\n", age)
 				} else {
-					fmt.Printf("x No attestation record\n\n")
+					fmt.Printf("x Attestation unavailable\n\n")
 				}
 
 				fmt.Printf("Distribution blocked: %s\n", decision.Reason)
