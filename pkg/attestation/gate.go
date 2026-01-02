@@ -2,6 +2,7 @@
 package attestation
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ type GateDecision struct {
 // Implements fail-secure: unknown or invalid attestations block distribution.
 type Gate struct {
 	store           *store.Store
+	refresher       *Refresher
 	FreshnessWindow time.Duration
 }
 
@@ -31,6 +33,7 @@ type Gate struct {
 func NewGate(s *store.Store) *Gate {
 	return &Gate{
 		store:           s,
+		refresher:       NewRefresher(s),
 		FreshnessWindow: DefaultFreshnessWindow,
 	}
 }
@@ -83,4 +86,79 @@ func (g *Gate) CanDistribute(targetDPU string) (*GateDecision, error) {
 		Reason:      "",
 		Attestation: att,
 	}, nil
+}
+
+// CanDistributeWithAutoRefresh checks attestation and auto-refreshes if stale or unavailable.
+// Returns the decision, whether a refresh was attempted, and any error.
+//
+// Behavior:
+//   - If attestation is fresh and verified: returns allowed, no refresh
+//   - If attestation is stale or unavailable: triggers refresh, returns new decision
+//   - If attestation has status "failed": blocks distribution (no force allowed)
+//   - If refresh fails: blocks distribution with the failure reason
+func (g *Gate) CanDistributeWithAutoRefresh(ctx context.Context, dpu *store.DPU, trigger, triggeredBy string) (*GateDecision, bool, error) {
+	// First check current attestation state
+	decision, err := g.CanDistribute(dpu.Name)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// If allowed, no refresh needed
+	if decision.Allowed {
+		return decision, false, nil
+	}
+
+	// If blocked due to status "failed", do not refresh or allow force
+	// A failed attestation means the device failed verification, and we should not proceed
+	if decision.Attestation != nil && decision.Attestation.Status == store.AttestationStatusFailed {
+		return &GateDecision{
+			Allowed:     false,
+			Reason:      "attestation failed: device failed integrity verification",
+			Attestation: decision.Attestation,
+			Forced:      false,
+		}, false, nil
+	}
+
+	// Blocked due to stale or unavailable attestation: attempt refresh
+	result := g.refresher.Refresh(ctx, dpu.Address(), dpu.Name, trigger, triggeredBy)
+
+	if result.Success {
+		// Refresh succeeded, return allowed
+		return &GateDecision{
+			Allowed:     true,
+			Reason:      "",
+			Attestation: result.Attestation,
+			Forced:      false,
+		}, true, nil
+	}
+
+	// Refresh failed
+	// Determine if the failure was due to a verification failure (status failed)
+	// or just unavailability (network error, no certs, etc.)
+	if result.Attestation != nil && result.Attestation.Status == store.AttestationStatusFailed {
+		// Device failed attestation verification: hard block, no force allowed
+		return &GateDecision{
+			Allowed:     false,
+			Reason:      fmt.Sprintf("attestation failed: %s", result.Message),
+			Attestation: result.Attestation,
+			Forced:      false,
+		}, true, nil
+	}
+
+	// Unavailable (network, no certs, etc.): blocked but could potentially be forced
+	return &GateDecision{
+		Allowed:     false,
+		Reason:      fmt.Sprintf("attestation unavailable: %s", result.Message),
+		Attestation: result.Attestation,
+		Forced:      false,
+	}, true, nil
+}
+
+// IsAttestationFailed returns true if the decision is blocked due to a failed attestation.
+// This is used to determine if --force should be allowed.
+func (d *GateDecision) IsAttestationFailed() bool {
+	if d.Attestation == nil {
+		return false
+	}
+	return d.Attestation.Status == store.AttestationStatusFailed
 }

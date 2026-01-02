@@ -100,10 +100,15 @@ Examples:
 
 		fmt.Printf("Checking attestation for %s...\n", dpu.Name)
 
-		// Check attestation gate
-		decision, err := gate.CanDistribute(dpu.Name)
+		// Check attestation gate with auto-refresh
+		decision, refreshed, err := gate.CanDistributeWithAutoRefresh(
+			cmd.Context(),
+			dpu,
+			"auto:distribution",
+			operatorCtx.OperatorEmail,
+		)
 		if err != nil {
-			return fmt.Errorf("attestation gate check failed: %w", err)
+			return fmt.Errorf("attestation check failed: %w", err)
 		}
 
 		// Handle gate decision
@@ -115,46 +120,69 @@ Examples:
 			if decision.Attestation != nil {
 				age = formatAge(decision.Attestation.Age())
 			}
+
+			if refreshed {
+				fmt.Printf("  Attestation stale. Refreshed successfully.\n")
+			}
 			fmt.Printf("+ Attestation verified (%s ago)\n\n", age)
 
 			// Proceed with distribution
 			return executeDistribution(cmd.Context(), dpu, ca, decision, false, "", operatorCtx)
-
-		} else {
-			// Gate blocked
-			if force {
-				// Log audit entry for forced bypass
-				logAuditEntry(auditLogger, operatorCtx, dpu.Name, caName, "forced", "true", decision)
-
-				age := "unknown"
-				if decision.Attestation != nil {
-					age = formatAge(decision.Attestation.Age())
-				}
-				fmt.Printf("! Attestation stale (%s ago)\n", age)
-				fmt.Printf("Warning: Forcing distribution despite %s (logged)\n\n", decision.Reason)
-
-				// Proceed with forced distribution
-				return executeDistribution(cmd.Context(), dpu, ca, decision, true, decision.Reason, operatorCtx)
-
-			} else {
-				// Blocked, no force
-				logAuditEntry(auditLogger, operatorCtx, dpu.Name, caName, "blocked", "false", decision)
-
-				// Record blocked distribution
-				recordBlockedDistribution(dpu.Name, caName, decision, operatorCtx)
-
-				if decision.Attestation != nil {
-					age := formatAge(decision.Attestation.Age())
-					fmt.Printf("x Attestation stale (%s ago)\n\n", age)
-				} else {
-					fmt.Printf("x Attestation unavailable\n\n")
-				}
-
-				fmt.Printf("Distribution blocked: %s\n", decision.Reason)
-				fmt.Printf("Hint: Run 'bluectl attestation %s' or use --force (audited)\n", dpu.Name)
-				return fmt.Errorf("distribution blocked by attestation gate")
-			}
 		}
+
+		// Gate blocked
+		// Check if this is a failed attestation (hard block, no force allowed)
+		if decision.IsAttestationFailed() {
+			logAuditEntry(auditLogger, operatorCtx, dpu.Name, caName, "blocked", "false", decision)
+			recordBlockedDistribution(dpu.Name, caName, decision, operatorCtx)
+
+			if refreshed {
+				fmt.Printf("  Attestation stale. Refresh failed.\n")
+			}
+			fmt.Printf("x Attestation failed: device failed integrity verification\n\n")
+			fmt.Printf("Distribution blocked: device failed attestation.\n")
+			fmt.Printf("Contact your infrastructure team. This event has been logged.\n")
+			return fmt.Errorf("distribution blocked: attestation failed")
+		}
+
+		// Stale or unavailable attestation (force may be allowed)
+		if force {
+			// Log audit entry for forced bypass
+			logAuditEntry(auditLogger, operatorCtx, dpu.Name, caName, "forced", "true", decision)
+
+			age := "unknown"
+			if decision.Attestation != nil {
+				age = formatAge(decision.Attestation.Age())
+			}
+
+			if refreshed {
+				fmt.Printf("  Attestation refresh attempted but unavailable.\n")
+			}
+			fmt.Printf("! Attestation stale (%s ago)\n", age)
+			fmt.Printf("Warning: Forcing distribution despite %s (logged)\n\n", decision.Reason)
+
+			// Proceed with forced distribution
+			return executeDistribution(cmd.Context(), dpu, ca, decision, true, decision.Reason, operatorCtx)
+		}
+
+		// Blocked, no force
+		logAuditEntry(auditLogger, operatorCtx, dpu.Name, caName, "blocked", "false", decision)
+		recordBlockedDistribution(dpu.Name, caName, decision, operatorCtx)
+
+		if refreshed {
+			fmt.Printf("  Attestation refresh attempted but unavailable.\n")
+		}
+
+		if decision.Attestation != nil {
+			age := formatAge(decision.Attestation.Age())
+			fmt.Printf("x Attestation stale (%s ago)\n\n", age)
+		} else {
+			fmt.Printf("x Attestation unavailable\n\n")
+		}
+
+		fmt.Printf("Distribution blocked: %s\n", decision.Reason)
+		fmt.Printf("Hint: Use --force to bypass (audited)\n")
+		return fmt.Errorf("distribution blocked by attestation gate")
 	},
 }
 
