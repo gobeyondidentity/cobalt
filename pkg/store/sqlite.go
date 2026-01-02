@@ -146,6 +146,12 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// Enable foreign key constraints
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
 	store := &Store{db: db}
 	if err := store.migrate(); err != nil {
 		db.Close()
@@ -354,6 +360,31 @@ func (s *Store) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_trust_tenant ON trust_relationships(tenant_id);
 	CREATE INDEX IF NOT EXISTS idx_trust_source ON trust_relationships(source_dpu_id);
 	CREATE INDEX IF NOT EXISTS idx_trust_target ON trust_relationships(target_dpu_id);
+
+	-- Agent Hosts (Phase 5: hosts with security posture linked to DPUs)
+	CREATE TABLE IF NOT EXISTS agent_hosts (
+		id TEXT PRIMARY KEY,
+		dpu_name TEXT NOT NULL,
+		dpu_id TEXT NOT NULL,
+		hostname TEXT NOT NULL UNIQUE,
+		tenant_id TEXT,
+		registered_at INTEGER NOT NULL,
+		last_seen_at INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_agent_hosts_dpu ON agent_hosts(dpu_name);
+	CREATE INDEX IF NOT EXISTS idx_agent_hosts_tenant ON agent_hosts(tenant_id);
+
+	CREATE TABLE IF NOT EXISTS agent_host_posture (
+		host_id TEXT PRIMARY KEY,
+		secure_boot INTEGER,
+		disk_encryption TEXT,
+		os_version TEXT,
+		kernel_version TEXT,
+		tpm_present INTEGER,
+		posture_hash TEXT,
+		collected_at INTEGER NOT NULL,
+		FOREIGN KEY (host_id) REFERENCES agent_hosts(id) ON DELETE CASCADE
+	);
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err

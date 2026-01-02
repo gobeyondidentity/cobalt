@@ -21,6 +21,7 @@ func init() {
 	attestationCmd.Flags().Bool("pem", false, "Output certificate PEM data")
 	attestationCmd.Flags().String("target", "IRoT", "Attestation target: IRoT (DPU) or ERoT (BMC)")
 	attestationCmd.Flags().Bool("no-save", false, "Don't persist attestation result to database")
+	attestationCmd.Flags().Bool("include-host", false, "Include host posture in output")
 }
 
 var attestationCmd = &cobra.Command{
@@ -31,12 +32,15 @@ var attestationCmd = &cobra.Command{
 Shows the certificate chain hierarchy (L0-L6) and current attestation status.
 Successful attestations are saved to enable gate checks for credential distribution.
 
+Use --include-host to also display the security posture of the host paired with the DPU.
+
 Examples:
   bluectl attestation bf3-lab
   bluectl attestation bf3-lab --target ERoT
   bluectl attestation bf3-lab --pem
   bluectl attestation bf3-lab -o json
-  bluectl attestation bf3-lab --no-save`,
+  bluectl attestation bf3-lab --no-save
+  bluectl attestation bf3-lab --include-host`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dpu, err := dpuStore.Get(args[0])
@@ -47,6 +51,7 @@ Examples:
 		showPEM, _ := cmd.Flags().GetBool("pem")
 		target, _ := cmd.Flags().GetString("target")
 		noSave, _ := cmd.Flags().GetBool("no-save")
+		includeHost, _ := cmd.Flags().GetBool("include-host")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -143,6 +148,11 @@ Examples:
 			}
 		}
 
+		// Display host posture if requested
+		if includeHost {
+			displayHostPosture(dpu.Name)
+		}
+
 		dpuStore.UpdateStatus(dpu.ID, "healthy")
 		return nil
 	},
@@ -200,4 +210,65 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max-3] + "..."
+}
+
+// displayHostPosture shows the host posture for a DPU.
+func displayHostPosture(dpuName string) {
+	host, err := dpuStore.GetAgentHostByDPU(dpuName)
+	if err != nil {
+		fmt.Println("\nHost Posture: No host agent paired")
+		return
+	}
+
+	posture, err := dpuStore.GetAgentHostPosture(host.ID)
+	if err != nil {
+		fmt.Printf("\nHost Posture (%s): No posture data available\n", host.Hostname)
+		return
+	}
+
+	fmt.Printf("\nHost Posture (%s):\n", host.Hostname)
+	fmt.Printf("  Secure Boot: %s\n", formatBoolStatus(posture.SecureBoot))
+
+	diskEnc := "unknown"
+	if posture.DiskEncryption != "" {
+		diskEnc = posture.DiskEncryption
+	}
+	fmt.Printf("  Disk Encryption: %s\n", diskEnc)
+
+	osVer := "unknown"
+	if posture.OSVersion != "" {
+		osVer = posture.OSVersion
+	}
+	fmt.Printf("  OS: %s\n", osVer)
+
+	kernel := "unknown"
+	if posture.KernelVersion != "" {
+		kernel = posture.KernelVersion
+	}
+	fmt.Printf("  Kernel: %s\n", kernel)
+
+	fmt.Printf("  TPM: %s\n", formatTPMStatus(posture.TPMPresent))
+	fmt.Printf("  Last Update: %s\n", formatRelativeTime(posture.CollectedAt))
+}
+
+// formatBoolStatus formats a *bool as enabled/disabled/unknown.
+func formatBoolStatus(b *bool) string {
+	if b == nil {
+		return "unknown"
+	}
+	if *b {
+		return "enabled"
+	}
+	return "disabled"
+}
+
+// formatTPMStatus formats a *bool as present/not detected/unknown.
+func formatTPMStatus(b *bool) string {
+	if b == nil {
+		return "unknown"
+	}
+	if *b {
+		return "present"
+	}
+	return "not detected"
 }

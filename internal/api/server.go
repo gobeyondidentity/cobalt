@@ -98,6 +98,13 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/trust/{id}", s.handleGetTrust)
 	mux.HandleFunc("DELETE /api/v1/trust/{id}", s.handleDeleteTrust)
 	mux.HandleFunc("PATCH /api/v1/trust/{id}/status", s.handleUpdateTrustStatus)
+
+	// Host agent routes (Phase 5)
+	mux.HandleFunc("POST /api/v1/hosts/register", s.handleHostRegister)
+	mux.HandleFunc("POST /api/v1/hosts/{id}/posture", s.handleHostPostureUpdate)
+	mux.HandleFunc("GET /api/v1/hosts", s.handleListAgentHosts)
+	mux.HandleFunc("GET /api/v1/hosts/{id}", s.handleGetAgentHost)
+	mux.HandleFunc("DELETE /api/v1/hosts/{id}", s.handleDeleteAgentHost)
 }
 
 // ----- DPU Types -----
