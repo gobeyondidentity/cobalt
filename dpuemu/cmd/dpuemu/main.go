@@ -16,10 +16,11 @@ import (
 
 var (
 	// Flags
-	listenAddr  string
-	port        int
-	fixturePath string
-	instanceID  string
+	listenAddr   string
+	port         int
+	fixturePath  string
+	instanceID   string
+	localAPIPort int
 )
 
 func main() {
@@ -70,7 +71,15 @@ If both --port and --listen are provided, --port takes precedence.
 With --instance-id, template variables in the fixture are replaced:
   {{.InstanceID}}   -> the instance ID
   {{.Hostname}}     -> bf3-emu-{instanceID}
-  {{.SerialNumber}} -> MT0000000{instanceID}`,
+  {{.SerialNumber}} -> MT0000000{instanceID}
+
+Local API:
+  --local-api-port 9443    # Enable HTTP API for host-agent communication
+
+The local API exposes endpoints for host-agent registration and posture:
+  POST /local/v1/register  - Host registration
+  POST /local/v1/posture   - Posture reports
+  POST /local/v1/cert      - Host certificate requests`,
 	RunE: runServe,
 }
 
@@ -79,6 +88,7 @@ func init() {
 	serveCmd.Flags().IntVarP(&port, "port", "p", 0, "Port to listen on (takes precedence over --listen)")
 	serveCmd.Flags().StringVarP(&fixturePath, "fixture", "f", "", "Path to fixture JSON file (optional, uses defaults if not set)")
 	serveCmd.Flags().StringVarP(&instanceID, "instance-id", "i", "", "Instance ID for templating")
+	serveCmd.Flags().IntVar(&localAPIPort, "local-api-port", 9443, "HTTP port for local API (host-agent communication)")
 
 	rootCmd.AddCommand(serveCmd)
 }
@@ -115,9 +125,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Create server
 	srv := server.New(server.Config{
-		ListenAddr: addr,
-		InstanceID: instanceID,
-		Fixture:    fix,
+		ListenAddr:   addr,
+		InstanceID:   instanceID,
+		Fixture:      fix,
+		LocalAPIPort: localAPIPort,
 	})
 
 	// Handle shutdown signals

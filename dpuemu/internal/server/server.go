@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 
 	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
 	"github.com/nmelo/secure-infra/dpuemu/internal/fixture"
+	"github.com/nmelo/secure-infra/dpuemu/internal/localapi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -16,28 +18,37 @@ import (
 // Server is a gRPC server that emulates a DPU agent using fixture data.
 type Server struct {
 	agentv1.UnimplementedDPUAgentServiceServer
-	fixture    *fixture.Fixture
-	instanceID string
-	listener   net.Listener
-	grpcServer *grpc.Server
+	fixture      *fixture.Fixture
+	instanceID   string
+	listener     net.Listener
+	grpcServer   *grpc.Server
+	httpServer   *http.Server
+	localAPI     *localapi.Server
+	localAPIPort int
 }
 
 // Config holds server configuration.
 type Config struct {
-	ListenAddr string
-	InstanceID string
-	Fixture    *fixture.Fixture
+	ListenAddr   string
+	InstanceID   string
+	Fixture      *fixture.Fixture
+	LocalAPIPort int // HTTP port for local API (0 to disable)
 }
 
 // New creates a new emulator server.
 func New(cfg Config) *Server {
-	return &Server{
-		fixture:    cfg.Fixture,
-		instanceID: cfg.InstanceID,
+	s := &Server{
+		fixture:      cfg.Fixture,
+		instanceID:   cfg.InstanceID,
+		localAPIPort: cfg.LocalAPIPort,
 	}
+	if cfg.LocalAPIPort > 0 {
+		s.localAPI = localapi.New(cfg.Fixture)
+	}
+	return s
 }
 
-// Start starts the gRPC server.
+// Start starts the gRPC server and optionally the local HTTP API.
 func (s *Server) Start(addr string) error {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -49,7 +60,7 @@ func (s *Server) Start(addr string) error {
 	agentv1.RegisterDPUAgentServiceServer(s.grpcServer, s)
 	reflection.Register(s.grpcServer)
 
-	log.Printf("dpuemu server listening on %s", addr)
+	log.Printf("dpuemu gRPC server listening on %s", addr)
 	if s.instanceID != "" {
 		log.Printf("instance ID: %s", s.instanceID)
 	}
@@ -57,11 +68,29 @@ func (s *Server) Start(addr string) error {
 		log.Printf("emulating: %s (serial: %s)", s.fixture.SystemInfo.Hostname, s.fixture.SystemInfo.SerialNumber)
 	}
 
+	// Start local API HTTP server if configured
+	if s.localAPI != nil && s.localAPIPort > 0 {
+		httpAddr := fmt.Sprintf(":%d", s.localAPIPort)
+		s.httpServer = &http.Server{
+			Addr:    httpAddr,
+			Handler: s.localAPI,
+		}
+		go func() {
+			log.Printf("dpuemu local API listening on %s", httpAddr)
+			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("local API server error: %v", err)
+			}
+		}()
+	}
+
 	return s.grpcServer.Serve(lis)
 }
 
 // Stop gracefully stops the server.
 func (s *Server) Stop() {
+	if s.httpServer != nil {
+		s.httpServer.Close()
+	}
 	if s.grpcServer != nil {
 		s.grpcServer.GracefulStop()
 	}
