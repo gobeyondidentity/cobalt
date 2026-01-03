@@ -8,12 +8,12 @@ BIN_DIR := bin
 AGENT := $(BIN_DIR)/agent
 AGENT_ARM64 := $(BIN_DIR)/agent-arm64
 BLUECTL := $(BIN_DIR)/bluectl
-API := $(BIN_DIR)/api
+SERVER := $(BIN_DIR)/server
 KM := $(BIN_DIR)/km
 HOST_AGENT := $(BIN_DIR)/host-agent
 DPUEMU := $(BIN_DIR)/dpuemu
 
-.PHONY: all agent bluectl api km host-agent dpuemu test clean release help
+.PHONY: all agent bluectl server km host-agent dpuemu test clean release help
 
 # Default target: build all binaries
 all: $(BIN_DIR)
@@ -24,8 +24,8 @@ all: $(BIN_DIR)
 	@echo "  $(BLUECTL)"
 	@go build -o $(KM) ./cmd/keymaker
 	@echo "  $(KM)"
-	@go build -o $(API) ./cmd/api
-	@echo "  $(API)"
+	@go build -o $(SERVER) ./cmd/server
+	@echo "  $(SERVER)"
 	@go build -o $(HOST_AGENT) ./cmd/host-agent
 	@echo "  $(HOST_AGENT)"
 	@go build -o $(DPUEMU) ./dpuemu/cmd/dpuemu
@@ -51,11 +51,11 @@ bluectl: $(BIN_DIR)
 	@go build -o $(BLUECTL) ./cmd/bluectl
 	@echo "  $(BLUECTL)"
 
-# Build api server
-api: $(BIN_DIR)
-	@echo "Building api..."
-	@go build -o $(API) ./cmd/api
-	@echo "  $(API)"
+# Build server
+server: $(BIN_DIR)
+	@echo "Building server..."
+	@go build -o $(SERVER) ./cmd/server
+	@echo "  $(SERVER)"
 
 # Build keymaker CLI
 km: $(BIN_DIR)
@@ -125,7 +125,7 @@ help:
 	@echo "  make all        Build all binaries (default)"
 	@echo "  make agent      Build agent (local + ARM64 for BlueField)"
 	@echo "  make bluectl    Build bluectl CLI"
-	@echo "  make api        Build api server"
+	@echo "  make server     Build server"
 	@echo "  make km         Build keymaker CLI"
 	@echo "  make host-agent Build host-agent"
 	@echo "  make dpuemu     Build DPU emulator"

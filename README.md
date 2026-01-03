@@ -26,8 +26,8 @@ For complete setup instructions, see the [Setup Guide](docs/setup-guide.md).
 **Demo the attestation gate with the emulator:**
 
 ```bash
-# Terminal 1: Start API server
-bin/api serve --port 8080
+# Terminal 1: Start server
+bin/server --listen :8080
 
 # Terminal 2: Start DPU emulator
 bin/dpuemu serve --port 50051
@@ -67,7 +67,7 @@ The attestation gate blocks credential distribution when hardware verification i
 | `km` | Operator CLI: SSH CA lifecycle, credential push |
 | `agent` | DPU agent running on BlueField ARM cores |
 | `host-agent` | Host agent for credential receipt via tmfifo and posture reporting |
-| `api` | Control plane API server |
+| `server` | Control plane server |
 | `dpuemu` | DPU emulator for local development |
 | `web/` | Next.js dashboard (in development) |
 

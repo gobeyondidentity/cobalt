@@ -1,4 +1,4 @@
-# Fabric Console API Server
+# Fabric Console Server
 FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build
-RUN CGO_ENABLED=1 go build -o api ./cmd/api
+RUN CGO_ENABLED=1 go build -o server ./cmd/server
 
 # Runtime image
 FROM alpine:3.20
@@ -23,12 +23,12 @@ RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 
-COPY --from=builder /app/api .
+COPY --from=builder /app/server .
 
 # Create data directory
 RUN mkdir -p /data
 
 EXPOSE 8080
 
-ENTRYPOINT ["./api"]
+ENTRYPOINT ["./server"]
 CMD ["--listen=:8080", "--db=/data/dpus.db"]
