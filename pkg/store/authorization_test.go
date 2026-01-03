@@ -380,6 +380,106 @@ func TestCheckAuthorizationMultipleGrants(t *testing.T) {
 	}
 }
 
+// TestAuthorizationWithMultipleCAs verifies that authorizations correctly store
+// the CA ID when multiple CAs exist with different names.
+// This test was added to prevent regression of a bug where granting access to
+// the second CA would incorrectly store the first CA's ID.
+func TestAuthorizationWithMultipleCAs(t *testing.T) {
+	// Enable insecure mode for test (no encryption key set)
+	SetInsecureMode(true)
+	defer SetInsecureMode(false)
+
+	store := setupTestStore(t)
+	setupAuthorizationTestData(t, store)
+
+	// Create two SSH CAs with distinct IDs
+	testPubKey := []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample")
+	testPrivKey := []byte("-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----")
+	tenantID := "tenant1"
+
+	if err := store.CreateSSHCA("ca_prod123", "prod-ca", testPubKey, testPrivKey, "ed25519", &tenantID); err != nil {
+		t.Fatalf("failed to create prod-ca: %v", err)
+	}
+
+	if err := store.CreateSSHCA("ca_test456", "test-ca", testPubKey, testPrivKey, "ed25519", &tenantID); err != nil {
+		t.Fatalf("failed to create test-ca: %v", err)
+	}
+
+	// Simulate the flow: look up CA by name, then use its ID for authorization
+	// This is what bluectl operator grant does
+
+	// Look up prod-ca by name
+	prodCA, err := store.GetSSHCA("prod-ca")
+	if err != nil {
+		t.Fatalf("failed to get prod-ca: %v", err)
+	}
+	if prodCA.ID != "ca_prod123" {
+		t.Fatalf("GetSSHCA('prod-ca') returned wrong ID: got %s, expected ca_prod123", prodCA.ID)
+	}
+
+	// Look up test-ca by name
+	testCA, err := store.GetSSHCA("test-ca")
+	if err != nil {
+		t.Fatalf("failed to get test-ca: %v", err)
+	}
+	if testCA.ID != "ca_test456" {
+		t.Fatalf("GetSSHCA('test-ca') returned wrong ID: got %s, expected ca_test456", testCA.ID)
+	}
+
+	// Create authorization for prod-ca
+	if err := store.CreateAuthorization("auth1", "op1", "tenant1", []string{prodCA.ID}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization for prod-ca: %v", err)
+	}
+
+	// Create authorization for test-ca
+	if err := store.CreateAuthorization("auth2", "op1", "tenant1", []string{testCA.ID}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization for test-ca: %v", err)
+	}
+
+	// Verify the authorizations have the correct CA IDs
+	auth1, err := store.GetAuthorization("auth1")
+	if err != nil {
+		t.Fatalf("failed to get auth1: %v", err)
+	}
+	if len(auth1.CAIDs) != 1 || auth1.CAIDs[0] != "ca_prod123" {
+		t.Errorf("auth1 has wrong CA IDs: got %v, expected [ca_prod123]", auth1.CAIDs)
+	}
+
+	auth2, err := store.GetAuthorization("auth2")
+	if err != nil {
+		t.Fatalf("failed to get auth2: %v", err)
+	}
+	if len(auth2.CAIDs) != 1 || auth2.CAIDs[0] != "ca_test456" {
+		t.Errorf("auth2 has wrong CA IDs: got %v, expected [ca_test456]", auth2.CAIDs)
+	}
+
+	// Verify authorization checks work correctly
+	authorized, err := store.CheckFullAuthorization("op1", "ca_prod123", "any-device")
+	if err != nil {
+		t.Fatalf("CheckFullAuthorization failed: %v", err)
+	}
+	if !authorized {
+		t.Error("expected op1 to be authorized for ca_prod123")
+	}
+
+	authorized, err = store.CheckFullAuthorization("op1", "ca_test456", "any-device")
+	if err != nil {
+		t.Fatalf("CheckFullAuthorization failed: %v", err)
+	}
+	if !authorized {
+		t.Error("expected op1 to be authorized for ca_test456")
+	}
+
+	// Verify that a non-existent CA is not authorized
+	authorized, err = store.CheckFullAuthorization("op1", "ca_nonexistent", "any-device")
+	if err != nil {
+		t.Fatalf("CheckFullAuthorization failed: %v", err)
+	}
+	if authorized {
+		t.Error("expected op1 to NOT be authorized for ca_nonexistent")
+	}
+}
+
 // setupAuthorizationTestData creates prerequisite data for authorization tests.
 func setupAuthorizationTestData(t *testing.T, store *Store) {
 	t.Helper()

@@ -154,8 +154,8 @@ Examples:
 		fmt.Printf("Expires: %s\n", invite.ExpiresAt.Format(time.RFC3339))
 		fmt.Println()
 		fmt.Println("Share this code with the operator. They will need to:")
-		fmt.Println("  1. Install km: curl -fsSL https://get.beyondidentity.com/km | sh")
-		fmt.Println("  2. Run: km init")
+		fmt.Println("  1. Run: km init")
+		fmt.Println("  2. Enter the invite code when prompted")
 
 		return nil
 	},
