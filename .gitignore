@@ -35,6 +35,6 @@ dist/
 bin/
 keymaker.db
 claude.md
-keymaker
+/keymaker
 web-v0/
 WALKTHROUGH-NOTES.md
