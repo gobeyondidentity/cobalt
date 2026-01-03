@@ -26,12 +26,14 @@ type AuthorizationCheckResponse struct {
 
 // Authorization represents a single authorization entry from the server.
 type Authorization struct {
-	ID        string   `json:"id"`
-	OperatorID string  `json:"operator_id"`
-	TenantID  string   `json:"tenant_id"`
-	CAIDs     []string `json:"ca_ids"`
-	DeviceIDs []string `json:"device_ids"`
-	CreatedAt string   `json:"created_at"`
+	ID          string   `json:"id"`
+	OperatorID  string   `json:"operator_id"`
+	TenantID    string   `json:"tenant_id"`
+	CAIDs       []string `json:"ca_ids"`
+	CANames     []string `json:"ca_names"`
+	DeviceIDs   []string `json:"device_ids"`
+	DeviceNames []string `json:"device_names"`
+	CreatedAt   string   `json:"created_at"`
 	// Legacy fields for backward compatibility with existing code
 	CAID    string   `json:"ca_id"`
 	CAName  string   `json:"ca_name"`

@@ -310,26 +310,48 @@ var whoamiCmd = &cobra.Command{
 		} else {
 			fmt.Printf("\nAuthorizations:\n")
 			for _, auth := range authorizations {
-				// Prefer name fields if available, fall back to IDs
+				// Use CANames (names resolved from IDs by the API)
 				var caDisplay string
-				if auth.CAName != "" {
-					caDisplay = auth.CAName
+				if len(auth.CANames) > 0 {
+					if verbose {
+						// Verbose: show name (id) format
+						var caParts []string
+						for i, name := range auth.CANames {
+							if i < len(auth.CAIDs) && name != auth.CAIDs[i] {
+								caParts = append(caParts, fmt.Sprintf("%s (%s)", name, auth.CAIDs[i]))
+							} else {
+								caParts = append(caParts, name)
+							}
+						}
+						caDisplay = strings.Join(caParts, ", ")
+					} else {
+						caDisplay = strings.Join(auth.CANames, ", ")
+					}
 				} else if len(auth.CAIDs) > 0 {
-					caDisplay = auth.CAIDs[0] // Show first ID as fallback
+					caDisplay = strings.Join(auth.CAIDs, ", ")
 				} else {
 					caDisplay = "none"
 				}
 
+				// Use DeviceNames (names resolved from IDs by the API)
 				var deviceDisplay string
-				if len(auth.Devices) > 0 {
-					deviceDisplay = strings.Join(auth.Devices, ", ")
-				} else if len(auth.DeviceIDs) > 0 {
-					// Check if it's "all" (special case)
-					if len(auth.DeviceIDs) == 1 && auth.DeviceIDs[0] == "all" {
-						deviceDisplay = "all"
+				if len(auth.DeviceNames) > 0 {
+					if verbose {
+						// Verbose: show name (id) format
+						var deviceParts []string
+						for i, name := range auth.DeviceNames {
+							if i < len(auth.DeviceIDs) && name != auth.DeviceIDs[i] && auth.DeviceIDs[i] != "all" {
+								deviceParts = append(deviceParts, fmt.Sprintf("%s (%s)", name, auth.DeviceIDs[i]))
+							} else {
+								deviceParts = append(deviceParts, name)
+							}
+						}
+						deviceDisplay = strings.Join(deviceParts, ", ")
 					} else {
-						deviceDisplay = strings.Join(auth.DeviceIDs, ", ")
+						deviceDisplay = strings.Join(auth.DeviceNames, ", ")
 					}
+				} else if len(auth.DeviceIDs) > 0 {
+					deviceDisplay = strings.Join(auth.DeviceIDs, ", ")
 				} else {
 					deviceDisplay = "none"
 				}

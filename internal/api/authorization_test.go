@@ -600,3 +600,228 @@ func TestCheckAuthorization_MissingCAID(t *testing.T) {
 		t.Errorf("expected status 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// TestAuthorizationResponse_IncludesNames tests that authorization responses include both IDs and names.
+func TestAuthorizationResponse_IncludesNames(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create an SSH CA with a known ID and name
+	caID := "ca_" + uuid.New().String()[:8]
+	caName := "test-production-ca"
+	pubKey := []byte("fake-public-key")
+	privKey := []byte("fake-private-key")
+	if err := server.store.CreateSSHCA(caID, caName, pubKey, privKey, "ed25519", &tenantID); err != nil {
+		t.Fatalf("failed to create SSH CA: %v", err)
+	}
+
+	// Create a DPU with a known ID and name
+	dpuID := "dpu_" + uuid.New().String()[:8]
+	dpuName := "bf3-gpu-cluster-1"
+	if err := server.store.Add(dpuID, dpuName, "192.168.1.100", 50051); err != nil {
+		t.Fatalf("failed to create DPU: %v", err)
+	}
+
+	// Create authorization using the CA ID and DPU ID
+	authID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(authID, operatorID, tenantID, []string{caID}, []string{dpuID}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// Get authorization via API
+	req := httptest.NewRequest("GET", "/api/v1/authorizations/"+authID, nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result AuthorizationResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Verify IDs are present
+	if len(result.CAIDs) != 1 || result.CAIDs[0] != caID {
+		t.Errorf("expected ca_ids [%s], got %v", caID, result.CAIDs)
+	}
+	if len(result.DeviceIDs) != 1 || result.DeviceIDs[0] != dpuID {
+		t.Errorf("expected device_ids [%s], got %v", dpuID, result.DeviceIDs)
+	}
+
+	// Verify names are resolved correctly
+	if len(result.CANames) != 1 || result.CANames[0] != caName {
+		t.Errorf("expected ca_names [%s], got %v", caName, result.CANames)
+	}
+	if len(result.DeviceNames) != 1 || result.DeviceNames[0] != dpuName {
+		t.Errorf("expected device_names [%s], got %v", dpuName, result.DeviceNames)
+	}
+}
+
+// TestAuthorizationResponse_AllDevicesName tests that "all" device ID returns "all" as name.
+func TestAuthorizationResponse_AllDevicesName(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create authorization with "all" devices
+	authID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(authID, operatorID, tenantID, []string{"ca-prod"}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// Get authorization via API
+	req := httptest.NewRequest("GET", "/api/v1/authorizations/"+authID, nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result AuthorizationResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Verify "all" is preserved in both IDs and names
+	if len(result.DeviceIDs) != 1 || result.DeviceIDs[0] != "all" {
+		t.Errorf("expected device_ids [all], got %v", result.DeviceIDs)
+	}
+	if len(result.DeviceNames) != 1 || result.DeviceNames[0] != "all" {
+		t.Errorf("expected device_names [all], got %v", result.DeviceNames)
+	}
+}
+
+// TestAuthorizationResponse_GracefulDegradation tests that unknown IDs are returned as-is.
+func TestAuthorizationResponse_GracefulDegradation(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create authorization with CA and device IDs that don't exist in the store
+	unknownCAID := "ca_nonexistent"
+	unknownDeviceID := "dpu_nonexistent"
+	authID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(authID, operatorID, tenantID, []string{unknownCAID}, []string{unknownDeviceID}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// Get authorization via API
+	req := httptest.NewRequest("GET", "/api/v1/authorizations/"+authID, nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result AuthorizationResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Verify IDs are present
+	if len(result.CAIDs) != 1 || result.CAIDs[0] != unknownCAID {
+		t.Errorf("expected ca_ids [%s], got %v", unknownCAID, result.CAIDs)
+	}
+	if len(result.DeviceIDs) != 1 || result.DeviceIDs[0] != unknownDeviceID {
+		t.Errorf("expected device_ids [%s], got %v", unknownDeviceID, result.DeviceIDs)
+	}
+
+	// When lookup fails, names should fall back to IDs (graceful degradation)
+	if len(result.CANames) != 1 || result.CANames[0] != unknownCAID {
+		t.Errorf("expected ca_names to fall back to [%s], got %v", unknownCAID, result.CANames)
+	}
+	if len(result.DeviceNames) != 1 || result.DeviceNames[0] != unknownDeviceID {
+		t.Errorf("expected device_names to fall back to [%s], got %v", unknownDeviceID, result.DeviceNames)
+	}
+}
+
+// TestListAuthorizations_IncludesNames tests that list response includes names.
+func TestListAuthorizations_IncludesNames(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create an SSH CA
+	caID := "ca_" + uuid.New().String()[:8]
+	caName := "my-test-ca"
+	if err := server.store.CreateSSHCA(caID, caName, []byte("pub"), []byte("priv"), "ed25519", &tenantID); err != nil {
+		t.Fatalf("failed to create SSH CA: %v", err)
+	}
+
+	// Create authorization
+	authID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(authID, operatorID, tenantID, []string{caID}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// List authorizations by operator
+	req := httptest.NewRequest("GET", "/api/v1/authorizations?operator_id="+operatorID, nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result []AuthorizationResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 authorization, got %d", len(result))
+	}
+
+	// Verify names are included in list response
+	if len(result[0].CANames) != 1 || result[0].CANames[0] != caName {
+		t.Errorf("expected ca_names [%s], got %v", caName, result[0].CANames)
+	}
+	if len(result[0].DeviceNames) != 1 || result[0].DeviceNames[0] != "all" {
+		t.Errorf("expected device_names [all], got %v", result[0].DeviceNames)
+	}
+}

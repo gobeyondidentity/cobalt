@@ -23,14 +23,16 @@ type CreateAuthorizationRequest struct {
 
 // AuthorizationResponse is the response for an authorization.
 type AuthorizationResponse struct {
-	ID         string   `json:"id"`
-	OperatorID string   `json:"operator_id"`
-	TenantID   string   `json:"tenant_id"`
-	CAIDs      []string `json:"ca_ids"`
-	DeviceIDs  []string `json:"device_ids"`
-	CreatedAt  string   `json:"created_at"`
-	CreatedBy  string   `json:"created_by"`
-	ExpiresAt  *string  `json:"expires_at,omitempty"`
+	ID          string   `json:"id"`
+	OperatorID  string   `json:"operator_id"`
+	TenantID    string   `json:"tenant_id"`
+	CAIDs       []string `json:"ca_ids"`
+	CANames     []string `json:"ca_names"`
+	DeviceIDs   []string `json:"device_ids"`
+	DeviceNames []string `json:"device_names"`
+	CreatedAt   string   `json:"created_at"`
+	CreatedBy   string   `json:"created_by"`
+	ExpiresAt   *string  `json:"expires_at,omitempty"`
 }
 
 // CheckAuthorizationRequest is the request body for checking authorization.
@@ -110,7 +112,7 @@ func (s *Server) handleCreateAuthorization(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, authorizationToResponse(auth))
+	writeJSON(w, http.StatusCreated, s.authorizationToResponse(auth))
 }
 
 // handleListAuthorizations handles GET /api/v1/authorizations
@@ -139,7 +141,7 @@ func (s *Server) handleListAuthorizations(w http.ResponseWriter, r *http.Request
 
 	result := make([]AuthorizationResponse, 0, len(auths))
 	for _, auth := range auths {
-		result = append(result, authorizationToResponse(auth))
+		result = append(result, s.authorizationToResponse(auth))
 	}
 
 	writeJSON(w, http.StatusOK, result)
@@ -155,7 +157,7 @@ func (s *Server) handleGetAuthorization(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	writeJSON(w, http.StatusOK, authorizationToResponse(auth))
+	writeJSON(w, http.StatusOK, s.authorizationToResponse(auth))
 }
 
 // handleDeleteAuthorization handles DELETE /api/v1/authorizations/{id}
@@ -222,16 +224,42 @@ func (s *Server) handleCheckAuthorization(w http.ResponseWriter, r *http.Request
 // ----- Helper Functions -----
 
 // authorizationToResponse converts a store.Authorization to an API response.
-func authorizationToResponse(auth *store.Authorization) AuthorizationResponse {
+// It resolves CA IDs and device IDs to their human-readable names.
+func (s *Server) authorizationToResponse(auth *store.Authorization) AuthorizationResponse {
 	resp := AuthorizationResponse{
-		ID:         auth.ID,
-		OperatorID: auth.OperatorID,
-		TenantID:   auth.TenantID,
-		CAIDs:      auth.CAIDs,
-		DeviceIDs:  auth.DeviceIDs,
-		CreatedAt:  auth.CreatedAt.Format(time.RFC3339),
-		CreatedBy:  auth.CreatedBy,
+		ID:          auth.ID,
+		OperatorID:  auth.OperatorID,
+		TenantID:    auth.TenantID,
+		CAIDs:       auth.CAIDs,
+		CANames:     make([]string, 0, len(auth.CAIDs)),
+		DeviceIDs:   auth.DeviceIDs,
+		DeviceNames: make([]string, 0, len(auth.DeviceIDs)),
+		CreatedAt:   auth.CreatedAt.Format(time.RFC3339),
+		CreatedBy:   auth.CreatedBy,
 	}
+
+	// Resolve CA IDs to names (graceful degradation: use ID if name lookup fails)
+	for _, caID := range auth.CAIDs {
+		if ca, err := s.store.GetSSHCAByID(caID); err == nil {
+			resp.CANames = append(resp.CANames, ca.Name)
+		} else {
+			resp.CANames = append(resp.CANames, caID)
+		}
+	}
+
+	// Resolve device IDs to names (graceful degradation: use ID if name lookup fails)
+	for _, deviceID := range auth.DeviceIDs {
+		if deviceID == "all" {
+			resp.DeviceNames = append(resp.DeviceNames, "all")
+			continue
+		}
+		if dpu, err := s.store.Get(deviceID); err == nil {
+			resp.DeviceNames = append(resp.DeviceNames, dpu.Name)
+		} else {
+			resp.DeviceNames = append(resp.DeviceNames, deviceID)
+		}
+	}
+
 	if auth.ExpiresAt != nil {
 		t := auth.ExpiresAt.Format(time.RFC3339)
 		resp.ExpiresAt = &t
