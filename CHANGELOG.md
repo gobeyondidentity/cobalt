@@ -5,6 +5,23 @@ All notable changes to the Secure Infrastructure project will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-07
+
+### Added
+- Auto-generated encryption key on first run (no more SECURE_INFRA_KEY setup required)
+- Emulator `--control-plane` flag to relay host registrations to control plane
+- Emulator returns valid mock attestation (enables demo flow without --force)
+
+### Fixed
+- Invite code double-dash bug (e.g., "GPU--KBTK" now "GPU-KBTK")
+- CA authorization lookup now matches by name or ID
+- `km ssh-ca create` no longer exposes internal ID to users
+
+### Documentation
+- Split setup guide into Quick Start (Emulator) and Hardware Setup
+- Added clean slate instructions for fresh database starts
+- Added ROADMAP.md
+
 ## [0.3.0] - 2026-01-07
 
 ### Added
