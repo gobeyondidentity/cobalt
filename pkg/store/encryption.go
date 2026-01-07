@@ -6,10 +6,14 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 const (
@@ -39,10 +43,74 @@ func InsecureModeAllowed() bool {
 	return insecureModeAllowed
 }
 
-// deriveKey derives a 32-byte AES-256 key from the SECURE_INFRA_KEY environment variable
-// using SHA-256 hash.
+// DefaultKeyPath returns the default path for the auto-generated encryption key file,
+// following XDG Base Directory spec.
+func DefaultKeyPath() string {
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		home, _ := os.UserHomeDir()
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(dataHome, "bluectl", "key")
+}
+
+// LoadOrGenerateKey loads the encryption key from file or generates a new one.
+// Priority:
+//  1. Environment variable SECURE_INFRA_KEY (always takes precedence)
+//  2. Key file at the specified path
+//  3. Generate new key and save to file
+//
+// Returns the key string (either from env, file, or newly generated).
+func LoadOrGenerateKey(keyPath string) (string, error) {
+	// Check env var first (override)
+	if keyStr := os.Getenv(envKeyName); keyStr != "" {
+		return keyStr, nil
+	}
+
+	// Try to read existing key file
+	data, err := os.ReadFile(keyPath)
+	if err == nil {
+		return strings.TrimSpace(string(data)), nil
+	}
+
+	// File doesn't exist, generate new key
+	if !os.IsNotExist(err) {
+		return "", fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	// Generate 32 random bytes
+	keyBytes := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, keyBytes); err != nil {
+		return "", fmt.Errorf("failed to generate random key: %w", err)
+	}
+
+	// Hex-encode to 64 character string
+	keyStr := hex.EncodeToString(keyBytes)
+
+	// Create parent directory with 0700 permissions
+	dir := filepath.Dir(keyPath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", fmt.Errorf("failed to create key directory: %w", err)
+	}
+
+	// Write key file with 0600 permissions
+	if err := os.WriteFile(keyPath, []byte(keyStr), 0600); err != nil {
+		return "", fmt.Errorf("failed to write key file: %w", err)
+	}
+
+	log.Printf("Generated new encryption key at %s", keyPath)
+	return keyStr, nil
+}
+
+// deriveKey derives a 32-byte AES-256 key from the encryption key
+// using SHA-256 hash. It first tries to load or generate a key.
 func deriveKey() ([]byte, bool) {
-	keyStr := os.Getenv(envKeyName)
+	keyStr, err := LoadOrGenerateKey(DefaultKeyPath())
+	if err != nil {
+		// Log error but don't expose details
+		log.Printf("Warning: could not load or generate encryption key: %v", err)
+		return nil, false
+	}
 	if keyStr == "" {
 		return nil, false
 	}

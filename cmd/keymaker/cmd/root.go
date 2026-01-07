@@ -64,15 +64,14 @@ Getting started:
 			return fmt.Errorf("failed to open database: %w", err)
 		}
 
-		// Check encryption configuration
-		if !store.IsEncryptionEnabled() {
-			if insecure {
-				store.SetInsecureMode(true)
-				fmt.Fprintln(os.Stderr, "WARNING: Operating in insecure mode. Private keys are NOT encrypted.")
-			} else {
-				return fmt.Errorf("encryption key not configured. Set SECURE_INFRA_KEY environment variable for encrypted key storage, or use --insecure flag for development (NOT RECOMMENDED for production)")
-			}
+		// Handle insecure mode flag (only meaningful if user explicitly requests it)
+		if insecure {
+			store.SetInsecureMode(true)
+			fmt.Fprintln(os.Stderr, "WARNING: Operating in insecure mode. Private keys are NOT encrypted.")
 		}
+		// Note: With auto-generation, IsEncryptionEnabled() is always true
+		// unless there's a file system error. The encryption key auto-generates
+		// at ~/.local/share/bluectl/key on first run.
 		return nil
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
