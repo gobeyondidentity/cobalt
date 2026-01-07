@@ -55,12 +55,43 @@ func TestDefaultFixture(t *testing.T) {
 		}
 	})
 
-	t.Run("attestation is unavailable", func(t *testing.T) {
+	t.Run("attestation is valid", func(t *testing.T) {
 		if fix.Attestation == nil {
 			t.Fatal("Attestation is nil")
 		}
-		if fix.Attestation.Status != "ATTESTATION_STATUS_UNAVAILABLE" {
-			t.Errorf("expected attestation status UNAVAILABLE, got %q", fix.Attestation.Status)
+		if fix.Attestation.Status != "ATTESTATION_STATUS_VALID" {
+			t.Errorf("expected attestation status VALID, got %q", fix.Attestation.Status)
+		}
+	})
+
+	t.Run("attestation has DICE certificates", func(t *testing.T) {
+		if len(fix.Attestation.Certificates) < 2 {
+			t.Errorf("expected at least 2 DICE certificates, got %d", len(fix.Attestation.Certificates))
+		}
+		// Verify L0 Device Identity cert exists
+		var hasL0, hasL1 bool
+		for _, cert := range fix.Attestation.Certificates {
+			if cert.Level == 0 {
+				hasL0 = true
+			}
+			if cert.Level == 1 {
+				hasL1 = true
+			}
+		}
+		if !hasL0 {
+			t.Error("expected L0 Device Identity certificate")
+		}
+		if !hasL1 {
+			t.Error("expected L1 Alias certificate")
+		}
+	})
+
+	t.Run("attestation has measurements", func(t *testing.T) {
+		if len(fix.Attestation.Measurements) == 0 {
+			t.Error("expected at least one measurement")
+		}
+		if _, ok := fix.Attestation.Measurements["boot_hash"]; !ok {
+			t.Error("expected boot_hash measurement")
 		}
 	})
 
@@ -97,13 +128,19 @@ func TestDefaultFixtureConversions(t *testing.T) {
 		}
 	})
 
-	t.Run("ToGetAttestationResponse returns unavailable", func(t *testing.T) {
+	t.Run("ToGetAttestationResponse returns valid with certificates", func(t *testing.T) {
 		resp := fix.ToGetAttestationResponse()
 		if resp == nil {
 			t.Fatal("ToGetAttestationResponse returned nil")
 		}
-		if resp.Status != agentv1.AttestationStatus_ATTESTATION_STATUS_UNAVAILABLE {
-			t.Errorf("expected UNAVAILABLE status, got %v", resp.Status)
+		if resp.Status != agentv1.AttestationStatus_ATTESTATION_STATUS_VALID {
+			t.Errorf("expected VALID status, got %v", resp.Status)
+		}
+		if len(resp.Certificates) < 2 {
+			t.Errorf("expected at least 2 DICE certificates, got %d", len(resp.Certificates))
+		}
+		if len(resp.Measurements) == 0 {
+			t.Error("expected at least one measurement")
 		}
 	})
 
