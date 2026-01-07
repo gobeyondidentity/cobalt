@@ -13,7 +13,7 @@ Deploy Secure Infrastructure with real BlueField DPUs. This guide covers the ful
 ## Clone and Build
 
 ```bash
-git clone https://github.com/nmelo/secure-infra.git
+git clone https://github.com/gobeyondidentity/secure-infra.git
 cd secure-infra
 make
 ```

@@ -10,7 +10,7 @@ Get Secure Infrastructure running locally without hardware. Use this guide to le
 ## Clone and Build
 
 ```bash
-git clone https://github.com/nmelo/secure-infra.git
+git clone https://github.com/gobeyondidentity/secure-infra.git
 cd secure-infra
 make
 ```
@@ -174,7 +174,17 @@ When you're ready for production, see [Hardware Setup Guide](setup-hardware.md).
 
 ---
 
-## Appendix: Shell Completion
+## Appendix A: Clean Slate
+
+To reset and start fresh, remove the database:
+
+```bash
+rm -f ~/.local/share/bluectl/dpus.db
+```
+
+---
+
+## Appendix B: Shell Completion
 
 ```bash
 # Zsh
