@@ -16,11 +16,12 @@ import (
 
 var (
 	// Flags
-	listenAddr   string
-	port         int
-	fixturePath  string
-	instanceID   string
-	localAPIPort int
+	listenAddr      string
+	port            int
+	fixturePath     string
+	instanceID      string
+	localAPIPort    int
+	controlPlaneURL string
 )
 
 func main() {
@@ -79,7 +80,10 @@ Local API:
 The local API exposes endpoints for host-agent registration and posture:
   POST /local/v1/register  - Host registration
   POST /local/v1/posture   - Posture reports
-  POST /local/v1/cert      - Host certificate requests`,
+  POST /local/v1/cert      - Host certificate requests
+
+Control Plane Integration:
+  --control-plane http://localhost:8080  # Forward registrations to control plane`,
 	RunE: runServe,
 }
 
@@ -89,6 +93,7 @@ func init() {
 	serveCmd.Flags().StringVarP(&fixturePath, "fixture", "f", "", "Path to fixture JSON file (optional, uses defaults if not set)")
 	serveCmd.Flags().StringVarP(&instanceID, "instance-id", "i", "", "Instance ID for templating")
 	serveCmd.Flags().IntVar(&localAPIPort, "local-api-port", 9443, "HTTP port for local API (host-agent communication)")
+	serveCmd.Flags().StringVar(&controlPlaneURL, "control-plane", "", "Control plane URL to forward host registrations (e.g., http://localhost:8080)")
 
 	rootCmd.AddCommand(serveCmd)
 }
@@ -125,10 +130,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Create server
 	srv := server.New(server.Config{
-		ListenAddr:   addr,
-		InstanceID:   instanceID,
-		Fixture:      fix,
-		LocalAPIPort: localAPIPort,
+		ListenAddr:      addr,
+		InstanceID:      instanceID,
+		Fixture:         fix,
+		LocalAPIPort:    localAPIPort,
+		ControlPlaneURL: controlPlaneURL,
 	})
 
 	// Handle shutdown signals

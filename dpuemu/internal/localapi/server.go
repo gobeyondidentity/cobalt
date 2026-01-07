@@ -4,6 +4,7 @@
 package localapi
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -17,8 +18,10 @@ import (
 
 // Server is the HTTP server for the local API.
 type Server struct {
-	fixture *fixture.Fixture
-	mux     *http.ServeMux
+	fixture         *fixture.Fixture
+	controlPlaneURL string
+	httpClient      *http.Client
+	mux             *http.ServeMux
 
 	mu    sync.RWMutex
 	hosts map[string]*hostInfo // hostname -> host info
@@ -76,11 +79,16 @@ type posturePayload struct {
 }
 
 // New creates a new local API server.
-func New(fix *fixture.Fixture) *Server {
+// If controlPlaneURL is non-empty, host registrations will be forwarded to the control plane.
+func New(fix *fixture.Fixture, controlPlaneURL string) *Server {
 	s := &Server{
-		fixture: fix,
-		mux:     http.NewServeMux(),
-		hosts:   make(map[string]*hostInfo),
+		fixture:         fix,
+		controlPlaneURL: controlPlaneURL,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+		mux:   http.NewServeMux(),
+		hosts: make(map[string]*hostInfo),
 	}
 
 	s.mux.HandleFunc("/local/v1/register", s.handleRegister)
@@ -146,6 +154,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Posture:   req.Posture,
 		CreatedAt: now,
 		UpdatedAt: now,
+	}
+
+	// Relay registration to control plane (fire-and-forget)
+	if s.controlPlaneURL != "" {
+		go s.relayRegistration(req.Hostname, req.Posture)
 	}
 
 	resp := registerResponse{
@@ -257,4 +270,50 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(errorResponse{Error: message})
+}
+
+// controlPlaneRegisterRequest matches the control plane's hostRegisterRequest format.
+type controlPlaneRegisterRequest struct {
+	DPUName  string          `json:"dpu_name"`
+	Hostname string          `json:"hostname"`
+	Posture  *posturePayload `json:"posture,omitempty"`
+}
+
+// relayRegistration forwards a host registration to the control plane.
+// This is fire-and-forget; errors are logged but don't affect local registration.
+func (s *Server) relayRegistration(hostname string, posture *posturePayload) {
+	dpuName := s.getDPUName()
+
+	reqBody := controlPlaneRegisterRequest{
+		DPUName:  dpuName,
+		Hostname: hostname,
+		Posture:  posture,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		log.Printf("[localapi] relay: failed to marshal request: %v", err)
+		return
+	}
+
+	url := s.controlPlaneURL + "/api/v1/hosts/register"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("[localapi] relay: failed to create request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		log.Printf("[localapi] relay: failed to forward registration for %s to control plane: %v", hostname, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		log.Printf("[localapi] relay: forwarded registration for host %s (dpu=%s) to control plane", hostname, dpuName)
+	} else {
+		log.Printf("[localapi] relay: control plane returned %d for host %s registration", resp.StatusCode, hostname)
+	}
 }

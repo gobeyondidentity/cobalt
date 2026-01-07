@@ -7,15 +7,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/nmelo/secure-infra/dpuemu/internal/fixture"
+	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
 )
 
 func TestRegister_NewHost(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	req := registerRequest{
 		Hostname: "test-host-1",
@@ -57,7 +59,7 @@ func TestRegister_NewHost(t *testing.T) {
 
 func TestRegister_ExistingHost(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	req := registerRequest{
 		Hostname: "existing-host",
@@ -99,7 +101,7 @@ func TestRegister_ExistingHost(t *testing.T) {
 
 func TestPosture_Success(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	req := postureRequest{
 		Hostname: "posture-host",
@@ -128,7 +130,7 @@ func TestPosture_Success(t *testing.T) {
 
 func TestCert_Success(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	req := certRequest{
 		Hostname:   "cert-host",
@@ -175,7 +177,7 @@ func TestCert_Success(t *testing.T) {
 
 func TestRegister_InvalidJSON(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/local/v1/register", strings.NewReader("{invalid json"))
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -199,7 +201,7 @@ func TestRegister_InvalidJSON(t *testing.T) {
 
 func TestPosture_InvalidJSON(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/local/v1/posture", strings.NewReader("not json"))
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -214,7 +216,7 @@ func TestPosture_InvalidJSON(t *testing.T) {
 
 func TestCert_InvalidJSON(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/local/v1/cert", strings.NewReader("[]"))
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -229,7 +231,7 @@ func TestCert_InvalidJSON(t *testing.T) {
 
 func TestRegister_MissingHostname(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	req := registerRequest{
 		Hostname: "",
@@ -255,7 +257,7 @@ func TestRegister_MissingHostname(t *testing.T) {
 
 func TestUnknownEndpoint(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	httpReq := httptest.NewRequest(http.MethodGet, "/unknown", nil)
 	w := httptest.NewRecorder()
@@ -269,7 +271,7 @@ func TestUnknownEndpoint(t *testing.T) {
 
 func TestMethodNotAllowed(t *testing.T) {
 	fix := fixture.DefaultFixture()
-	srv := New(fix)
+	srv := New(fix, "")
 
 	httpReq := httptest.NewRequest(http.MethodGet, "/local/v1/register", nil)
 	w := httptest.NewRecorder()
@@ -282,7 +284,7 @@ func TestMethodNotAllowed(t *testing.T) {
 }
 
 func TestNilFixture(t *testing.T) {
-	srv := New(nil)
+	srv := New(nil, "")
 
 	req := registerRequest{
 		Hostname: "nil-fixture-host",
@@ -305,5 +307,159 @@ func TestNilFixture(t *testing.T) {
 	// Should use default "dpuemu" when fixture is nil
 	if resp.DPUName != "dpuemu" {
 		t.Errorf("expected dpu_name 'dpuemu', got %s", resp.DPUName)
+	}
+}
+
+func TestRegister_RelayToControlPlane(t *testing.T) {
+	// Track calls to the mock control plane
+	var receivedRequests []controlPlaneRegisterRequest
+	var mu sync.Mutex
+
+	// Create a mock control plane server
+	mockCP := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/hosts/register" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("unexpected method: %s", r.Method)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req controlPlaneRegisterRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("failed to decode request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		mu.Lock()
+		receivedRequests = append(receivedRequests, req)
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]string{
+			"host_id":          "cp_host_123",
+			"refresh_interval": "5m",
+		})
+	}))
+	defer mockCP.Close()
+
+	// Create localapi server with control plane URL
+	fix := &fixture.Fixture{
+		SystemInfo: &agentv1.GetSystemInfoResponse{
+			Hostname: "test-dpu",
+		},
+	}
+	srv := New(fix, mockCP.URL)
+
+	// Register a host
+	req := registerRequest{
+		Hostname: "relay-test-host",
+		Posture: &posturePayload{
+			OSVersion:     "Ubuntu 22.04",
+			KernelVersion: "5.15.0",
+		},
+	}
+	body, _ := json.Marshal(req)
+
+	httpReq := httptest.NewRequest(http.MethodPost, "/local/v1/register", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, httpReq)
+
+	// Local registration should succeed
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Wait for the async relay to complete
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify the control plane received the request
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(receivedRequests) != 1 {
+		t.Fatalf("expected 1 request to control plane, got %d", len(receivedRequests))
+	}
+
+	cpReq := receivedRequests[0]
+	if cpReq.DPUName != "test-dpu" {
+		t.Errorf("expected dpu_name 'test-dpu', got %s", cpReq.DPUName)
+	}
+	if cpReq.Hostname != "relay-test-host" {
+		t.Errorf("expected hostname 'relay-test-host', got %s", cpReq.Hostname)
+	}
+	if cpReq.Posture == nil {
+		t.Error("expected posture to be forwarded")
+	} else {
+		if cpReq.Posture.OSVersion != "Ubuntu 22.04" {
+			t.Errorf("expected os_version 'Ubuntu 22.04', got %s", cpReq.Posture.OSVersion)
+		}
+	}
+}
+
+func TestRegister_RelayFailureDoesNotAffectLocal(t *testing.T) {
+	// Create a mock control plane that always fails
+	mockCP := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockCP.Close()
+
+	fix := fixture.DefaultFixture()
+	srv := New(fix, mockCP.URL)
+
+	// Register a host
+	req := registerRequest{
+		Hostname: "relay-fail-host",
+	}
+	body, _ := json.Marshal(req)
+
+	httpReq := httptest.NewRequest(http.MethodPost, "/local/v1/register", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, httpReq)
+
+	// Local registration should still succeed
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected status 201 despite relay failure, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp registerResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if resp.HostID == "" {
+		t.Error("expected non-empty host_id")
+	}
+}
+
+func TestRegister_NoRelayWhenControlPlaneEmpty(t *testing.T) {
+	// Create localapi server without control plane URL
+	fix := fixture.DefaultFixture()
+	srv := New(fix, "")
+
+	// Register a host
+	req := registerRequest{
+		Hostname: "no-relay-host",
+	}
+	body, _ := json.Marshal(req)
+
+	httpReq := httptest.NewRequest(http.MethodPost, "/local/v1/register", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, httpReq)
+
+	// Local registration should succeed (no panic or error from nil URL)
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d: %s", w.Code, w.Body.String())
 	}
 }

@@ -29,10 +29,11 @@ type Server struct {
 
 // Config holds server configuration.
 type Config struct {
-	ListenAddr   string
-	InstanceID   string
-	Fixture      *fixture.Fixture
-	LocalAPIPort int // HTTP port for local API (0 to disable)
+	ListenAddr      string
+	InstanceID      string
+	Fixture         *fixture.Fixture
+	LocalAPIPort    int    // HTTP port for local API (0 to disable)
+	ControlPlaneURL string // URL to forward host registrations (empty to disable)
 }
 
 // New creates a new emulator server.
@@ -43,7 +44,7 @@ func New(cfg Config) *Server {
 		localAPIPort: cfg.LocalAPIPort,
 	}
 	if cfg.LocalAPIPort > 0 {
-		s.localAPI = localapi.New(cfg.Fixture)
+		s.localAPI = localapi.New(cfg.Fixture, cfg.ControlPlaneURL)
 	}
 	return s
 }
