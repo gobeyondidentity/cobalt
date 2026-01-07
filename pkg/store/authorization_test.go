@@ -380,6 +380,132 @@ func TestCheckAuthorizationMultipleGrants(t *testing.T) {
 	}
 }
 
+// TestCheckCAAuthorizationByIDOrName verifies that CheckCAAuthorization
+// works with either CA ID or CA name as input.
+// This test catches a bug where authorization_cas stores names but lookup uses IDs.
+func TestCheckCAAuthorizationByIDOrName(t *testing.T) {
+	SetInsecureMode(true)
+	defer SetInsecureMode(false)
+
+	store := setupTestStore(t)
+	setupAuthorizationTestData(t, store)
+
+	// Create an SSH CA with known ID and name
+	testPubKey := []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample")
+	testPrivKey := []byte("-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----")
+	tenantID := "tenant1"
+
+	if err := store.CreateSSHCA("ca_abc123", "test-ca", testPubKey, testPrivKey, "ed25519", &tenantID); err != nil {
+		t.Fatalf("failed to create test-ca: %v", err)
+	}
+
+	// Scenario 1: Authorization created with CA NAME (simulating bluectl operator grant test-ca)
+	if err := store.CreateAuthorization("auth1", "op1", "tenant1", []string{"test-ca"}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization with CA name: %v", err)
+	}
+
+	// Should be authorized when checking by CA NAME
+	authorized, err := store.CheckCAAuthorization("op1", "test-ca")
+	if err != nil {
+		t.Fatalf("CheckCAAuthorization by name failed: %v", err)
+	}
+	if !authorized {
+		t.Error("expected op1 to be authorized when checking by CA name 'test-ca'")
+	}
+
+	// Should ALSO be authorized when checking by CA ID (this is the bug scenario)
+	authorized, err = store.CheckCAAuthorization("op1", "ca_abc123")
+	if err != nil {
+		t.Fatalf("CheckCAAuthorization by ID failed: %v", err)
+	}
+	if !authorized {
+		t.Error("expected op1 to be authorized when checking by CA ID 'ca_abc123'")
+	}
+
+	// Scenario 2: Authorization created with CA ID
+	if err := store.CreateAuthorization("auth2", "op2", "tenant1", []string{"ca_abc123"}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization with CA ID: %v", err)
+	}
+
+	// Should be authorized when checking by CA ID
+	authorized, err = store.CheckCAAuthorization("op2", "ca_abc123")
+	if err != nil {
+		t.Fatalf("CheckCAAuthorization by ID failed: %v", err)
+	}
+	if !authorized {
+		t.Error("expected op2 to be authorized when checking by CA ID 'ca_abc123'")
+	}
+
+	// Should ALSO be authorized when checking by CA NAME
+	authorized, err = store.CheckCAAuthorization("op2", "test-ca")
+	if err != nil {
+		t.Fatalf("CheckCAAuthorization by name failed: %v", err)
+	}
+	if !authorized {
+		t.Error("expected op2 to be authorized when checking by CA name 'test-ca'")
+	}
+}
+
+// TestCheckFullAuthorizationByIDOrName verifies that CheckFullAuthorization
+// works with either CA ID or CA name as input.
+func TestCheckFullAuthorizationByIDOrName(t *testing.T) {
+	SetInsecureMode(true)
+	defer SetInsecureMode(false)
+
+	store := setupTestStore(t)
+	setupAuthorizationTestData(t, store)
+
+	// Create an SSH CA with known ID and name
+	testPubKey := []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample")
+	testPrivKey := []byte("-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----")
+	tenantID := "tenant1"
+
+	if err := store.CreateSSHCA("ca_xyz789", "prod-ca", testPubKey, testPrivKey, "ed25519", &tenantID); err != nil {
+		t.Fatalf("failed to create prod-ca: %v", err)
+	}
+
+	// Authorization created with CA NAME
+	if err := store.CreateAuthorization("auth1", "op1", "tenant1", []string{"prod-ca"}, []string{"device1"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// Check by CA NAME
+	authorized, err := store.CheckFullAuthorization("op1", "prod-ca", "device1")
+	if err != nil {
+		t.Fatalf("CheckFullAuthorization by name failed: %v", err)
+	}
+	if !authorized {
+		t.Error("expected op1 to be authorized when checking by CA name 'prod-ca'")
+	}
+
+	// Check by CA ID (the bug scenario - km push uses ID from API response)
+	authorized, err = store.CheckFullAuthorization("op1", "ca_xyz789", "device1")
+	if err != nil {
+		t.Fatalf("CheckFullAuthorization by ID failed: %v", err)
+	}
+	if !authorized {
+		t.Error("expected op1 to be authorized when checking by CA ID 'ca_xyz789'")
+	}
+
+	// Verify unauthorized CA still fails
+	authorized, err = store.CheckFullAuthorization("op1", "nonexistent-ca", "device1")
+	if err != nil {
+		t.Fatalf("CheckFullAuthorization failed: %v", err)
+	}
+	if authorized {
+		t.Error("expected op1 to NOT be authorized for nonexistent CA")
+	}
+
+	// Verify unauthorized device still fails
+	authorized, err = store.CheckFullAuthorization("op1", "prod-ca", "device2")
+	if err != nil {
+		t.Fatalf("CheckFullAuthorization failed: %v", err)
+	}
+	if authorized {
+		t.Error("expected op1 to NOT be authorized for device2")
+	}
+}
+
 // TestAuthorizationWithMultipleCAs verifies that authorizations correctly store
 // the CA ID when multiple CAs exist with different names.
 // This test was added to prevent regression of a bug where granting access to

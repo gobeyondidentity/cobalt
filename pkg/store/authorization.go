@@ -132,14 +132,21 @@ func (s *Store) DeleteAuthorization(id string) error {
 }
 
 // CheckCAAuthorization checks if an operator is authorized for a specific CA.
+// The caIDOrName parameter can be either a CA ID (e.g., "ca_abc123") or
+// a CA name (e.g., "test-ca"). The authorization check will match against
+// both the stored value in authorization_cas and the corresponding CA in ssh_cas.
 // Returns true if authorized, false otherwise.
-func (s *Store) CheckCAAuthorization(operatorID, caID string) (bool, error) {
+func (s *Store) CheckCAAuthorization(operatorID, caIDOrName string) (bool, error) {
 	var count int
+	// Match if authorization_cas.ca_id equals the input directly,
+	// OR if the input matches a CA's ID/name and authorization_cas.ca_id matches the other identifier.
 	err := s.db.QueryRow(
 		`SELECT COUNT(*) FROM authorizations a
 		 INNER JOIN authorization_cas ac ON a.id = ac.authorization_id
-		 WHERE a.operator_id = ? AND ac.ca_id = ?`,
-		operatorID, caID,
+		 LEFT JOIN ssh_cas sc ON ac.ca_id = sc.id OR ac.ca_id = sc.name
+		 WHERE a.operator_id = ?
+		   AND (ac.ca_id = ? OR sc.id = ? OR sc.name = ?)`,
+		operatorID, caIDOrName, caIDOrName, caIDOrName,
 	).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to check CA authorization: %w", err)
@@ -164,19 +171,22 @@ func (s *Store) CheckDeviceAuthorization(operatorID, deviceID string) (bool, err
 }
 
 // CheckFullAuthorization checks if an operator is authorized for both a CA and a device.
-// This is used for distribution which requires both.
-func (s *Store) CheckFullAuthorization(operatorID, caID, deviceID string) (bool, error) {
+// The caIDOrName parameter can be either a CA ID (e.g., "ca_abc123") or
+// a CA name (e.g., "test-ca"). This is used for distribution which requires both.
+func (s *Store) CheckFullAuthorization(operatorID, caIDOrName, deviceID string) (bool, error) {
 	// An operator is fully authorized if they have at least one authorization
 	// that grants access to both the specified CA and device (or "all" devices).
+	// The CA can be matched by ID or name in either authorization_cas or ssh_cas.
 	var count int
 	err := s.db.QueryRow(
 		`SELECT COUNT(*) FROM authorizations a
 		 INNER JOIN authorization_cas ac ON a.id = ac.authorization_id
 		 INNER JOIN authorization_devices ad ON a.id = ad.authorization_id
+		 LEFT JOIN ssh_cas sc ON ac.ca_id = sc.id OR ac.ca_id = sc.name
 		 WHERE a.operator_id = ?
-		   AND ac.ca_id = ?
+		   AND (ac.ca_id = ? OR sc.id = ? OR sc.name = ?)
 		   AND (ad.device_id = ? OR ad.device_id = 'all')`,
-		operatorID, caID, deviceID,
+		operatorID, caIDOrName, caIDOrName, caIDOrName, deviceID,
 	).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to check full authorization: %w", err)

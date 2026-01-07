@@ -570,7 +570,10 @@ func GenerateInviteCode(prefix string) string {
 		code[i] = charset[randomBytes[i]%byte(len(charset))]
 	}
 
-	return fmt.Sprintf("%s-%s-%s", strings.ToUpper(prefix), string(code[:4]), string(code[4:]))
+	// Strip trailing dashes from prefix to avoid double-dash in output
+	cleanPrefix := strings.TrimRight(strings.ToUpper(prefix), "-")
+
+	return fmt.Sprintf("%s-%s-%s", cleanPrefix, string(code[:4]), string(code[4:]))
 }
 
 // HashInviteCode returns the SHA-256 hash of an invite code.
