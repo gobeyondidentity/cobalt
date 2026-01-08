@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.1] - 2026-01-08
 
+### Added
+- `make demo-*` targets for quickstart verification and regression testing
+
 ### Changed
 - Centralized version management in `internal/version/version.go`
 - CLI output no longer exposes internal IDs (tenant add, dpu add, ssh-ca show, tenant show)
