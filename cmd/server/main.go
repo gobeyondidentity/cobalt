@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	listenAddr = flag.String("listen", ":8080", "HTTP listen address")
+	listenAddr = flag.String("listen", ":18080", "HTTP listen address")
 	dbPath     = flag.String("db", "", "Database path (default: ~/.local/share/bluectl/dpus.db)")
 )
 
