@@ -1,6 +1,6 @@
 # Secure Infrastructure
 
-**v0.4.0** | [Quickstart](docs/quickstart-emulator.md) | [Hardware Setup](docs/setup-hardware.md) | [Changelog](CHANGELOG.md)
+**v0.4.0** | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 Hardware-bound credential management for AI infrastructure using NVIDIA BlueField DPUs.
 
@@ -27,8 +27,8 @@ Choose your path:
 
 | Path | Time | Requirements |
 |------|------|--------------|
-| [Emulator Quickstart](docs/quickstart-emulator.md) | 10 min | Go 1.22+, Make |
-| [Hardware Setup](docs/setup-hardware.md) | 30 min | BlueField-3 DPU |
+| [Emulator Quickstart](docs/guides/quickstart-emulator.md) | 10 min | Go 1.22+, Make |
+| [Hardware Setup](docs/guides/setup-hardware.md) | 30 min | BlueField-3 DPU |
 
 **Try the emulator first** to learn the system without hardware. The quickstart walks you through the full flow: create a tenant, register a DPU, set up operators, and push credentials to attested infrastructure.
 

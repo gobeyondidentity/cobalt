@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Server and agent binaries were reporting version 0.3.0 instead of current version
 
+### Documentation
+- Restructured docs into `docs/guides/` and `docs/reference/` subdirectories
+- Rewrote quickstart guide with expanded explanations (DPU, tenants, attestation, SSH CA purpose)
+- Added Terminal 1/2/3 labels and "why" context for each step
+- All expected outputs now match exact CLI output
+- Added `docs/reference/encryption-keys.md` for key management in CI/CD and multi-machine setups
+- Added troubleshooting entries for km init issues
+
 ## [0.4.0] - 2026-01-07
 
 ### Added
