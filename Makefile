@@ -200,6 +200,100 @@ demo-step9:
 	$(BIN_DIR)/host-agent --dpu-agent http://localhost:9443 --oneshot
 
 # =============================================================================
+# Hardware Demo Targets
+# For real BlueField DPU deployment (setup-hardware.md)
+# =============================================================================
+
+.PHONY: hw-clean hw-step1 hw-step2 hw-step3-deploy hw-step4 hw-step5 hw-step5-accept hw-step6 hw-step6-grant hw-step7 hw-step8 hw-step9
+
+# Configuration - override with: make hw-step4 DPU_IP=192.168.1.204
+DPU_IP ?= 192.168.1.204
+DPU_USER ?= ubuntu
+DPU_NAME ?= bf3-prod-01
+CONTROL_PLANE_IP ?= $(shell hostname -I | awk '{print $$1}')
+
+# Reset environment for fresh start
+hw-clean:
+	@echo "=== Clean Slate (Hardware) ==="
+	@rm -f ~/.local/share/bluectl/dpus.db
+	@rm -f ~/.local/share/bluectl/key
+	@rm -rf ~/.km
+	@echo "Database and config removed. Ready for fresh start."
+
+# Step 1: Start the server (runs in foreground)
+hw-step1:
+	@echo "=== HW Step 1: Start Server ==="
+	@echo "Starting server on :18080..."
+	@echo "Press Ctrl+C to stop"
+	$(BIN_DIR)/server
+
+# Step 2: Create tenant
+hw-step2:
+	@echo "=== HW Step 2: Create Tenant ==="
+	$(BIN_DIR)/bluectl tenant add gpu-prod --description "GPU Production Cluster"
+
+# Step 3: Deploy agent to DPU (requires SSH access)
+hw-step3-deploy:
+	@echo "=== HW Step 3: Deploy Agent to DPU ==="
+	@echo "Copying agent to $(DPU_USER)@$(DPU_IP)..."
+	scp $(BIN_DIR)/agent-linux-arm64 $(DPU_USER)@$(DPU_IP):~/agent
+	@echo ""
+	@echo "Agent copied. SSH to DPU and run:"
+	@echo "  chmod +x ~/agent"
+	@echo "  ~/agent --listen :50051 -local-api -control-plane http://$(CONTROL_PLANE_IP):18080 -dpu-name $(DPU_NAME)"
+
+# Step 4: Register DPU
+hw-step4:
+	@echo "=== HW Step 4: Register DPU ==="
+	$(BIN_DIR)/bluectl dpu add $(DPU_IP) --name $(DPU_NAME)
+	$(BIN_DIR)/bluectl tenant assign gpu-prod $(DPU_NAME)
+
+# Step 5: Create operator invitation
+hw-step5:
+	@echo "=== HW Step 5: Create Operator ==="
+	@echo "Creating invitation..."
+	@$(BIN_DIR)/bluectl operator invite operator@example.com gpu-prod
+	@echo ""
+	@echo "Now run: make hw-step5-accept"
+	@echo "Enter the invite code when prompted"
+
+hw-step5-accept:
+	@echo "=== HW Step 5b: Accept Invitation ==="
+	$(BIN_DIR)/km init
+
+hw-step5-verify:
+	@echo "=== HW Step 5: Verify Operator ==="
+	$(BIN_DIR)/km whoami
+
+# Step 6: Create SSH CA and grant access
+hw-step6:
+	@echo "=== HW Step 6: Create SSH CA ==="
+	$(BIN_DIR)/km ssh-ca create prod-ca
+
+hw-step6-grant:
+	@echo "=== HW Step 6b: Grant Access ==="
+	$(BIN_DIR)/bluectl operator grant operator@example.com gpu-prod prod-ca $(DPU_NAME)
+
+# Step 7: Submit attestation
+hw-step7:
+	@echo "=== HW Step 7: Attestation ==="
+	$(BIN_DIR)/bluectl attestation $(DPU_NAME)
+
+# Step 8: Deploy host agent
+hw-step8-deploy:
+	@echo "=== HW Step 8: Deploy Host Agent ==="
+	@echo "Copy host-agent to your host server and run:"
+	@echo "  ~/host-agent --dpu-agent http://localhost:9443"
+	@echo ""
+	@echo "Or for x86_64 hosts:"
+	@echo "  scp $(BIN_DIR)/host-agent-linux-amd64 user@HOST_IP:~/host-agent"
+
+# Step 9: Push credentials
+hw-step9:
+	@echo "=== HW Step 9: Push Credentials ==="
+	$(BIN_DIR)/km push ssh-ca prod-ca $(DPU_NAME) --force
+
+# =============================================================================
 # Help
 # =============================================================================
 
@@ -233,5 +327,22 @@ help:
 	@echo "  make demo-step7       Submit attestation"
 	@echo "  make demo-step8       Push credentials"
 	@echo "  make demo-step9       Test host agent (optional)"
+	@echo ""
+	@echo "Hardware Demo Targets (for real BlueField DPU):"
+	@echo ""
+	@echo "  make hw-clean         Reset environment"
+	@echo "  make hw-step1         Start server"
+	@echo "  make hw-step2         Create tenant"
+	@echo "  make hw-step3-deploy  Deploy agent to DPU via SSH"
+	@echo "  make hw-step4         Register DPU (DPU_IP=x.x.x.x)"
+	@echo "  make hw-step5         Create operator invitation"
+	@echo "  make hw-step5-accept  Accept invitation (km init)"
+	@echo "  make hw-step6         Create SSH CA"
+	@echo "  make hw-step6-grant   Grant CA access"
+	@echo "  make hw-step7         Submit attestation"
+	@echo "  make hw-step8-deploy  Deploy host agent instructions"
+	@echo "  make hw-step9         Push credentials (--force)"
+	@echo ""
+	@echo "  Configure: DPU_IP, DPU_USER, DPU_NAME, CONTROL_PLANE_IP"
 	@echo ""
 	@echo "  make help       Show this help"
