@@ -24,7 +24,7 @@ func init() {
 	rootCmd.AddCommand(whoamiCmd)
 
 	initCmd.Flags().String("name", "", "Custom name for this KeyMaker")
-	initCmd.Flags().String("control-plane", "http://localhost:8080", "Server URL")
+	initCmd.Flags().String("control-plane", "http://localhost:18080", "Server URL")
 	initCmd.Flags().String("invite-code", "", "Invite code (will prompt if not provided)")
 	initCmd.Flags().Bool("force", false, "Force re-initialization (removes existing config)")
 
