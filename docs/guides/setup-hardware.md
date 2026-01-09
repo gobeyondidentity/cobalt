@@ -369,17 +369,7 @@ This is the payoff. Your host now trusts the CA. Sign a certificate and SSH in.
 Sign your SSH key (or generate a new one):
 
 ```bash
-bin/km ssh-ca sign prod-ca --principal ubuntu --pubkey ~/.ssh/id_ed25519.pub
-# Expected:
-# Certificate Details:
-#   Type:       user certificate
-#   Public Key: ED25519 SHA256:<fingerprint>
-#   Serial:     <serial>
-#   Valid:      from <start> to <end>
-#   Principals: ubuntu
-#   CA:         prod-ca
-#
-# Certificate saved to: ~/.ssh/id_ed25519-cert.pub
+bin/km ssh-ca sign prod-ca --principal ubuntu --pubkey ~/.ssh/id_ed25519.pub > ~/.ssh/id_ed25519-cert.pub
 ```
 
 The certificate is valid for 8 hours by default. Use `--validity 24h` or `--validity 7d` for longer durations.

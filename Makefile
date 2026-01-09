@@ -210,7 +210,8 @@ demo-step13:
 	@echo "Generating test SSH key..."
 	@ssh-keygen -t ed25519 -f /tmp/demo_key -N "" -C "demo@example.com" -q
 	@echo "Signing with test-ca..."
-	$(BIN_DIR)/km ssh-ca sign test-ca --principal ubuntu --pubkey /tmp/demo_key.pub
+	@$(BIN_DIR)/km ssh-ca sign test-ca --principal ubuntu --pubkey /tmp/demo_key.pub > /tmp/demo_key-cert.pub
+	@echo "Certificate saved to /tmp/demo_key-cert.pub"
 	@echo ""
 	@echo "Inspecting certificate:"
 	@ssh-keygen -L -f /tmp/demo_key-cert.pub

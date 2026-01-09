@@ -32,8 +32,8 @@ func init() {
 
 	// Flags for discover scan
 	discoverScanCmd.Flags().Bool("all", false, "Scan all registered hosts")
-	discoverScanCmd.Flags().Bool("ssh", false, "Force SSH mode (not implemented)")
-	discoverScanCmd.Flags().Bool("ssh-fallback", false, "Use SSH fallback for hosts without agent (not implemented)")
+	discoverScanCmd.Flags().Bool("ssh", false, "Force SSH mode for single host (bootstrap)")
+	discoverScanCmd.Flags().Bool("ssh-fallback", false, "Use SSH fallback for hosts without agent")
 	discoverScanCmd.Flags().String("ssh-user", "", "SSH username (default: current user)")
 	discoverScanCmd.Flags().String("ssh-key", "", "SSH private key path")
 	discoverScanCmd.Flags().Int("parallel", 10, "Max concurrent scans")
@@ -120,13 +120,13 @@ func runDiscoverScan(cmd *cobra.Command, args []string) error {
 	sshMode, _ := cmd.Flags().GetBool("ssh")
 	sshFallback, _ := cmd.Flags().GetBool("ssh-fallback")
 
-	// Check for unimplemented SSH flags
-	if sshMode {
-		fmt.Fprintln(os.Stderr, "SSH mode not yet implemented")
+	// Validate flag combinations
+	if sshMode && scanAll {
+		fmt.Fprintln(os.Stderr, "Error: --ssh flag not allowed with --all (use --ssh-fallback instead)")
 		os.Exit(ExitDiscoverConfigError)
 	}
-	if sshFallback {
-		fmt.Fprintln(os.Stderr, "SSH fallback mode not yet implemented")
+	if sshMode && sshFallback {
+		fmt.Fprintln(os.Stderr, "Error: --ssh and --ssh-fallback are mutually exclusive")
 		os.Exit(ExitDiscoverConfigError)
 	}
 
@@ -148,27 +148,47 @@ func runDiscoverScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if scanAll {
-		return runScanAllHosts(cmd, config)
+		return runScanAllHosts(cmd, config, sshFallback)
 	}
 
-	return runScanSingleHost(cmd, config, args[0])
+	return runScanSingleHost(cmd, config, args[0], sshMode)
 }
 
-func runScanSingleHost(cmd *cobra.Command, config *KMConfig, hostArg string) error {
+func runScanSingleHost(cmd *cobra.Command, config *KMConfig, hostArg string, sshMode bool) error {
 	timeout, _ := cmd.Flags().GetInt("timeout")
+	sshUser, _ := cmd.Flags().GetString("ssh-user")
+	sshKeyPath, _ := cmd.Flags().GetString("ssh-key")
 
-	// Find the host by name or hostname
-	host, err := findHost(config, hostArg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(ExitDiscoverAllFailed)
+	// Use current user as default SSH user
+	if sshUser == "" {
+		sshUser = getDefaultSSHUser()
 	}
 
-	// Scan the host
-	result, err := scanHost(config, host, timeout)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s: %v\n", host.Name, err)
-		os.Exit(ExitDiscoverAllFailed)
+	var result *ScanResult
+	var err error
+
+	if sshMode {
+		// SSH bootstrap mode: print warning and scan directly via SSH
+		fmt.Fprintln(os.Stderr, "Warning: Bootstrap mode. Install host-agent for production use.")
+
+		result, err = scanHostSSH(hostArg, sshUser, sshKeyPath, time.Duration(timeout)*time.Second)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s: %v\n", hostArg, err)
+			os.Exit(ExitDiscoverAllFailed)
+		}
+	} else {
+		// Agent mode: find host in registry and scan via control plane
+		host, err := findHost(config, hostArg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(ExitDiscoverAllFailed)
+		}
+
+		result, err = scanHost(config, host, timeout)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s: %v\n", host.Name, err)
+			os.Exit(ExitDiscoverAllFailed)
+		}
 	}
 
 	// Output results
@@ -179,9 +199,16 @@ func runScanSingleHost(cmd *cobra.Command, config *KMConfig, hostArg string) err
 	return outputSingleHostTable(result)
 }
 
-func runScanAllHosts(cmd *cobra.Command, config *KMConfig) error {
+func runScanAllHosts(cmd *cobra.Command, config *KMConfig, sshFallback bool) error {
 	timeout, _ := cmd.Flags().GetInt("timeout")
 	noColor, _ := cmd.Flags().GetBool("no-color")
+	sshUser, _ := cmd.Flags().GetString("ssh-user")
+	sshKeyPath, _ := cmd.Flags().GetString("ssh-key")
+
+	// Use current user as default SSH user
+	if sshUser == "" {
+		sshUser = getDefaultSSHUser()
+	}
 
 	// Get all hosts
 	hosts, err := listHosts(config)
@@ -202,6 +229,7 @@ func runScanAllHosts(cmd *cobra.Command, config *KMConfig) error {
 	var failures []ScanFailure
 	methodCounts := map[string]int{"agent": 0, "ssh": 0}
 	totalKeys := 0
+	bootstrapWarningShown := false
 
 	// Scan hosts sequentially (parallel will be added later)
 	for i, host := range hosts {
@@ -209,13 +237,44 @@ func runScanAllHosts(cmd *cobra.Command, config *KMConfig) error {
 			fmt.Fprintf(os.Stderr, "\rScanning host %d/%d...", i+1, len(hosts))
 		}
 
+		// Try agent first
 		result, err := scanHost(config, &host, timeout)
 		if err != nil {
-			failures = append(failures, ScanFailure{
-				Host:  host.Name,
-				Error: err.Error(),
-			})
-			continue
+			// If SSH fallback enabled and host doesn't have agent, try SSH
+			if sshFallback && !host.HasAgent {
+				// Show bootstrap warning once per scan
+				if !bootstrapWarningShown {
+					// Clear progress line before warning if showing progress
+					if showProgress {
+						fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 40))
+					}
+					fmt.Fprintln(os.Stderr, "Warning: Bootstrap mode. Install host-agent for production use.")
+					bootstrapWarningShown = true
+				}
+
+				// Determine hostname for SSH connection
+				sshHostname := host.Hostname
+				if sshHostname == "" {
+					sshHostname = host.Name
+				}
+
+				result, err = scanHostSSH(sshHostname, sshUser, sshKeyPath, time.Duration(timeout)*time.Second)
+				if err != nil {
+					failures = append(failures, ScanFailure{
+						Host:  host.Name,
+						Error: err.Error(),
+					})
+					continue
+				}
+				// Update host name in result to match registry name
+				result.Host = host.Name
+			} else {
+				failures = append(failures, ScanFailure{
+					Host:  host.Name,
+					Error: err.Error(),
+				})
+				continue
+			}
 		}
 
 		results = append(results, *result)

@@ -285,17 +285,7 @@ ssh-keygen -t ed25519 -f /tmp/demo_key -N "" -C "demo@example.com"
 Sign the public key with your CA:
 
 ```bash
-bin/km ssh-ca sign test-ca --principal ubuntu --pubkey /tmp/demo_key.pub
-# Expected:
-# Certificate Details:
-#   Type:       user certificate
-#   Public Key: ED25519 SHA256:<fingerprint>
-#   Serial:     <serial>
-#   Valid:      from <start> to <end>
-#   Principals: ubuntu
-#   CA:         test-ca
-#
-# Certificate saved to: /tmp/demo_key-cert.pub
+bin/km ssh-ca sign test-ca --principal ubuntu --pubkey /tmp/demo_key.pub > /tmp/demo_key-cert.pub
 ```
 
 The certificate grants the `ubuntu` principal SSH access for 8 hours (default). Any server trusting this CA will accept this certificate.
