@@ -1,8 +1,10 @@
 # Quickstart: DPU Emulator
 
-Get Secure Infrastructure running locally without hardware. DPUs (Data Processing Units) are SmartNICs that act as hardware trust anchors for your infrastructure. This guide uses an emulator so you can learn the system without physical hardware.
+Run Secure Infrastructure locally using an emulated DPU instead of real hardware. By the end, you'll register a DPU, create an operator, and push SSH CA credentials through the attestation flow.
 
-Use this to learn the system, run CI/CD pipelines, or evaluate the product.
+**What's a DPU?** A Data Processing Unit is a SmartNIC that serves as a hardware trust anchor. In production, it provides cryptographic attestation that credentials only reach verified hosts.
+
+Good for: learning the system, CI/CD pipelines, product evaluation.
 
 Starting over? See [Clean Slate](#appendix-a-clean-slate) to reset your environment.
 
