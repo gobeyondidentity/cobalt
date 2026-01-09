@@ -11,6 +11,8 @@ BLUECTL := $(BIN_DIR)/bluectl
 SERVER := $(BIN_DIR)/server
 KM := $(BIN_DIR)/km
 HOST_AGENT := $(BIN_DIR)/host-agent
+HOST_AGENT_AMD64 := $(BIN_DIR)/host-agent-amd64
+HOST_AGENT_ARM64 := $(BIN_DIR)/host-agent-arm64
 DPUEMU := $(BIN_DIR)/dpuemu
 
 .PHONY: all agent bluectl server km host-agent dpuemu test clean release help
@@ -63,11 +65,17 @@ km: $(BIN_DIR)
 	@go build -o $(KM) ./cmd/keymaker
 	@echo "  $(KM)"
 
-# Build host-agent
+# Build host-agent for local platform and cross-compile for Linux hosts
 host-agent: $(BIN_DIR)
 	@echo "Building host-agent..."
 	@go build -o $(HOST_AGENT) ./cmd/host-agent
 	@echo "  $(HOST_AGENT)"
+	@echo "Cross-compiling host-agent for Linux (amd64)..."
+	@GOOS=linux GOARCH=amd64 go build -o $(HOST_AGENT_AMD64) ./cmd/host-agent
+	@echo "  $(HOST_AGENT_AMD64)"
+	@echo "Cross-compiling host-agent for Linux (arm64)..."
+	@GOOS=linux GOARCH=arm64 go build -o $(HOST_AGENT_ARM64) ./cmd/host-agent
+	@echo "  $(HOST_AGENT_ARM64)"
 
 # Build DPU emulator
 dpuemu: $(BIN_DIR)

@@ -22,6 +22,15 @@ make agent
 # Cross-compiling agent for BlueField (linux/arm64)...
 #   bin/agent-arm64
 
+make host-agent
+# Expected:
+# Building host-agent...
+#   bin/host-agent
+# Cross-compiling host-agent for Linux (amd64)...
+#   bin/host-agent-amd64
+# Cross-compiling host-agent for Linux (arm64)...
+#   bin/host-agent-arm64
+
 make
 # Expected:
 # Building all binaries...
@@ -34,7 +43,10 @@ make
 # Done.
 ```
 
-This builds the DPU agent (cross-compiled for ARM64) and all control plane tools.
+This builds:
+- `bin/agent-arm64` for the BlueField DPU
+- `bin/host-agent-amd64` for x86_64 hosts (or `host-agent-arm64` for ARM hosts)
+- Control plane tools (`bluectl`, `km`, `server`)
 
 ## Step 1: Start the Server
 
@@ -280,7 +292,7 @@ The host agent runs on the Linux server that contains the BlueField DPU. It pair
 The host agent must be running before you can push credentials. Without a paired host, credential distribution will fail.
 
 ```bash
-scp bin/host-agent <user>@<HOST_IP>:~/host-agent
+scp bin/host-agent-amd64 <user>@<HOST_IP>:~/host-agent
 ```
 
 ---
