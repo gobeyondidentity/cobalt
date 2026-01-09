@@ -616,6 +616,10 @@ func (s *Store) AddTenant(id, name, description, contact string, tags []string) 
 		id, name, description, contact, tagsStr,
 	)
 	if err != nil {
+		// Check for unique constraint violation and return user-friendly error
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: tenants.name") {
+			return fmt.Errorf("tenant '%s' already exists", name)
+		}
 		return fmt.Errorf("failed to add tenant: %w", err)
 	}
 	return nil

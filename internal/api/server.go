@@ -864,8 +864,8 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()[:8]
 
 	if err := s.store.AddTenant(id, req.Name, req.Description, req.Contact, req.Tags); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint") {
-			writeError(w, r, http.StatusConflict, "Tenant with this name already exists")
+		if strings.Contains(err.Error(), "already exists") {
+			writeError(w, r, http.StatusConflict, err.Error())
 			return
 		}
 		writeError(w, r, http.StatusInternalServerError, "Failed to create tenant: "+err.Error())

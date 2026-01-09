@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -184,4 +185,33 @@ func TestTenantDependenciesHasAny(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.deps.HasAny())
 		})
 	}
+}
+
+// TestAddTenantDuplicateName verifies that creating a tenant with a duplicate
+// name returns a user-friendly error message, not raw SQL errors.
+func TestAddTenantDuplicateName(t *testing.T) {
+	s := setupTestStore(t)
+
+	// Create initial tenant
+	err := s.AddTenant("tnt_first", "Production", "", "", nil)
+	require.NoError(t, err)
+
+	// Attempt to create another tenant with the same name
+	err = s.AddTenant("tnt_second", "Production", "", "", nil)
+	require.Error(t, err)
+
+	// Verify error message is user-friendly
+	errMsg := err.Error()
+
+	// Should NOT contain raw SQL error
+	assert.False(t, strings.Contains(errMsg, "UNIQUE constraint failed"),
+		"error should not expose raw SQL: %s", errMsg)
+
+	// Should contain the tenant name for context
+	assert.True(t, strings.Contains(errMsg, "Production"),
+		"error should mention the tenant name: %s", errMsg)
+
+	// Should indicate it already exists
+	assert.True(t, strings.Contains(errMsg, "already exists"),
+		"error should say 'already exists': %s", errMsg)
 }
