@@ -337,7 +337,10 @@ You've completed the full credential lifecycle:
 
 The emulator demonstrates the workflow but can't show hardware-specific features: real DICE attestation chains, tmfifo credential delivery, or host posture from actual TPMs.
 
-When you're ready for production, see [Hardware Setup Guide](setup-hardware.md).
+**Next steps:**
+
+- [SSH Key Discovery](discovery.md) - Audit existing keys before migrating to certificates
+- [Hardware Setup Guide](setup-hardware.md) - Deploy with real BlueField DPUs
 
 ---
 
