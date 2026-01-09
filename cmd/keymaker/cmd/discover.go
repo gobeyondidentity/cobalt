@@ -606,3 +606,35 @@ func logDiscoveryAudit(hostsScanned, hostsSucceeded, hostsFailed, keysFound, met
 	fmt.Fprintf(os.Stderr, "Audit: Scanned %d hosts, found %d keys (%d agent, %d ssh)\n",
 		hostsScanned, keysFound, methodAgent, methodSSH)
 }
+
+// calculateExitCode determines the exit code based on scan results
+func calculateExitCode(succeeded, failed int) int {
+	if failed == 0 {
+		return ExitDiscoverSuccess
+	}
+	if succeeded == 0 {
+		return ExitDiscoverAllFailed
+	}
+	return ExitDiscoverPartialFailed
+}
+
+// buildSummaryLine creates the summary line for scan results
+func buildSummaryLine(totalKeys, hostCount int, methodCounts map[string]int) string {
+	methodStr := buildMethodBreakdown(methodCounts)
+	hostWord := "hosts"
+	if hostCount == 1 {
+		hostWord = "host"
+	}
+	return fmt.Sprintf("Found %d keys on %d %s (%s)", totalKeys, hostCount, hostWord, methodStr)
+}
+
+// buildMethodBreakdown creates a comma-separated breakdown of methods used
+func buildMethodBreakdown(methodCounts map[string]int) string {
+	var parts []string
+	for method, count := range methodCounts {
+		if count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", count, method))
+		}
+	}
+	return strings.Join(parts, ", ")
+}

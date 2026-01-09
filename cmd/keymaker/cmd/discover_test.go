@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"encoding/json"
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/nmelo/secure-infra/pkg/sshscan"
@@ -282,5 +285,230 @@ func TestMethodBreakdownMap(t *testing.T) {
 	}
 	if methodCounts["ssh"] != 1 {
 		t.Errorf("SSH count should be 1, got %d", methodCounts["ssh"])
+	}
+}
+
+func TestLogDiscoveryAudit(t *testing.T) {
+	tests := []struct {
+		name           string
+		hostsScanned   int
+		hostsSucceeded int
+		hostsFailed    int
+		keysFound      int
+		methodAgent    int
+		methodSSH      int
+		wantOutput     string
+	}{
+		{
+			name:           "all success with agent",
+			hostsScanned:   3,
+			hostsSucceeded: 3,
+			hostsFailed:    0,
+			keysFound:      10,
+			methodAgent:    3,
+			methodSSH:      0,
+			wantOutput:     "Audit: Scanned 3 hosts, found 10 keys (3 agent, 0 ssh)\n",
+		},
+		{
+			name:           "all success with ssh",
+			hostsScanned:   2,
+			hostsSucceeded: 2,
+			hostsFailed:    0,
+			keysFound:      5,
+			methodAgent:    0,
+			methodSSH:      2,
+			wantOutput:     "Audit: Scanned 2 hosts, found 5 keys (0 agent, 2 ssh)\n",
+		},
+		{
+			name:           "mixed methods",
+			hostsScanned:   4,
+			hostsSucceeded: 4,
+			hostsFailed:    0,
+			keysFound:      12,
+			methodAgent:    2,
+			methodSSH:      2,
+			wantOutput:     "Audit: Scanned 4 hosts, found 12 keys (2 agent, 2 ssh)\n",
+		},
+		{
+			name:           "partial failure",
+			hostsScanned:   5,
+			hostsSucceeded: 3,
+			hostsFailed:    2,
+			keysFound:      8,
+			methodAgent:    2,
+			methodSSH:      1,
+			wantOutput:     "Audit: Scanned 5 hosts, found 8 keys (2 agent, 1 ssh)\n",
+		},
+		{
+			name:           "all failed",
+			hostsScanned:   3,
+			hostsSucceeded: 0,
+			hostsFailed:    3,
+			keysFound:      0,
+			methodAgent:    0,
+			methodSSH:      0,
+			wantOutput:     "Audit: Scanned 3 hosts, found 0 keys (0 agent, 0 ssh)\n",
+		},
+		{
+			name:           "single host",
+			hostsScanned:   1,
+			hostsSucceeded: 1,
+			hostsFailed:    0,
+			keysFound:      3,
+			methodAgent:    1,
+			methodSSH:      0,
+			wantOutput:     "Audit: Scanned 1 hosts, found 3 keys (1 agent, 0 ssh)\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Capture stderr
+			oldStderr := os.Stderr
+			r, w, _ := os.Pipe()
+			os.Stderr = w
+
+			logDiscoveryAudit(tt.hostsScanned, tt.hostsSucceeded, tt.hostsFailed, tt.keysFound, tt.methodAgent, tt.methodSSH)
+
+			w.Close()
+			output, _ := io.ReadAll(r)
+			os.Stderr = oldStderr
+
+			got := string(output)
+			if got != tt.wantOutput {
+				t.Errorf("logDiscoveryAudit() output = %q, want %q", got, tt.wantOutput)
+			}
+		})
+	}
+}
+
+func TestCalculateExitCode(t *testing.T) {
+	tests := []struct {
+		name       string
+		succeeded  int
+		failed     int
+		wantCode   int
+	}{
+		{
+			name:      "all success",
+			succeeded: 5,
+			failed:    0,
+			wantCode:  ExitDiscoverSuccess,
+		},
+		{
+			name:      "all failed",
+			succeeded: 0,
+			failed:    3,
+			wantCode:  ExitDiscoverAllFailed,
+		},
+		{
+			name:      "partial failure",
+			succeeded: 2,
+			failed:    1,
+			wantCode:  ExitDiscoverPartialFailed,
+		},
+		{
+			name:      "single success",
+			succeeded: 1,
+			failed:    0,
+			wantCode:  ExitDiscoverSuccess,
+		},
+		{
+			name:      "single failure",
+			succeeded: 0,
+			failed:    1,
+			wantCode:  ExitDiscoverAllFailed,
+		},
+		{
+			name:      "many partial",
+			succeeded: 10,
+			failed:    5,
+			wantCode:  ExitDiscoverPartialFailed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := calculateExitCode(tt.succeeded, tt.failed)
+			if got != tt.wantCode {
+				t.Errorf("calculateExitCode(%d, %d) = %d, want %d", tt.succeeded, tt.failed, got, tt.wantCode)
+			}
+		})
+	}
+}
+
+func TestScanResultsSummaryFormat(t *testing.T) {
+	tests := []struct {
+		name         string
+		totalKeys    int
+		hostCount    int
+		methodCounts map[string]int
+		wantContains string
+	}{
+		{
+			name:         "single host agent only",
+			totalKeys:    5,
+			hostCount:    1,
+			methodCounts: map[string]int{"agent": 1, "ssh": 0},
+			wantContains: "Found 5 keys on 1 host",
+		},
+		{
+			name:         "multiple hosts mixed methods",
+			totalKeys:    12,
+			hostCount:    4,
+			methodCounts: map[string]int{"agent": 2, "ssh": 2},
+			wantContains: "Found 12 keys on 4 hosts",
+		},
+		{
+			name:         "zero keys",
+			totalKeys:    0,
+			hostCount:    2,
+			methodCounts: map[string]int{"agent": 1, "ssh": 1},
+			wantContains: "Found 0 keys on 2 hosts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			summary := buildSummaryLine(tt.totalKeys, tt.hostCount, tt.methodCounts)
+			if !strings.Contains(summary, tt.wantContains) {
+				t.Errorf("buildSummaryLine() = %q, want to contain %q", summary, tt.wantContains)
+			}
+		})
+	}
+}
+
+func TestBuildMethodBreakdownString(t *testing.T) {
+	tests := []struct {
+		name         string
+		methodCounts map[string]int
+		wantParts    []string // All of these should be in the output
+	}{
+		{
+			name:         "agent only",
+			methodCounts: map[string]int{"agent": 3, "ssh": 0},
+			wantParts:    []string{"3 agent"},
+		},
+		{
+			name:         "ssh only",
+			methodCounts: map[string]int{"agent": 0, "ssh": 2},
+			wantParts:    []string{"2 ssh"},
+		},
+		{
+			name:         "mixed",
+			methodCounts: map[string]int{"agent": 2, "ssh": 3},
+			wantParts:    []string{"2 agent", "3 ssh"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildMethodBreakdown(tt.methodCounts)
+			for _, part := range tt.wantParts {
+				if !strings.Contains(result, part) {
+					t.Errorf("buildMethodBreakdown() = %q, missing %q", result, part)
+				}
+			}
+		})
 	}
 }
