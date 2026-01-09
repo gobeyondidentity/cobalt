@@ -268,16 +268,84 @@ bin/host-agent --dpu-agent http://localhost:9443 --oneshot
 
 ---
 
+## Step 13: Sign a User Certificate
+
+This is the payoff. Everything you've built leads to this: signing short-lived certificates that grant SSH access without distributing public keys.
+
+Generate a test SSH key (or use your existing one):
+
+```bash
+ssh-keygen -t ed25519 -f /tmp/demo_key -N "" -C "demo@example.com"
+# Expected:
+# Generating public/private ed25519 key pair.
+# Your identification has been saved in /tmp/demo_key
+# Your public key has been saved in /tmp/demo_key.pub
+```
+
+Sign the public key with your CA:
+
+```bash
+bin/km ssh-ca sign test-ca --principal ubuntu --pubkey /tmp/demo_key.pub
+# Expected:
+# Certificate Details:
+#   Type:       user certificate
+#   Public Key: ED25519 SHA256:<fingerprint>
+#   Serial:     <serial>
+#   Valid:      from <start> to <end>
+#   Principals: ubuntu
+#   CA:         test-ca
+#
+# Certificate saved to: /tmp/demo_key-cert.pub
+```
+
+The certificate grants the `ubuntu` principal SSH access for 8 hours (default). Any server trusting this CA will accept this certificate.
+
+Inspect what you created:
+
+```bash
+ssh-keygen -L -f /tmp/demo_key-cert.pub
+# Expected:
+# /tmp/demo_key-cert.pub:
+#         Type: ssh-ed25519-cert-v01@openssh.com user certificate
+#         Public key: ED25519-CERT SHA256:<fingerprint>
+#         Signing CA: ED25519 SHA256:<ca-fingerprint> (using ssh-ed25519)
+#         Key ID: "demo@example.com"
+#         Serial: <serial>
+#         Valid: from <start> to <end>
+#         Principals:
+#                 ubuntu
+#         Critical Options: (none)
+#         Extensions:
+#                 permit-pty
+```
+
+**In production**, you'd SSH to hosts using this certificate:
+
+```bash
+ssh -i /tmp/demo_key ubuntu@<host-ip>
+```
+
+The host verifies the certificate was signed by a CA it trusts. No public key distribution, no authorized_keys management, automatic expiration.
+
+Clean up the demo key:
+
+```bash
+rm /tmp/demo_key /tmp/demo_key.pub /tmp/demo_key-cert.pub
+```
+
+---
+
 ## What's Next?
 
-You've completed the emulator quickstart. You learned:
+You've completed the full credential lifecycle:
 
-- How tenants organize infrastructure
-- The admin/operator separation and audit trail
-- SSH CA creation and authorization grants
-- Attestation as a gate for credential distribution
+1. **Infrastructure** - Server, tenant, and DPU registration
+2. **Identity** - Operator authentication and authorization grants
+3. **Attestation** - Hardware verification before credential distribution
+4. **Distribution** - CA pushed through the attested DPU to the host
+5. **Usage** - Signed short-lived certificates for SSH access
 
-The emulator covers the full workflow but can't demonstrate hardware-specific features: real DICE attestation chains, tmfifo credential delivery, or host posture from actual TPMs.
+The emulator demonstrates the workflow but can't show hardware-specific features: real DICE attestation chains, tmfifo credential delivery, or host posture from actual TPMs.
 
 When you're ready for production, see [Hardware Setup Guide](setup-hardware.md).
 

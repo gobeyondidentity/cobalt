@@ -358,11 +358,55 @@ bin/km push ssh-ca prod-ca bf3-prod-01 --force
 # CA installed.
 ```
 
-On success, the CA public key is installed at `/etc/ssh/trusted-user-ca-keys.d/prod-ca.pub` on the host, and sshd is automatically reloaded to trust the new CA
+On success, the CA public key is installed at `/etc/ssh/trusted-user-ca-keys.d/prod-ca.pub` on the host, and sshd is automatically reloaded to trust the new CA.
 
 ---
 
-## Step 10: Create Trust Relationships (Optional)
+## Step 10: Sign and Use Certificates
+
+This is the payoff. Your host now trusts the CA. Sign a certificate and SSH in.
+
+Sign your SSH key (or generate a new one):
+
+```bash
+bin/km ssh-ca sign prod-ca --principal ubuntu --pubkey ~/.ssh/id_ed25519.pub
+# Expected:
+# Certificate Details:
+#   Type:       user certificate
+#   Public Key: ED25519 SHA256:<fingerprint>
+#   Serial:     <serial>
+#   Valid:      from <start> to <end>
+#   Principals: ubuntu
+#   CA:         prod-ca
+#
+# Certificate saved to: ~/.ssh/id_ed25519-cert.pub
+```
+
+The certificate is valid for 8 hours by default. Use `--validity 24h` or `--validity 7d` for longer durations.
+
+SSH to your host using the certificate:
+
+```bash
+ssh -i ~/.ssh/id_ed25519 ubuntu@<HOST_IP>
+# Expected: successful login
+```
+
+The host verifies:
+1. The certificate was signed by a CA it trusts (prod-ca)
+2. The certificate hasn't expired
+3. The principal (ubuntu) matches an allowed user
+
+No authorized_keys. No public key distribution. The credential chain is hardware-attested end to end.
+
+Inspect your certificate anytime:
+
+```bash
+ssh-keygen -L -f ~/.ssh/id_ed25519-cert.pub
+```
+
+---
+
+## Appendix A: Trust Relationships (Optional)
 
 Trust relationships let hosts authenticate each other for SSH or mTLS connections. This is useful for distributed training clusters or data pipelines where servers need to communicate securely.
 
@@ -436,7 +480,7 @@ bin/bluectl trust list
 
 ---
 
-## Appendix: Shell Completion
+## Appendix B: Shell Completion
 
 ```bash
 # Zsh

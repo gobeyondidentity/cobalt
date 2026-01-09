@@ -123,7 +123,7 @@ release: $(BIN_DIR)
 # Run each step of the emulator quickstart guide
 # =============================================================================
 
-.PHONY: demo-clean demo-step1 demo-step2 demo-step3 demo-step4 demo-step5 demo-step6 demo-step7 demo-step8 demo-step9 demo-step10 demo-step11 demo-step12
+.PHONY: demo-clean demo-step1 demo-step2 demo-step3 demo-step4 demo-step5 demo-step6 demo-step7 demo-step8 demo-step9 demo-step10 demo-step11 demo-step12 demo-step13
 
 # Reset environment for fresh start
 demo-clean:
@@ -203,6 +203,21 @@ demo-step11:
 demo-step12:
 	@echo "=== Step 12: Test Host Agent ==="
 	$(BIN_DIR)/host-agent --dpu-agent http://localhost:9443 --oneshot
+
+# Step 13: Sign a user certificate
+demo-step13:
+	@echo "=== Step 13: Sign a User Certificate ==="
+	@echo "Generating test SSH key..."
+	@ssh-keygen -t ed25519 -f /tmp/demo_key -N "" -C "demo@example.com" -q
+	@echo "Signing with test-ca..."
+	$(BIN_DIR)/km ssh-ca sign test-ca --principal ubuntu --pubkey /tmp/demo_key.pub
+	@echo ""
+	@echo "Inspecting certificate:"
+	@ssh-keygen -L -f /tmp/demo_key-cert.pub
+	@echo ""
+	@echo "Cleaning up..."
+	@rm -f /tmp/demo_key /tmp/demo_key.pub /tmp/demo_key-cert.pub
+	@echo "Done."
 
 # =============================================================================
 # Hardware Demo Targets
@@ -333,6 +348,7 @@ help:
 	@echo "  make demo-step10       Submit attestation"
 	@echo "  make demo-step11       Distribute credentials"
 	@echo "  make demo-step12       Test host agent (optional)"
+	@echo "  make demo-step13       Sign a user certificate"
 	@echo ""
 	@echo "Hardware Demo Targets (for real BlueField DPU):"
 	@echo ""
