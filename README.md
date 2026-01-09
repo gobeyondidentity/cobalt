@@ -1,6 +1,6 @@
 # Secure Infrastructure
 
-**v0.5.0** | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
+**v0.4.0** | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 Hardware-bound credential management for AI infrastructure using NVIDIA BlueField DPUs.
 
@@ -19,7 +19,6 @@ The system uses BlueField-3 DPUs as enforcement points, checking both hardware a
 - **No secret sprawl**: Credentials die with the node; fresh ones created automatically on reimage
 - **Audit trail**: Every credential push tied to point-in-time attestation state
 - **SSH CA management**: Create, sign, push certificate authorities to attested infrastructure
-- **Key discovery**: Audit existing SSH keys across hosts before migrating to certificates
 - **Automation-ready**: Structured output (`-o json`), idempotent commands, exit codes
 
 ## Quick Start
@@ -30,7 +29,6 @@ Choose your path:
 |------|------|--------------|
 | [Emulator Quickstart](docs/guides/quickstart-emulator.md) | 10 min | Go 1.22+, Make |
 | [Hardware Setup](docs/guides/setup-hardware.md) | 30 min | BlueField-3 DPU |
-| [SSH Key Discovery](docs/guides/discovery.md) | 5 min | SSH access to hosts |
 
 **Try the emulator first** to learn the system without hardware. The quickstart walks you through the full flow: create a tenant, register a DPU, set up operators, and push credentials to attested infrastructure.
 

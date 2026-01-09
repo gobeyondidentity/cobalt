@@ -105,7 +105,7 @@ Replace `<CONTROL_PLANE_IP>` with the IP of the machine running the server. We u
 
 ```
 # Expected:
-# Fabric Console Agent v0.5.1 starting...
+# Fabric Console Agent v0.4.1 starting...
 # gRPC server listening on :50052
 # Starting local API for Host Agent communication...
 # Local API listening on localhost:9443
@@ -182,7 +182,7 @@ Save the invite code.
 ```bash
 bin/km init
 # Expected:
-# KeyMaker v0.5.1
+# KeyMaker v0.4.1
 # Platform: <platform> (<arch>)
 # Secure Element: <type>
 #
@@ -311,7 +311,7 @@ The agent connects to the DPU agent's local API. If tmfifo is available, it will
 
 ```
 # Expected:
-# Host Agent v0.5.1 starting...
+# Host Agent v0.4.1 starting...
 # Initial posture collected: hash=<hash>
 # No tmfifo detected. Using network enrollment.
 # DPU Agent: http://localhost:9443

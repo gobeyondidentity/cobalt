@@ -50,7 +50,7 @@ In Terminal 1:
 
 ```bash
 bin/server
-# Expected: Fabric Console API v0.5.1 starting...
+# Expected: Fabric Console API v0.4.1 starting...
 # Expected: HTTP server listening on :18080
 ```
 
@@ -256,7 +256,7 @@ With the emulator, the host agent connects via HTTP instead of tmfifo.
 ```bash
 bin/host-agent --dpu-agent http://localhost:9443 --oneshot
 # Expected:
-# Host Agent v0.5.1 starting...
+# Host Agent v0.4.1 starting...
 # Initial posture collected: hash=<hash>
 # No tmfifo detected. Using network enrollment.
 # DPU Agent: http://localhost:9443
