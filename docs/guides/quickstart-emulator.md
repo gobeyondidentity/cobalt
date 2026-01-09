@@ -296,14 +296,25 @@ To reset and start fresh:
 
 1. **Stop the server and emulator** (Ctrl+C in Terminals 1 and 2)
 
-2. **Delete state files:**
+2. **Verify they're stopped:**
+```bash
+ps aux | grep -E "bin/server|bin/dpuemu" | grep -v grep
+# Expected: no output
+```
+
+If processes are still running, kill them:
+```bash
+pkill -f "bin/server" && pkill -f "bin/dpuemu"
+```
+
+3. **Delete state files:**
 ```bash
 rm -f ~/.local/share/bluectl/dpus.db
 rm -f ~/.local/share/bluectl/key
 rm -rf ~/.km
 ```
 
-3. **Restart server and emulator** (Steps 1 and 3)
+4. **Restart server and emulator** (Steps 1 and 3)
 
 The server caches data in memory, so you must stop it before deleting the database.
 
