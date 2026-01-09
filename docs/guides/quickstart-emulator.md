@@ -111,16 +111,24 @@ bin/bluectl dpu add localhost --name bf3
 # Added DPU 'bf3' at localhost:50051.
 #
 # Next: Assign to a tenant with 'bluectl tenant assign <tenant> bf3'
+```
 
+The CLI verifies connectivity and retrieves DPU details from the emulator.
+
+---
+
+## Step 5: Assign DPU to Tenant
+
+Link the DPU to the tenant you created in Step 2. This controls which operators can access the device.
+
+```bash
 bin/bluectl tenant assign gpu-prod bf3
 # Expected: Assigned DPU 'bf3' to tenant 'gpu-prod'
 ```
 
-The CLI verifies connectivity and shows DPU details. The `Next:` hint tells you what to do next.
-
 ---
 
-## Step 5: Create an Operator
+## Step 6: Create an Operator
 
 Admins manage infrastructure (DPUs, tenants, access grants). Operators push credentials (SSH CAs, certificates) to attested devices. This separation creates an audit trail: you can see who pushed what, when, and to which devices.
 
@@ -171,7 +179,7 @@ bin/km whoami
 
 ---
 
-## Step 6: Create SSH CA and Grant Access
+## Step 7: Create SSH CA and Grant Access
 
 ### 6a: Create CA (as operator)
 
@@ -198,7 +206,7 @@ bin/bluectl operator grant operator@example.com gpu-prod test-ca bf3
 
 ---
 
-## Step 7: Submit Attestation
+## Step 8: Submit Attestation
 
 The DPU must prove it's running trusted firmware before receiving credentials. The emulator provides mock attestation.
 
@@ -221,7 +229,7 @@ bin/bluectl attestation bf3
 
 ---
 
-## Step 8: Distribute Credentials
+## Step 9: Distribute Credentials
 
 This is the core security moment. The system checks that attestation is valid before allowing the push. If the DPU had failed attestation, this command would be rejected.
 
@@ -239,7 +247,7 @@ With the emulator, credentials are stored locally. On real hardware, they'd be p
 
 ---
 
-## Step 9: Test Host Agent (Optional)
+## Step 10: Test Host Agent (Optional)
 
 In production, the host agent runs on each server and receives credentials from the DPU over a secure channel (tmfifo). It also reports the host's security posture.
 
