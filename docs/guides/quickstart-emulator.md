@@ -128,13 +128,11 @@ bin/bluectl tenant assign gpu-prod bf3
 
 ---
 
-## Step 6: Create an Operator
+## Step 6: Create Operator Invitation
 
-Admins manage infrastructure (DPUs, tenants, access grants). Operators push credentials (SSH CAs, certificates) to attested devices. This separation creates an audit trail: you can see who pushed what, when, and to which devices.
+Admins manage infrastructure (DPUs, tenants, access grants). Operators push credentials (SSH CAs, certificates) to attested devices. This separation creates an audit trail.
 
 In production, an admin and operator would be different people. Here you're playing both roles.
-
-### 5a: Create invitation (as admin)
 
 ```bash
 bin/bluectl operator invite operator@example.com gpu-prod
@@ -150,7 +148,9 @@ bin/bluectl operator invite operator@example.com gpu-prod
 
 Save the invite code for the next step.
 
-### 5b: Accept invitation (as operator)
+---
+
+## Step 7: Accept Operator Invitation
 
 ```bash
 bin/km init
@@ -179,20 +179,20 @@ bin/km whoami
 
 ---
 
-## Step 7: Create SSH CA and Grant Access
+## Step 8: Create SSH CA
 
-### 6a: Create CA (as operator)
-
-An SSH CA signs short-lived certificates instead of scattering static keys across servers. In this system, the CA's private key lives on the DPU. It can only sign certificates when attestation passes, so a compromised host can't mint valid credentials.
+An SSH CA signs short-lived certificates instead of scattering static keys across servers. The CA's private key lives on the DPU and can only sign certificates when attestation passes.
 
 ```bash
 bin/km ssh-ca create test-ca
 # Expected: SSH CA 'test-ca' created.
 ```
 
-### 6b: Grant access (as admin)
+---
 
-The grant links an operator to specific CAs and devices. Without it, the operator can create CAs but can't push them anywhere.
+## Step 9: Grant CA Access
+
+Link the operator to specific CAs and devices. Without this grant, the operator can create CAs but can't push them anywhere.
 
 ```bash
 bin/bluectl operator grant operator@example.com gpu-prod test-ca bf3
@@ -206,7 +206,7 @@ bin/bluectl operator grant operator@example.com gpu-prod test-ca bf3
 
 ---
 
-## Step 8: Submit Attestation
+## Step 10: Submit Attestation
 
 The DPU must prove it's running trusted firmware before receiving credentials. The emulator provides mock attestation.
 
@@ -229,7 +229,7 @@ bin/bluectl attestation bf3
 
 ---
 
-## Step 9: Distribute Credentials
+## Step 11: Distribute Credentials
 
 This is the core security moment. The system checks that attestation is valid before allowing the push. If the DPU had failed attestation, this command would be rejected.
 
@@ -247,7 +247,7 @@ With the emulator, credentials are stored locally. On real hardware, they'd be p
 
 ---
 
-## Step 10: Test Host Agent (Optional)
+## Step 12: Test Host Agent (Optional)
 
 In production, the host agent runs on each server and receives credentials from the DPU over a secure channel (tmfifo). It also reports the host's security posture.
 

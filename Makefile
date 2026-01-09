@@ -123,7 +123,7 @@ release: $(BIN_DIR)
 # Run each step of the emulator quickstart guide
 # =============================================================================
 
-.PHONY: demo-clean demo-step1 demo-step2 demo-step3 demo-step4 demo-step5 demo-step6 demo-step7 demo-step8 demo-step9 demo-step10
+.PHONY: demo-clean demo-step1 demo-step2 demo-step3 demo-step4 demo-step5 demo-step6 demo-step7 demo-step8 demo-step9 demo-step10 demo-step11 demo-step12
 
 # Reset environment for fresh start
 demo-clean:
@@ -162,45 +162,46 @@ demo-step5:
 	@echo "=== Step 5: Assign DPU to Tenant ==="
 	$(BIN_DIR)/bluectl tenant assign gpu-prod bf3
 
-# Step 6: Create operator (interactive for invite code)
+# Step 6: Create operator invitation
 demo-step6:
-	@echo "=== Step 6: Create Operator ==="
-	@echo "Creating invitation..."
+	@echo "=== Step 6: Create Operator Invitation ==="
 	@$(BIN_DIR)/bluectl operator invite operator@example.com gpu-prod
 	@echo ""
-	@echo "Now run: bin/km init"
+	@echo "Now run: make demo-step7"
 	@echo "Enter the invite code when prompted"
 
-demo-step6-accept:
-	@echo "=== Step 6b: Accept Invitation ==="
+# Step 7: Accept operator invitation
+demo-step7:
+	@echo "=== Step 7: Accept Operator Invitation ==="
 	$(BIN_DIR)/km init
 
-demo-step6-verify:
-	@echo "=== Step 6: Verify Operator ==="
+demo-step7-verify:
+	@echo "=== Verify Operator ==="
 	$(BIN_DIR)/km whoami
 
-# Step 7: Create SSH CA and grant access
-demo-step7:
-	@echo "=== Step 7: Create SSH CA ==="
+# Step 8: Create SSH CA
+demo-step8:
+	@echo "=== Step 8: Create SSH CA ==="
 	$(BIN_DIR)/km ssh-ca create test-ca
 
-demo-step7-grant:
-	@echo "=== Step 7b: Grant Access ==="
+# Step 9: Grant CA access
+demo-step9:
+	@echo "=== Step 9: Grant CA Access ==="
 	$(BIN_DIR)/bluectl operator grant operator@example.com gpu-prod test-ca bf3
 
-# Step 8: Submit attestation
-demo-step8:
-	@echo "=== Step 8: Attestation ==="
+# Step 10: Submit attestation
+demo-step10:
+	@echo "=== Step 10: Submit Attestation ==="
 	$(BIN_DIR)/bluectl attestation bf3
 
-# Step 9: Push credentials
-demo-step9:
-	@echo "=== Step 9: Push Credentials ==="
+# Step 11: Distribute credentials
+demo-step11:
+	@echo "=== Step 11: Distribute Credentials ==="
 	$(BIN_DIR)/km push ssh-ca test-ca bf3
 
-# Step 10: Test host agent (optional)
-demo-step10:
-	@echo "=== Step 10: Host Agent ==="
+# Step 12: Test host agent (optional)
+demo-step12:
+	@echo "=== Step 12: Test Host Agent ==="
 	$(BIN_DIR)/host-agent --dpu-agent http://localhost:9443 --oneshot
 
 # =============================================================================
@@ -325,13 +326,13 @@ help:
 	@echo "  make demo-step4        Register DPU"
 	@echo "  make demo-step5        Assign DPU to tenant"
 	@echo "  make demo-step6        Create operator invitation"
-	@echo "  make demo-step6-accept Accept invitation (km init)"
-	@echo "  make demo-step6-verify Verify operator (km whoami)"
-	@echo "  make demo-step7        Create SSH CA"
-	@echo "  make demo-step7-grant  Grant CA access"
-	@echo "  make demo-step8        Submit attestation"
-	@echo "  make demo-step9        Push credentials"
-	@echo "  make demo-step10       Test host agent (optional)"
+	@echo "  make demo-step7        Accept operator invitation (km init)"
+	@echo "  make demo-step7-verify Verify operator (km whoami)"
+	@echo "  make demo-step8        Create SSH CA"
+	@echo "  make demo-step9        Grant CA access"
+	@echo "  make demo-step10       Submit attestation"
+	@echo "  make demo-step11       Distribute credentials"
+	@echo "  make demo-step12       Test host agent (optional)"
 	@echo ""
 	@echo "Hardware Demo Targets (for real BlueField DPU):"
 	@echo ""
