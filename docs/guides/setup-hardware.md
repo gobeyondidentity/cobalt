@@ -116,7 +116,7 @@ Leave this terminal open. The agent must be running for registration and credent
 Back on your control plane, register the DPU:
 
 ```bash
-bin/bluectl dpu add <DPU_IP>:50052 --name bf3-prod-01
+bin/bluectl dpu add <DPU_IP> --port 50052 --name bf3-prod-01
 # Expected:
 # Checking connectivity to <DPU_IP>:50052...
 # Connected to DPU:
@@ -430,7 +430,7 @@ Repeat Steps 3-6 and 11-14 for the second host/DPU pair:
 
 ```bash
 # Register second DPU
-bin/bluectl dpu add <DPU2_IP>:50052 --name bf3-prod-02
+bin/bluectl dpu add <DPU2_IP> --port 50052 --name bf3-prod-02
 bin/bluectl tenant assign gpu-prod bf3-prod-02
 
 # Grant operator access
