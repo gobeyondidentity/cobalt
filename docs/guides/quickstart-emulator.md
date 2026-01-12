@@ -85,7 +85,7 @@ The fixture file defines the emulated DPU's identity: serial number, model, and 
 In Terminal 2:
 
 ```bash
-bin/dpuemu serve --port 50051 --fixture dpuemu/fixtures/bf3-static.json
+bin/dpuemu serve --port 18051 --fixture dpuemu/fixtures/bf3-static.json
 # Expected:
 # Loading fixture from dpuemu/fixtures/bf3-static.json
 # dpuemu gRPC server listening on :50051
