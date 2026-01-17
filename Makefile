@@ -323,6 +323,250 @@ hw-step9:
 	$(BIN_DIR)/km push ssh-ca prod-ca $(DPU_NAME) --force
 
 # =============================================================================
+# QA Testing Targets
+# Three-VM setup: server, emulator (DPU), host with TMFIFO emulation
+# =============================================================================
+
+.PHONY: qa-help qa-vm-create qa-vm-delete qa-vm-start qa-vm-stop qa-vm-recover qa-vm-status
+.PHONY: qa-build qa-up qa-down qa-rebuild qa-health qa-status qa-logs qa-clean
+.PHONY: qa-tmfifo-up qa-tmfifo-down qa-test-tmfifo qa-push-binaries
+
+# QA VM Configuration
+QA_VM_SERVER := qa-server
+QA_VM_EMU := qa-emu
+QA_VM_HOST := qa-host
+QA_WORKSPACE := $(shell pwd)/qa-workspace
+QA_TMFIFO_PORT := 54321
+
+# QA environment help
+qa-help:
+	@echo "QA Environment (3 VMs with TMFIFO emulation):"
+	@echo ""
+	@echo "VM Management:"
+	@echo "  make qa-vm-create   Create all three VMs"
+	@echo "  make qa-vm-delete   Delete all VMs"
+	@echo "  make qa-vm-start    Start all VMs (silent)"
+	@echo "  make qa-vm-stop     Stop all VMs (silent)"
+	@echo "  make qa-vm-recover  Fix stuck VMs (recreates Unknown/Suspended)"
+	@echo "  make qa-vm-status   Show VM status and processes"
+	@echo ""
+	@echo "Build & Deploy:"
+	@echo "  make qa-build       Cross-compile and push binaries to VMs"
+	@echo "  make qa-push-binaries  Push pre-built binaries to VMs"
+	@echo "  make qa-up          Start services (checks if running first)"
+	@echo "  make qa-down        Stop all services"
+	@echo "  make qa-rebuild     Full rebuild: down, clean, build, up"
+	@echo ""
+	@echo "TMFIFO Emulation:"
+	@echo "  make qa-tmfifo-up   Start TMFIFO emulation between VMs"
+	@echo "  make qa-tmfifo-down Stop TMFIFO emulation"
+	@echo "  make qa-test-tmfifo Test TMFIFO communication"
+	@echo ""
+	@echo "Monitoring:"
+	@echo "  make qa-health      Check server and emulator health"
+	@echo "  make qa-status      Show registered tenants and DPUs"
+	@echo "  make qa-logs        Show service logs"
+	@echo "  make qa-clean       Stop services and clean workspace"
+	@echo ""
+	@echo "Architecture:"
+	@echo "  qa-server  Control plane server (:18080)"
+	@echo "  qa-emu     DPU emulator (:50051 gRPC, :9443 local API)"
+	@echo "  qa-host    GPU host with host-agent (connects via TMFIFO)"
+	@echo ""
+	@echo "TMFIFO emulation:"
+	@echo "  qa-emu:/dev/tmfifo  <--TCP:$(QA_TMFIFO_PORT)-->  qa-host:/dev/tmfifo"
+
+# Create all three QA VMs in parallel
+qa-vm-create:
+	@echo "Creating 3 VMs in parallel..."
+	@( multipass launch 24.04 --name $(QA_VM_SERVER) --cpus 2 --memory 1G --disk 5G >/dev/null 2>&1 && echo "  qa-server: done" ) & \
+	( multipass launch 24.04 --name $(QA_VM_EMU) --cpus 1 --memory 512M --disk 5G >/dev/null 2>&1 && echo "  qa-emu: done" ) & \
+	( multipass launch 24.04 --name $(QA_VM_HOST) --cpus 1 --memory 512M --disk 5G >/dev/null 2>&1 && echo "  qa-host: done" ) & \
+	wait
+	@echo "Installing socat on qa-emu..."
+	@multipass exec $(QA_VM_EMU) -- sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+	@multipass exec $(QA_VM_EMU) -- sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq socat
+	@echo "Installing socat on qa-host..."
+	@multipass exec $(QA_VM_HOST) -- sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+	@multipass exec $(QA_VM_HOST) -- sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq socat
+	@multipass list | grep -E "^(Name|qa-)"
+
+# Delete all QA VMs
+qa-vm-delete:
+	@multipass delete $(QA_VM_SERVER) --purge 2>/dev/null || true
+	@multipass delete $(QA_VM_EMU) --purge 2>/dev/null || true
+	@multipass delete $(QA_VM_HOST) --purge 2>/dev/null || true
+	@rm -rf $(QA_WORKSPACE)
+
+# Start all QA VMs
+qa-vm-start:
+	@multipass start $(QA_VM_SERVER) $(QA_VM_EMU) $(QA_VM_HOST) >/dev/null 2>&1
+
+# Stop all QA VMs
+qa-vm-stop:
+	@multipass stop $(QA_VM_SERVER) $(QA_VM_EMU) $(QA_VM_HOST) >/dev/null 2>&1
+
+# Recover stuck QA VMs
+qa-vm-recover:
+	@echo "Checking for stuck VMs..."
+	@for vm in $(QA_VM_SERVER) $(QA_VM_EMU) $(QA_VM_HOST); do \
+		STATE=$$(multipass info $$vm 2>/dev/null | grep State | awk '{print $$2}'); \
+		if [ "$$STATE" = "Unknown" ] || [ "$$STATE" = "Suspended" ]; then \
+			echo "  $$vm is stuck ($$STATE), recreating..."; \
+			multipass delete $$vm --purge 2>/dev/null || true; \
+			if [ "$$vm" = "$(QA_VM_SERVER)" ]; then \
+				multipass launch 24.04 --name $$vm --cpus 2 --memory 1G --disk 5G; \
+			else \
+				multipass launch 24.04 --name $$vm --cpus 1 --memory 512M --disk 5G; \
+				multipass exec $$vm -- sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq; \
+				multipass exec $$vm -- sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq socat; \
+			fi; \
+			echo "  $$vm recreated"; \
+		else \
+			echo "  $$vm: $$STATE (ok)"; \
+		fi; \
+	done
+	@echo "Recovery complete. Run 'make qa-push-binaries' to redeploy binaries."
+
+# Show QA VM status
+qa-vm-status:
+	@echo "=== Server VM ==="
+	@multipass info $(QA_VM_SERVER) 2>/dev/null | grep -E "^(Name|State|IPv4)" || echo "Not running"
+	@multipass exec $(QA_VM_SERVER) -- pgrep -a server 2>/dev/null || echo "  server: not running"
+	@echo ""
+	@echo "=== Emulator VM (DPU) ==="
+	@multipass info $(QA_VM_EMU) 2>/dev/null | grep -E "^(Name|State|IPv4)" || echo "Not running"
+	@multipass exec $(QA_VM_EMU) -- pgrep -a dpuemu 2>/dev/null || echo "  dpuemu: not running"
+	@multipass exec $(QA_VM_EMU) -- pgrep -a "socat.*tmfifo" 2>/dev/null || echo "  tmfifo: not running"
+	@echo ""
+	@echo "=== Host VM ==="
+	@multipass info $(QA_VM_HOST) 2>/dev/null | grep -E "^(Name|State|IPv4)" || echo "Not running"
+	@multipass exec $(QA_VM_HOST) -- pgrep -a host-agent 2>/dev/null || echo "  host-agent: not running"
+	@multipass exec $(QA_VM_HOST) -- pgrep -a "socat.*tmfifo" 2>/dev/null || echo "  tmfifo: not running"
+
+# Build and push binaries to QA VMs (uses local repo)
+qa-build:
+	@echo "=== Building binaries ==="
+	@$(MAKE) all
+	@echo "=== Cross-compiling Linux binaries ==="
+	@mkdir -p $(QA_WORKSPACE)
+	@GOOS=linux GOARCH=arm64 go build -o $(QA_WORKSPACE)/server ./cmd/server
+	@GOOS=linux GOARCH=arm64 go build -o $(QA_WORKSPACE)/dpuemu ./dpuemu/cmd/dpuemu
+	@GOOS=linux GOARCH=arm64 go build -o $(QA_WORKSPACE)/host-agent ./cmd/host-agent
+	@GOOS=linux GOARCH=arm64 go build -o $(QA_WORKSPACE)/agent ./cmd/agent
+	@$(MAKE) qa-push-binaries
+
+# Push pre-built binaries to QA VMs
+qa-push-binaries:
+	@echo "=== Pushing binaries to VMs ==="
+	@multipass transfer $(QA_WORKSPACE)/server $(QA_VM_SERVER):/home/ubuntu/
+	@multipass exec $(QA_VM_SERVER) -- chmod +x /home/ubuntu/server
+	@multipass transfer $(QA_WORKSPACE)/dpuemu $(QA_VM_EMU):/home/ubuntu/
+	@multipass transfer $(QA_WORKSPACE)/agent $(QA_VM_EMU):/home/ubuntu/
+	@multipass exec $(QA_VM_EMU) -- chmod +x /home/ubuntu/dpuemu /home/ubuntu/agent
+	@multipass transfer $(QA_WORKSPACE)/host-agent $(QA_VM_HOST):/home/ubuntu/
+	@multipass exec $(QA_VM_HOST) -- chmod +x /home/ubuntu/host-agent
+	@echo "=== Done ==="
+
+# Start TMFIFO emulation using socat
+qa-tmfifo-up:
+	@EMU_IP=$$(multipass info $(QA_VM_EMU) | grep IPv4 | awk '{print $$2}'); \
+	echo "=== Starting TMFIFO on $$EMU_IP:$(QA_TMFIFO_PORT) ==="; \
+	multipass exec $(QA_VM_EMU) -- sudo socat -d PTY,raw,echo=0,link=/dev/tmfifo,mode=666 TCP-LISTEN:$(QA_TMFIFO_PORT),reuseaddr,fork >/dev/null 2>&1 & \
+	sleep 2; \
+	multipass exec $(QA_VM_HOST) -- sudo socat -d PTY,raw,echo=0,link=/dev/tmfifo,mode=666 TCP:$$EMU_IP:$(QA_TMFIFO_PORT) >/dev/null 2>&1 & \
+	sleep 2; \
+	echo "TMFIFO ready"
+
+# Stop TMFIFO emulation
+qa-tmfifo-down:
+	@multipass exec $(QA_VM_EMU) -- sudo pkill -9 socat >/dev/null 2>&1 || true
+	@multipass exec $(QA_VM_HOST) -- sudo pkill -9 socat >/dev/null 2>&1 || true
+
+# Test TMFIFO communication
+qa-test-tmfifo:
+	@echo "=== Testing TMFIFO communication ==="
+	@echo "Test 1: Host -> DPU"
+	@multipass exec $(QA_VM_HOST) -- bash -c 'echo "PING_FROM_HOST" > /dev/tmfifo' & \
+	sleep 1; \
+	multipass exec $(QA_VM_EMU) -- bash -c 'timeout 3 head -n1 /dev/tmfifo || echo "FAIL: timeout"'
+	@echo ""
+	@echo "Test 2: DPU -> Host"
+	@multipass exec $(QA_VM_EMU) -- bash -c 'echo "PONG_FROM_DPU" > /dev/tmfifo' & \
+	sleep 1; \
+	multipass exec $(QA_VM_HOST) -- bash -c 'timeout 3 head -n1 /dev/tmfifo || echo "FAIL: timeout"'
+	@echo ""
+	@echo "=== TMFIFO test complete ==="
+
+# Start QA services
+qa-up: qa-tmfifo-up
+	@echo "=== Starting server ==="
+	@multipass exec $(QA_VM_SERVER) -- pgrep -x server || multipass exec $(QA_VM_SERVER) -- bash -c "nohup /home/ubuntu/server > /home/ubuntu/server.log 2>&1 &"
+	@sleep 2
+	@echo "=== Starting emulator ==="
+	@multipass exec $(QA_VM_EMU) -- pgrep -x dpuemu || multipass exec $(QA_VM_EMU) -- bash -c "nohup /home/ubuntu/dpuemu serve --listen :50051 > /home/ubuntu/dpuemu.log 2>&1 &"
+	@sleep 2
+	@$(MAKE) qa-health
+
+# Stop QA services
+qa-down: qa-tmfifo-down
+	@echo "=== Stopping services ==="
+	@multipass exec $(QA_VM_SERVER) -- pkill -f server 2>/dev/null || true
+	@multipass exec $(QA_VM_EMU) -- pkill -f dpuemu 2>/dev/null || true
+	@multipass exec $(QA_VM_HOST) -- pkill -f host-agent 2>/dev/null || true
+	@echo "Services stopped"
+
+# Full rebuild: down, clean, build, up
+qa-rebuild: qa-down qa-clean qa-build qa-up
+
+# Check health of QA services
+qa-health:
+	@echo "=== Server ==="
+	@SERVER_IP=$$(multipass info $(QA_VM_SERVER) | grep IPv4 | awk '{print $$2}'); \
+	echo "  IP: $$SERVER_IP"; \
+	curl -s http://$$SERVER_IP:18080/health | python3 -m json.tool || echo "  Status: not responding"
+	@echo ""
+	@echo "=== Emulator (DPU) ==="
+	@EMU_IP=$$(multipass info $(QA_VM_EMU) | grep IPv4 | awk '{print $$2}'); \
+	echo "  IP: $$EMU_IP"; \
+	echo "  gRPC: :50051"; \
+	echo "  Local API: :9443"
+
+# Show QA environment status
+qa-status:
+	@echo "=== Tenants ==="
+	@$(BIN_DIR)/bluectl tenant list --insecure 2>/dev/null || echo "  (none or server not running)"
+	@echo ""
+	@echo "=== DPUs ==="
+	@$(BIN_DIR)/bluectl dpu list --insecure 2>/dev/null || echo "  (none or server not running)"
+
+# Show QA service logs
+qa-logs:
+	@echo "=== Server log ==="
+	@multipass exec $(QA_VM_SERVER) -- tail -30 /home/ubuntu/server.log 2>/dev/null || echo "No server log"
+	@echo ""
+	@echo "=== Emulator log ==="
+	@multipass exec $(QA_VM_EMU) -- tail -30 /home/ubuntu/dpuemu.log 2>/dev/null || echo "No emulator log"
+	@echo ""
+	@echo "=== Host Agent log ==="
+	@multipass exec $(QA_VM_HOST) -- tail -30 /home/ubuntu/host-agent.log 2>/dev/null || echo "No host-agent log"
+	@echo ""
+	@echo "=== TMFIFO socat logs ==="
+	@echo "-- EMU --"
+	@multipass exec $(QA_VM_EMU) -- tail -10 /home/ubuntu/tmfifo-socat.log 2>/dev/null || echo "No socat log"
+	@echo "-- HOST --"
+	@multipass exec $(QA_VM_HOST) -- tail -10 /home/ubuntu/tmfifo-socat.log 2>/dev/null || echo "No socat log"
+
+# Clean QA environment
+qa-clean:
+	@$(MAKE) qa-down 2>/dev/null || true
+	@rm -rf $(QA_WORKSPACE)
+	@multipass exec $(QA_VM_SERVER) -- rm -f /home/ubuntu/server /home/ubuntu/*.log 2>/dev/null || true
+	@multipass exec $(QA_VM_EMU) -- rm -f /home/ubuntu/dpuemu /home/ubuntu/agent /home/ubuntu/*.log 2>/dev/null || true
+	@multipass exec $(QA_VM_HOST) -- rm -f /home/ubuntu/host-agent /home/ubuntu/*.log 2>/dev/null || true
+	@echo "Cleaned"
+
+# =============================================================================
 # Help
 # =============================================================================
 
@@ -375,5 +619,20 @@ help:
 	@echo "  make hw-step9         Push credentials (--force)"
 	@echo ""
 	@echo "  Configure: DPU_IP, DPU_USER, DPU_NAME, CONTROL_PLANE_IP"
+	@echo ""
+	@echo "QA Testing Targets (3 VMs with TMFIFO emulation):"
+	@echo ""
+	@echo "  make qa-help          Show detailed QA help"
+	@echo "  make qa-vm-create     Create all three VMs"
+	@echo "  make qa-vm-delete     Delete all VMs"
+	@echo "  make qa-vm-status     Show VM status"
+	@echo "  make qa-build         Build and push binaries to VMs"
+	@echo "  make qa-up            Start all services"
+	@echo "  make qa-down          Stop all services"
+	@echo "  make qa-rebuild       Full rebuild cycle"
+	@echo "  make qa-health        Health check"
+	@echo "  make qa-logs          Show service logs"
+	@echo "  make qa-tmfifo-up     Start TMFIFO emulation"
+	@echo "  make qa-test-tmfifo   Test TMFIFO communication"
 	@echo ""
 	@echo "  make help       Show this help"
