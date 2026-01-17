@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 	"github.com/nmelo/secure-infra/internal/hostagent"
 	"github.com/nmelo/secure-infra/internal/version"
 	"github.com/nmelo/secure-infra/pkg/posture"
+	"github.com/nmelo/secure-infra/pkg/transport"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -72,6 +74,17 @@ func main() {
 		tmfifoAvailable = false
 	}
 
+	// Create appropriate transport based on availability and flags
+	var t transport.Transport
+	if tmfifoAvailable {
+		log.Printf("Detected BlueField DPU via tmfifo")
+		t = hostagent.NewTmfifoTransport(tmfifoPath)
+	} else {
+		log.Printf("No tmfifo detected. Using network transport.")
+		log.Printf("DPU Agent: %s", *dpuAgent)
+		t = hostagent.NewNetworkTransport(*dpuAgent, hostname)
+	}
+
 	// Collect initial posture
 	p := posture.Collect()
 	log.Printf("Initial posture collected: hash=%s", p.Hash())
@@ -81,23 +94,33 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	stopCh := make(chan struct{})
 
-	if tmfifoAvailable {
-		// tmfifo mode: hardware-secured enrollment
-		runTmfifoMode(tmfifoPath, hostname, p, *interval, *oneshot, sigCh, stopCh)
-	} else {
-		// Network fallback mode
-		runNetworkMode(*dpuAgent, hostname, p, *interval, *oneshot, sigCh, stopCh)
-	}
+	// Run with the selected transport
+	runWithTransport(t, hostname, p, *interval, *oneshot, *dpuAgent, sigCh, stopCh)
 }
 
-// runTmfifoMode runs the Host Agent using tmfifo for DPU communication.
-func runTmfifoMode(tmfifoPath, hostname string, p *posture.Posture, interval time.Duration, oneshot bool, sigCh <-chan os.Signal, stopCh chan struct{}) {
-	log.Printf("Detected BlueField DPU via tmfifo")
+// runWithTransport runs the Host Agent using the provided transport.
+// This unified function handles both tmfifo and network transports.
+func runWithTransport(t transport.Transport, hostname string, p *posture.Posture, interval time.Duration, oneshot bool, dpuAgentURL string, sigCh <-chan os.Signal, stopCh chan struct{}) {
+	ctx := context.Background()
+
+	// For network transport, we use the legacy HTTP-based enrollment
+	// until the full Transport-based protocol is implemented on the server side.
+	if t.Type() == transport.TransportNetwork {
+		runNetworkModeLegacy(dpuAgentURL, hostname, p, interval, oneshot, sigCh, stopCh)
+		return
+	}
+
+	// Create client using the transport
+	client := hostagent.NewClient(t, hostname)
+
+	// Connect the transport
+	if err := client.Connect(ctx); err != nil {
+		log.Fatalf("Failed to connect transport: %v", err)
+	}
+
 	log.Printf("Enrolling with DPU Agent...")
 	log.Printf("  Hostname: %s", hostname)
-
-	// Create tmfifo client
-	client := hostagent.NewTmfifoClient(tmfifoPath, hostname)
+	log.Printf("  Transport: %s", t.Type())
 
 	// Convert posture to JSON for enrollment
 	postureJSON, err := json.Marshal(postureToPayload(p))
@@ -105,13 +128,13 @@ func runTmfifoMode(tmfifoPath, hostname string, p *posture.Posture, interval tim
 		log.Fatalf("Failed to marshal posture: %v", err)
 	}
 
-	// Enroll via tmfifo
-	hostID, dpuName, err := client.Enroll(postureJSON)
+	// Enroll via transport
+	hostID, dpuName, err := client.Enroll(ctx, postureJSON)
 	if err != nil {
-		log.Fatalf("tmfifo enrollment failed: %v", err)
+		log.Fatalf("Enrollment failed: %v", err)
 	}
 
-	log.Printf("Enrolled via tmfifo (hardware-secured)")
+	log.Printf("Enrolled via %s", t.Type())
 	log.Printf("Host ID: %s", hostID)
 	if dpuName != "" {
 		log.Printf("Paired with DPU: %s", dpuName)
@@ -124,16 +147,13 @@ func runTmfifoMode(tmfifoPath, hostname string, p *posture.Posture, interval tim
 		return
 	}
 
-	// Start tmfifo listener for credential pushes
-	if err := client.StartListener(); err != nil {
-		log.Printf("Warning: failed to start tmfifo listener: %v", err)
-	} else {
-		log.Printf("Listening for credential pushes via tmfifo")
-	}
+	// Start listener for credential pushes
+	client.StartListener()
+	log.Printf("Listening for credential pushes via %s", t.Type())
 
 	log.Printf("Host Agent running. Posture reports every %s.", interval)
 
-	// Run posture loop via tmfifo
+	// Run posture loop
 	go func() {
 		collectPosture := func() json.RawMessage {
 			p := posture.Collect()
@@ -150,10 +170,10 @@ func runTmfifoMode(tmfifoPath, hostname string, p *posture.Posture, interval tim
 	client.Close()
 }
 
-// runNetworkMode runs the Host Agent using HTTP for DPU communication.
-func runNetworkMode(dpuAgent, hostname string, p *posture.Posture, interval time.Duration, oneshot bool, sigCh <-chan os.Signal, stopCh chan struct{}) {
-	log.Printf("No tmfifo detected. Using network enrollment.")
-	log.Printf("DPU Agent: %s", dpuAgent)
+// runNetworkModeLegacy runs the Host Agent using legacy HTTP for DPU communication.
+// This preserves the existing network mode behavior until the Transport-based
+// protocol is fully implemented on the server side.
+func runNetworkModeLegacy(dpuAgent, hostname string, p *posture.Posture, interval time.Duration, oneshot bool, sigCh <-chan os.Signal, stopCh chan struct{}) {
 	log.Printf("Hostname: %s", hostname)
 
 	// Register with DPU Agent via HTTP
