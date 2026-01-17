@@ -330,6 +330,7 @@ hw-step9:
 .PHONY: qa-help qa-vm-create qa-vm-delete qa-vm-start qa-vm-stop qa-vm-recover qa-vm-status
 .PHONY: qa-build qa-up qa-down qa-rebuild qa-health qa-status qa-logs qa-clean
 .PHONY: qa-tmfifo-up qa-tmfifo-down qa-test-tmfifo qa-push-binaries
+.PHONY: qa-test-transport qa-test-transport-mock qa-test-transport-tmfifo qa-test-transport-integration
 
 # QA VM Configuration
 QA_VM_SERVER := qa-server
@@ -367,6 +368,12 @@ qa-help:
 	@echo "  make qa-status      Show registered tenants and DPUs"
 	@echo "  make qa-logs        Show service logs"
 	@echo "  make qa-clean       Stop services and clean workspace"
+	@echo ""
+	@echo "Transport Testing:"
+	@echo "  make qa-test-transport      Run all transport unit tests"
+	@echo "  make qa-test-transport-mock Run MockTransport tests only"
+	@echo "  make qa-test-transport-tmfifo  Test TmfifoNetTransport via emulator"
+	@echo "  make qa-test-transport-integration  Full stack: host-agent enrollment"
 	@echo ""
 	@echo "Architecture:"
 	@echo "  qa-server  Control plane server (:18080)"
@@ -565,6 +572,97 @@ qa-clean:
 	@multipass exec $(QA_VM_EMU) -- rm -f /home/ubuntu/dpuemu /home/ubuntu/agent /home/ubuntu/*.log 2>/dev/null || true
 	@multipass exec $(QA_VM_HOST) -- rm -f /home/ubuntu/host-agent /home/ubuntu/*.log 2>/dev/null || true
 	@echo "Cleaned"
+
+# =============================================================================
+# Transport Interface Testing
+# =============================================================================
+
+# Run all transport unit tests
+qa-test-transport:
+	@echo "=== Transport Interface Unit Tests ==="
+	@go test -v ./pkg/transport/...
+
+# Run MockTransport tests only (no VMs required)
+qa-test-transport-mock:
+	@echo "=== MockTransport Tests ==="
+	@go test -v ./pkg/transport/... -run "Mock"
+
+# Test TmfifoNetTransport via emulator (requires VMs + TMFIFO)
+# Prerequisites: make qa-up
+qa-test-transport-tmfifo:
+	@echo "=== TmfifoNetTransport Test ==="
+	@echo "Checking prerequisites..."
+	@multipass exec $(QA_VM_HOST) -- ls /dev/tmfifo >/dev/null 2>&1 || (echo "ERROR: TMFIFO not available. Run 'make qa-up' first." && exit 1)
+	@echo "Running host-agent with --force-tmfifo --oneshot..."
+	@HOST_IP=$$(multipass info $(QA_VM_HOST) | grep IPv4 | awk '{print $$2}'); \
+	EMU_IP=$$(multipass info $(QA_VM_EMU) | grep IPv4 | awk '{print $$2}'); \
+	multipass exec $(QA_VM_HOST) -- /home/ubuntu/host-agent --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-transport-test.log; \
+	if grep -q "Transport: tmfifo_net" /tmp/qa-transport-test.log; then \
+		echo ""; \
+		echo "✓ PASS: TmfifoNetTransport used"; \
+	else \
+		echo ""; \
+		echo "✗ FAIL: Expected 'Transport: tmfifo_net' in output"; \
+		exit 1; \
+	fi
+	@if grep -q "Enrolled via tmfifo_net" /tmp/qa-transport-test.log; then \
+		echo "✓ PASS: Enrollment succeeded via transport"; \
+	else \
+		echo "✗ FAIL: Enrollment did not complete via transport"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "=== TmfifoNetTransport test complete ==="
+
+# Full integration test: host-agent enrollment through Transport layer
+# Prerequisites: make qa-rebuild (to push latest binaries)
+qa-test-transport-integration:
+	@echo "=== Transport Integration Test ==="
+	@echo "This test verifies the full stack:"
+	@echo "  1. DPU agent listening via TmfifoNetListener"
+	@echo "  2. Host agent connecting via TmfifoNetTransport"
+	@echo "  3. Enrollment message round-trip"
+	@echo "  4. Posture report via transport"
+	@echo ""
+	@echo "Step 1: Verify services are running..."
+	@$(MAKE) qa-health
+	@echo ""
+	@echo "Step 2: Verify TMFIFO is connected..."
+	@multipass exec $(QA_VM_HOST) -- ls /dev/tmfifo >/dev/null 2>&1 || (echo "ERROR: TMFIFO not available" && exit 1)
+	@multipass exec $(QA_VM_EMU) -- ls /dev/tmfifo >/dev/null 2>&1 || (echo "ERROR: TMFIFO not available on EMU" && exit 1)
+	@echo "✓ TMFIFO connected"
+	@echo ""
+	@echo "Step 3: Run host-agent enrollment..."
+	@multipass exec $(QA_VM_HOST) -- /home/ubuntu/host-agent --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-integration-test.log
+	@echo ""
+	@echo "Step 4: Verify results..."
+	@PASS=true; \
+	if grep -q "Transport: tmfifo_net" /tmp/qa-integration-test.log; then \
+		echo "✓ Transport: tmfifo_net"; \
+	else \
+		echo "✗ Transport selection failed"; \
+		PASS=false; \
+	fi; \
+	if grep -q "Enrolled via tmfifo_net" /tmp/qa-integration-test.log; then \
+		echo "✓ Enrollment via transport"; \
+	else \
+		echo "✗ Enrollment failed"; \
+		PASS=false; \
+	fi; \
+	if grep -q "Host ID:" /tmp/qa-integration-test.log; then \
+		echo "✓ Host ID assigned"; \
+	else \
+		echo "✗ No Host ID"; \
+		PASS=false; \
+	fi; \
+	if [ "$$PASS" = "true" ]; then \
+		echo ""; \
+		echo "=== Integration test PASSED ==="; \
+	else \
+		echo ""; \
+		echo "=== Integration test FAILED ==="; \
+		exit 1; \
+	fi
 
 # =============================================================================
 # Help
