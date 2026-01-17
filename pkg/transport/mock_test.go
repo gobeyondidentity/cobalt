@@ -286,3 +286,217 @@ func TestMockTransport_DynamicErrorInjection(t *testing.T) {
 		t.Errorf("expected no error after clearing, got %v", err)
 	}
 }
+
+// --- MockTransportListener Tests ---
+
+func TestMockTransportListener_BasicAccept(t *testing.T) {
+	listener := NewMockTransportListener()
+
+	// Enqueue a mock transport
+	mockTransport, err := listener.EnqueueMockTransport()
+	if err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+
+	// Accept should return the enqueued transport
+	transport, err := listener.Accept()
+	if err != nil {
+		t.Fatalf("accept failed: %v", err)
+	}
+
+	// Should be the same transport we enqueued
+	if transport != mockTransport {
+		t.Error("accept returned different transport than enqueued")
+	}
+
+	// Verify accept count
+	if listener.AcceptCount() != 1 {
+		t.Errorf("expected accept count 1, got %d", listener.AcceptCount())
+	}
+
+	listener.Close()
+}
+
+func TestMockTransportListener_Type(t *testing.T) {
+	listener := NewMockTransportListener()
+	defer listener.Close()
+
+	if listener.Type() != TransportMock {
+		t.Errorf("expected type %s, got %s", TransportMock, listener.Type())
+	}
+
+	// Test custom type
+	customListener := NewMockTransportListener(WithListenerType(TransportTmfifoNet))
+	defer customListener.Close()
+
+	if customListener.Type() != TransportTmfifoNet {
+		t.Errorf("expected type %s, got %s", TransportTmfifoNet, customListener.Type())
+	}
+}
+
+func TestMockTransportListener_AcceptError(t *testing.T) {
+	expectedErr := errors.New("accept error")
+	listener := NewMockTransportListener(WithAcceptError(expectedErr))
+	defer listener.Close()
+
+	_, err := listener.Accept()
+	if err != expectedErr {
+		t.Errorf("expected %v, got %v", expectedErr, err)
+	}
+}
+
+func TestMockTransportListener_Close(t *testing.T) {
+	listener := NewMockTransportListener()
+
+	// Close the listener
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close failed: %v", err)
+	}
+
+	// Accept should fail after close
+	_, err := listener.Accept()
+	if err == nil {
+		t.Error("expected error after close")
+	}
+
+	// IsClosed should return true
+	if !listener.IsClosed() {
+		t.Error("expected IsClosed to return true")
+	}
+
+	// Double close should be safe
+	if err := listener.Close(); err != nil {
+		t.Errorf("double close should not error: %v", err)
+	}
+}
+
+func TestMockTransportListener_EnqueueTransport(t *testing.T) {
+	listener := NewMockTransportListener()
+	defer listener.Close()
+
+	// Create and enqueue a custom transport
+	customTransport := NewMockTransport(WithLatency(100 * time.Millisecond))
+	if err := listener.EnqueueTransport(customTransport); err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+
+	// Accept should return the custom transport
+	transport, err := listener.Accept()
+	if err != nil {
+		t.Fatalf("accept failed: %v", err)
+	}
+
+	// Cast and verify it's our custom transport
+	mt, ok := transport.(*MockTransport)
+	if !ok {
+		t.Fatal("expected *MockTransport")
+	}
+
+	// Verify the latency setting was preserved
+	if mt.latency != 100*time.Millisecond {
+		t.Errorf("expected latency 100ms, got %v", mt.latency)
+	}
+}
+
+func TestMockTransportListener_SetAcceptError(t *testing.T) {
+	listener := NewMockTransportListener()
+	defer listener.Close()
+
+	// Initially no error, enqueue a transport
+	listener.EnqueueMockTransport()
+
+	transport, err := listener.Accept()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if transport == nil {
+		t.Fatal("expected transport, got nil")
+	}
+
+	// Set error dynamically
+	listener.SetAcceptError(errors.New("dynamic error"))
+
+	_, err = listener.Accept()
+	if err == nil || err.Error() != "dynamic error" {
+		t.Errorf("expected 'dynamic error', got %v", err)
+	}
+
+	// Clear error
+	listener.SetAcceptError(nil)
+	listener.EnqueueMockTransport()
+
+	transport, err = listener.Accept()
+	if err != nil {
+		t.Errorf("expected no error after clearing, got %v", err)
+	}
+}
+
+func TestMockTransportListener_MultipleAccepts(t *testing.T) {
+	listener := NewMockTransportListener()
+	defer listener.Close()
+
+	// Enqueue multiple transports
+	for i := 0; i < 3; i++ {
+		if _, err := listener.EnqueueMockTransport(); err != nil {
+			t.Fatalf("enqueue %d failed: %v", i, err)
+		}
+	}
+
+	// Accept all of them
+	for i := 0; i < 3; i++ {
+		_, err := listener.Accept()
+		if err != nil {
+			t.Fatalf("accept %d failed: %v", i, err)
+		}
+	}
+
+	// Verify accept count
+	if listener.AcceptCount() != 3 {
+		t.Errorf("expected accept count 3, got %d", listener.AcceptCount())
+	}
+}
+
+func TestMockTransportListener_AcceptBlocksUntilEnqueue(t *testing.T) {
+	listener := NewMockTransportListener()
+	defer listener.Close()
+
+	// Start accept in goroutine
+	acceptCh := make(chan Transport, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		transport, err := listener.Accept()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		acceptCh <- transport
+	}()
+
+	// Give Accept() time to start waiting
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify no transport yet (shouldn't have returned)
+	select {
+	case <-acceptCh:
+		t.Error("Accept should be blocking")
+	case err := <-errCh:
+		t.Fatalf("Accept errored: %v", err)
+	default:
+		// Expected: Accept is blocking
+	}
+
+	// Enqueue a transport
+	listener.EnqueueMockTransport()
+
+	// Now Accept should return
+	select {
+	case transport := <-acceptCh:
+		if transport == nil {
+			t.Error("expected transport, got nil")
+		}
+	case err := <-errCh:
+		t.Fatalf("Accept errored: %v", err)
+	case <-time.After(time.Second):
+		t.Error("Accept did not return after enqueue")
+	}
+}

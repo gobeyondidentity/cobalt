@@ -12,11 +12,11 @@ import (
 
 	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
 	"github.com/nmelo/secure-infra/internal/agent/localapi"
-	"github.com/nmelo/secure-infra/internal/agent/tmfifo"
 	"github.com/nmelo/secure-infra/internal/version"
 	"github.com/nmelo/secure-infra/pkg/attestation"
 	"github.com/nmelo/secure-infra/pkg/doca"
 	"github.com/nmelo/secure-infra/pkg/ovs"
+	"github.com/nmelo/secure-infra/pkg/transport"
 )
 
 var (
@@ -30,13 +30,16 @@ var (
 type Server struct {
 	agentv1.UnimplementedDPUAgentServiceServer
 
-	config         *Config
-	sysCollect     *doca.Collector
-	invCollect     *doca.InventoryCollector
-	ovsClient      *ovs.Client
-	redfishCli     *attestation.RedfishClient
-	localAPI       *localapi.Server
-	tmfifoListener *tmfifo.Listener
+	config     *Config
+	sysCollect *doca.Collector
+	invCollect *doca.InventoryCollector
+	ovsClient  *ovs.Client
+	redfishCli *attestation.RedfishClient
+	localAPI   *localapi.Server
+
+	// hostListener accepts connections from Host Agents.
+	// May be nil if no transport is configured.
+	hostListener transport.TransportListener
 
 	startTime int64 // Unix timestamp when server started
 	version   string
@@ -66,14 +69,16 @@ func (s *Server) SetLocalAPI(api *localapi.Server) {
 	s.localAPI = api
 }
 
-// SetTmfifoListener sets the tmfifo listener for host communication.
-func (s *Server) SetTmfifoListener(listener *tmfifo.Listener) {
-	s.tmfifoListener = listener
+// SetHostListener sets the transport listener for host communication.
+// The listener accepts connections from Host Agents over any supported transport
+// (tmfifo, DOCA Comch, network, etc.).
+func (s *Server) SetHostListener(listener transport.TransportListener) {
+	s.hostListener = listener
 }
 
-// GetTmfifoListener returns the configured tmfifo listener.
-func (s *Server) GetTmfifoListener() *tmfifo.Listener {
-	return s.tmfifoListener
+// GetHostListener returns the configured transport listener.
+func (s *Server) GetHostListener() transport.TransportListener {
+	return s.hostListener
 }
 
 // GetSystemInfo returns DPU hardware and software information.

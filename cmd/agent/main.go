@@ -5,8 +5,10 @@ package main
 
 import (
 	"context"
+	cryptoRand "crypto/rand"
 	"encoding/json"
 	"flag"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -17,8 +19,8 @@ import (
 	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
 	"github.com/nmelo/secure-infra/internal/agent"
 	"github.com/nmelo/secure-infra/internal/agent/localapi"
-	"github.com/nmelo/secure-infra/internal/agent/tmfifo"
 	"github.com/nmelo/secure-infra/internal/version"
+	"github.com/nmelo/secure-infra/pkg/transport"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -90,18 +92,24 @@ func main() {
 
 	// Start local API server if enabled
 	var localServer *localapi.Server
-	var tmfifoListener *tmfifo.Listener
+	var hostListener transport.TransportListener
+	var transportCtx context.Context
+	var transportCancel context.CancelFunc
 	if cfg.LocalAPIEnabled {
 		localServer, err = startLocalAPI(ctx, cfg, agentServer)
 		if err != nil {
 			log.Fatalf("Failed to start local API: %v", err)
 		}
 
-		// Try to start tmfifo listener for Host Agent communication
-		tmfifoListener = tryStartTmfifo(ctx, localServer)
-		if tmfifoListener != nil {
-			localServer.SetTmfifoListener(tmfifoListener)
-			agentServer.SetTmfifoListener(tmfifoListener)
+		// Try to start transport listener for Host Agent communication
+		hostListener = tryStartTransportListener()
+		if hostListener != nil {
+			localServer.SetHostListener(hostListener)
+			agentServer.SetHostListener(hostListener)
+
+			// Start message handling loop
+			transportCtx, transportCancel = context.WithCancel(ctx)
+			go runTransportLoop(transportCtx, hostListener, localServer)
 		}
 
 		// Wire up local API to agent server for credential distribution
@@ -112,10 +120,13 @@ func main() {
 		sig := <-sigCh
 		log.Printf("Received signal %v, shutting down...", sig)
 
-		// Shutdown tmfifo listener first
-		if tmfifoListener != nil {
-			if err := tmfifoListener.Stop(); err != nil {
-				log.Printf("tmfifo shutdown error: %v", err)
+		// Shutdown transport listener first
+		if transportCancel != nil {
+			transportCancel()
+		}
+		if hostListener != nil {
+			if err := hostListener.Close(); err != nil {
+				log.Printf("transport listener shutdown error: %v", err)
 			}
 		}
 
@@ -173,55 +184,179 @@ func startLocalAPI(ctx context.Context, cfg *agent.Config, agentServer *agent.Se
 	return server, nil
 }
 
-// tryStartTmfifo attempts to start the tmfifo listener for direct Host Agent communication.
-// Returns nil if tmfifo is not available (e.g., not running on BlueField hardware).
-func tryStartTmfifo(ctx context.Context, localServer *localapi.Server) *tmfifo.Listener {
-	if !tmfifo.IsAvailable() {
-		log.Printf("tmfifo: device not available, using HTTP API only")
+// tryStartTransportListener attempts to create a transport listener for Host Agent communication.
+// Returns nil if no transport is available (e.g., not running on BlueField hardware).
+func tryStartTransportListener() transport.TransportListener {
+	// Try to create TmfifoNet listener if device is available
+	listener, err := transport.NewTmfifoNetListener("")
+	if err != nil {
+		log.Printf("transport: tmfifo device not available (%v), using HTTP API only", err)
 		return nil
 	}
 
-	// Create the listener with localapi as the message handler
-	handler := newTmfifoHandler(localServer)
-	listener := tmfifo.NewListener("", handler)
-
-	if err := listener.Start(ctx); err != nil {
-		log.Printf("tmfifo: failed to start listener: %v", err)
-		return nil
-	}
-
-	log.Printf("tmfifo: listener started on %s", listener.DevicePath())
+	log.Printf("transport: tmfifo listener created")
 	return listener
 }
 
-// tmfifoHandler bridges tmfifo messages to the local API server.
-type tmfifoHandler struct {
-	localServer *localapi.Server
+// runTransportLoop accepts connections and handles messages from Host Agents.
+func runTransportLoop(ctx context.Context, listener transport.TransportListener, localServer *localapi.Server) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Accept a connection
+		t, err := listener.Accept()
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				log.Printf("transport: accept error: %v", err)
+				continue
+			}
+		}
+
+		log.Printf("transport: accepted %s connection", t.Type())
+
+		// Set the active transport on the local server for credential push
+		localServer.SetActiveTransport(t)
+
+		// Handle messages from this connection
+		go handleTransportConnection(ctx, t, localServer)
+	}
 }
 
-func newTmfifoHandler(localServer *localapi.Server) *tmfifoHandler {
-	return &tmfifoHandler{localServer: localServer}
+// handleTransportConnection reads and handles messages from a transport connection.
+func handleTransportConnection(ctx context.Context, t transport.Transport, localServer *localapi.Server) {
+	defer func() {
+		t.Close()
+		localServer.SetActiveTransport(nil)
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		msg, err := t.Recv()
+		if err != nil {
+			if err == io.EOF {
+				log.Printf("transport: connection closed")
+				return
+			}
+			log.Printf("transport: recv error: %v", err)
+			return
+		}
+
+		// Handle the message
+		resp := handleTransportMessage(ctx, msg, localServer)
+		if resp != nil {
+			if err := t.Send(resp); err != nil {
+				log.Printf("transport: send error: %v", err)
+			}
+		}
+	}
 }
 
-// HandleEnroll processes ENROLL_REQUEST messages from the Host Agent.
-func (h *tmfifoHandler) HandleEnroll(ctx context.Context, hostname string, posture json.RawMessage) (*tmfifo.EnrollResponsePayload, error) {
+// handleTransportMessage dispatches a message to the appropriate handler.
+func handleTransportMessage(ctx context.Context, msg *transport.Message, localServer *localapi.Server) *transport.Message {
+	switch msg.Type {
+	case transport.MessageEnrollRequest:
+		return handleEnrollRequest(ctx, msg)
+	case transport.MessagePostureReport:
+		return handlePostureReport(ctx, msg)
+	case transport.MessageCredentialAck:
+		handleCredentialAck(msg)
+		return nil
+	default:
+		log.Printf("transport: unknown message type: %s", msg.Type)
+		return nil
+	}
+}
+
+// handleEnrollRequest processes ENROLL_REQUEST messages from the Host Agent.
+func handleEnrollRequest(ctx context.Context, msg *transport.Message) *transport.Message {
+	var payload struct {
+		Hostname string          `json:"hostname"`
+		Posture  json.RawMessage `json:"posture,omitempty"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("transport: invalid enroll request payload: %v", err)
+		return nil
+	}
+
 	// TODO: Bridge to local API registration
-	// For now, return success placeholder
-	log.Printf("tmfifo: enroll request from host '%s'", hostname)
-	return &tmfifo.EnrollResponsePayload{
-		Success: true,
-		DPUName: "dpu-agent",
-	}, nil
+	log.Printf("transport: enroll request from host '%s'", payload.Hostname)
+
+	respPayload, _ := json.Marshal(map[string]interface{}{
+		"success":  true,
+		"dpu_name": "dpu-agent",
+	})
+
+	return &transport.Message{
+		Type:    transport.MessageEnrollResponse,
+		Payload: respPayload,
+		Nonce:   generateMessageNonce(),
+	}
 }
 
-// HandlePosture processes POSTURE_REPORT messages from the Host Agent.
-func (h *tmfifoHandler) HandlePosture(ctx context.Context, hostname string, posture json.RawMessage) (*tmfifo.PostureAckPayload, error) {
+// handlePostureReport processes POSTURE_REPORT messages from the Host Agent.
+func handlePostureReport(ctx context.Context, msg *transport.Message) *transport.Message {
+	var payload struct {
+		Hostname string          `json:"hostname"`
+		Posture  json.RawMessage `json:"posture"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("transport: invalid posture report payload: %v", err)
+		return nil
+	}
+
 	// TODO: Bridge to local API posture update
-	// For now, return accepted placeholder
-	log.Printf("tmfifo: posture report from host '%s'", hostname)
-	return &tmfifo.PostureAckPayload{
-		Accepted: true,
-	}, nil
+	log.Printf("transport: posture report from host '%s'", payload.Hostname)
+
+	respPayload, _ := json.Marshal(map[string]interface{}{
+		"accepted": true,
+	})
+
+	return &transport.Message{
+		Type:    transport.MessagePostureAck,
+		Payload: respPayload,
+		Nonce:   generateMessageNonce(),
+	}
+}
+
+// handleCredentialAck processes CREDENTIAL_ACK messages from the Host Agent.
+func handleCredentialAck(msg *transport.Message) {
+	var payload struct {
+		Success       bool   `json:"success"`
+		InstalledPath string `json:"installed_path,omitempty"`
+		Error         string `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("transport: invalid credential ack payload: %v", err)
+		return
+	}
+
+	if payload.Success {
+		log.Printf("transport: credential installed at %s", payload.InstalledPath)
+	} else {
+		log.Printf("transport: credential installation failed: %s", payload.Error)
+	}
+}
+
+// generateMessageNonce creates a random nonce for messages.
+func generateMessageNonce() string {
+	b := make([]byte, 16)
+	// Note: using time-based fallback if crypto/rand fails (shouldn't happen)
+	if _, err := cryptoRand.Read(b); err != nil {
+		return time.Now().Format("20060102150405.000000")
+	}
+	return string(b)
 }
 
 // fetchAttestation retrieves the current DPU attestation status.

@@ -272,30 +272,31 @@ func (s *Server) handleCredentialPush(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Local API: credential push request type=%s name=%s size=%d bytes",
 		req.CredentialType, req.CredentialName, len(req.Data))
 
-	// Try tmfifo first if available
-	if s.tmfifoListener != nil {
-		if err := s.tmfifoListener.SendCredentialPush(req.CredentialType, req.CredentialName, req.Data); err != nil {
-			log.Printf("Local API: tmfifo credential push failed: %v", err)
+	// Try active transport first if available
+	activeTransport := s.GetActiveTransport()
+	if activeTransport != nil {
+		if err := s.pushCredentialViaTransport(activeTransport, req.CredentialType, req.CredentialName, req.Data); err != nil {
+			log.Printf("Local API: transport credential push failed: %v", err)
 			s.writeJSON(w, http.StatusOK, CredentialPushResponse{
 				Success: false,
-				Error:   "tmfifo send failed: " + err.Error(),
+				Error:   "transport send failed: " + err.Error(),
 			})
 			return
 		}
 
-		// tmfifo is async; we can't wait for the ack in a synchronous HTTP response
-		log.Printf("Local API: credential pushed via tmfifo")
+		// Transport send is async; we can't wait for the ack in a synchronous HTTP response
+		log.Printf("Local API: credential pushed via %s transport", activeTransport.Type())
 		s.writeJSON(w, http.StatusOK, CredentialPushResponse{
 			Success: true,
 		})
 		return
 	}
 
-	// No tmfifo available; credential push requires host-side handling
+	// No transport available; credential push requires host-side handling
 	// The Host Agent must be configured to receive credentials via its own mechanism
-	log.Printf("Local API: tmfifo not available, credential push deferred to host agent")
+	log.Printf("Local API: no active transport, credential push deferred to host agent")
 	s.writeJSON(w, http.StatusOK, CredentialPushResponse{
 		Success: false,
-		Error:   "tmfifo not available; host agent must poll for credentials",
+		Error:   "no active transport; host agent must poll for credentials",
 	})
 }

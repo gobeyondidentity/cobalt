@@ -2,6 +2,7 @@ package localapi
 
 import (
 	"context"
+	cryptoRand "crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nmelo/secure-infra/internal/agent/tmfifo"
+	"github.com/nmelo/secure-infra/pkg/transport"
 )
 
 // Config holds configuration for the local API server.
@@ -61,8 +62,14 @@ type Server struct {
 	// controlPlane is the client for proxying requests
 	controlPlane *ControlPlaneClient
 
-	// tmfifoListener is the optional tmfifo listener for host communication
-	tmfifoListener *tmfifo.Listener
+	// hostListener is the optional transport listener for host communication.
+	// Used for credential push when a direct transport connection is available.
+	hostListener transport.TransportListener
+
+	// activeTransport is the current transport connection to the host.
+	// Set when a host connects via the transport listener.
+	activeTransport transport.Transport
+	transportMu     sync.RWMutex
 
 	// credentialQueue holds credentials waiting to be retrieved by the Host Agent
 	credentialQueue []*QueuedCredential
@@ -281,18 +288,34 @@ func (s *Server) getPairedHostID() string {
 	return s.pairedHostID
 }
 
-// SetTmfifoListener sets the tmfifo listener for credential push operations.
-func (s *Server) SetTmfifoListener(listener *tmfifo.Listener) {
-	s.tmfifoListener = listener
+// SetHostListener sets the transport listener for credential push operations.
+// The listener is used to accept connections from Host Agents.
+func (s *Server) SetHostListener(listener transport.TransportListener) {
+	s.hostListener = listener
 }
 
-// GetTmfifoListener returns the configured tmfifo listener.
-func (s *Server) GetTmfifoListener() *tmfifo.Listener {
-	return s.tmfifoListener
+// GetHostListener returns the configured transport listener.
+func (s *Server) GetHostListener() transport.TransportListener {
+	return s.hostListener
+}
+
+// SetActiveTransport sets the active transport connection to the host.
+// This is typically called by the message handling loop after Accept().
+func (s *Server) SetActiveTransport(t transport.Transport) {
+	s.transportMu.Lock()
+	defer s.transportMu.Unlock()
+	s.activeTransport = t
+}
+
+// GetActiveTransport returns the active transport connection, if any.
+func (s *Server) GetActiveTransport() transport.Transport {
+	s.transportMu.RLock()
+	defer s.transportMu.RUnlock()
+	return s.activeTransport
 }
 
 // PushCredential sends a credential to the paired Host Agent.
-// Uses tmfifo if available, otherwise queues for Host Agent retrieval on next poll.
+// Uses the active transport if available, otherwise queues for Host Agent retrieval on next poll.
 func (s *Server) PushCredential(ctx context.Context, credType, credName string, data []byte) (*CredentialPushResult, error) {
 	// Check if host is paired
 	s.pairedMu.RLock()
@@ -303,23 +326,53 @@ func (s *Server) PushCredential(ctx context.Context, credType, credName string, 
 		return nil, fmt.Errorf("no host paired with this DPU")
 	}
 
-	// If tmfifo listener is available and connected, use it for direct push
-	if s.tmfifoListener != nil {
-		result, err := s.tmfifoListener.PushCredential(credType, credName, data)
+	// If we have an active transport connection, use it for direct push
+	s.transportMu.RLock()
+	activeTransport := s.activeTransport
+	s.transportMu.RUnlock()
+
+	if activeTransport != nil {
+		err := s.pushCredentialViaTransport(activeTransport, credType, credName, data)
 		if err == nil {
 			return &CredentialPushResult{
-				Success:       result.Success,
-				Message:       result.Message,
-				InstalledPath: result.InstalledPath,
-				SshdReloaded:  result.SshdReloaded,
+				Success: true,
+				Message: fmt.Sprintf("Credential '%s' sent to host via %s transport. Awaiting installation ack.", credName, activeTransport.Type()),
 			}, nil
 		}
-		// tmfifo push failed, fall through to queue
-		log.Printf("tmfifo push failed, queueing for retrieval: %v", err)
+		// Transport push failed, fall through to queue
+		log.Printf("transport push failed, queueing for retrieval: %v", err)
 	}
 
 	// Queue the credential for Host Agent retrieval on next poll
 	return s.queueCredentialForHost(hostname, credType, credName, data)
+}
+
+// pushCredentialViaTransport sends a credential push message over the transport.
+func (s *Server) pushCredentialViaTransport(t transport.Transport, credType, credName string, data []byte) error {
+	payload, err := json.Marshal(map[string]interface{}{
+		"credential_type": credType,
+		"credential_name": credName,
+		"data":            data,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal credential payload: %w", err)
+	}
+
+	msg := &transport.Message{
+		Type:    transport.MessageCredentialPush,
+		Payload: payload,
+		Nonce:   generateNonce(),
+	}
+
+	return t.Send(msg)
+}
+
+// generateNonce creates a random nonce for message replay protection.
+func generateNonce() string {
+	b := make([]byte, 16)
+	// Note: ignoring error since rand.Read always succeeds on supported platforms
+	_, _ = cryptoRand.Read(b)
+	return fmt.Sprintf("%x", b)
 }
 
 // queueCredentialForHost stores a credential for later retrieval by the Host Agent.

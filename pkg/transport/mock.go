@@ -294,3 +294,153 @@ func (m *MockTransport) IsClosed() bool {
 	defer m.mu.Unlock()
 	return m.closed
 }
+
+// --- MockTransportListener ---
+
+// MockTransportListener provides an in-memory TransportListener for testing.
+// It returns MockTransport instances via Accept().
+type MockTransportListener struct {
+	transportType TransportType
+
+	// acceptCh provides transports for Accept() to return
+	acceptCh chan Transport
+
+	// Configuration
+	acceptErr error
+
+	// State
+	closed bool
+	mu     sync.Mutex
+
+	// Recording
+	acceptCount int
+}
+
+// MockListenerOption configures a MockTransportListener.
+type MockListenerOption func(*MockTransportListener)
+
+// WithListenerType sets the transport type returned by Type().
+func WithListenerType(t TransportType) MockListenerOption {
+	return func(m *MockTransportListener) {
+		m.transportType = t
+	}
+}
+
+// WithAcceptError injects an error that will be returned by Accept.
+func WithAcceptError(err error) MockListenerOption {
+	return func(m *MockTransportListener) {
+		m.acceptErr = err
+	}
+}
+
+// WithAcceptBufferSize sets the accept channel buffer size (default: 10).
+func WithAcceptBufferSize(size int) MockListenerOption {
+	return func(m *MockTransportListener) {
+		m.acceptCh = make(chan Transport, size)
+	}
+}
+
+// NewMockTransportListener creates a new MockTransportListener for testing.
+func NewMockTransportListener(opts ...MockListenerOption) *MockTransportListener {
+	m := &MockTransportListener{
+		transportType: TransportMock,
+		acceptCh:      make(chan Transport, 10),
+	}
+
+	for _, opt := range opts {
+		opt(m)
+	}
+
+	return m
+}
+
+// Accept blocks until a transport is available or the listener is closed.
+// Use EnqueueTransport to provide transports for Accept to return.
+func (m *MockTransportListener) Accept() (Transport, error) {
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil, errors.New("listener closed")
+	}
+	acceptErr := m.acceptErr
+	m.mu.Unlock()
+
+	if acceptErr != nil {
+		return nil, acceptErr
+	}
+
+	t, ok := <-m.acceptCh
+	if !ok {
+		return nil, errors.New("listener closed")
+	}
+
+	m.mu.Lock()
+	m.acceptCount++
+	m.mu.Unlock()
+
+	return t, nil
+}
+
+// Close stops the listener.
+func (m *MockTransportListener) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.closed {
+		return nil
+	}
+
+	m.closed = true
+	close(m.acceptCh)
+	return nil
+}
+
+// Type returns the configured transport type.
+func (m *MockTransportListener) Type() TransportType {
+	return m.transportType
+}
+
+// --- Test helper methods ---
+
+// EnqueueTransport adds a transport to be returned by Accept().
+// If no transport is enqueued, Accept() blocks until one is provided or Close() is called.
+func (m *MockTransportListener) EnqueueTransport(t Transport) error {
+	select {
+	case m.acceptCh <- t:
+		return nil
+	case <-time.After(5 * time.Second):
+		return errors.New("enqueue timeout: accept channel full")
+	}
+}
+
+// EnqueueMockTransport creates a new MockTransport with the given options
+// and adds it to be returned by Accept().
+func (m *MockTransportListener) EnqueueMockTransport(opts ...MockTransportOption) (*MockTransport, error) {
+	t := NewMockTransport(opts...)
+	if err := m.EnqueueTransport(t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// SetAcceptError updates the error returned by Accept.
+// Pass nil to clear the error.
+func (m *MockTransportListener) SetAcceptError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.acceptErr = err
+}
+
+// AcceptCount returns the number of successful Accept calls.
+func (m *MockTransportListener) AcceptCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.acceptCount
+}
+
+// IsClosed returns whether the listener has been closed.
+func (m *MockTransportListener) IsClosed() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.closed
+}
