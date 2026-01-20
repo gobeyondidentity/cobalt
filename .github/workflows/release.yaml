@@ -81,6 +81,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Copy DOCA runtime libraries
+        run: |
+          mkdir -p doca-libs
+          cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_comch.so* doca-libs/
+          cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_common.so* doca-libs/
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build and push container image
+        run: |
+          docker build --provenance=false -f Dockerfile.dpu-agent -t ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }} .
+          docker push ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }}
+          docker tag ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }} ${{ env.IMAGE_PREFIX }}-dpu-agent:latest
+          docker push ${{ env.IMAGE_PREFIX }}-dpu-agent:latest
+
   # Build amd64 container images (native on workbench-linux)
   docker-amd64:
     runs-on: [self-hosted, linux, x64, fast]
@@ -209,12 +225,17 @@ jobs:
             docker pull ghcr.io/gobeyondidentity/secureinfra-control-plane:${{ steps.version.outputs.VERSION }}
             ```
 
-            ### DPU Agent
+            ### DPU Agent (Binary)
             Download `dpu-agent_linux_arm64.tar.gz`, then on the BlueField:
             ```bash
             tar -xzf dpu-agent_linux_arm64.tar.gz
             sudo mv dpu-agent /usr/local/bin/
             sudo systemctl restart dpu-agent  # if running as service
+            ```
+
+            ### DPU Agent (Container)
+            ```bash
+            docker pull ghcr.io/gobeyondidentity/secureinfra-dpu-agent:${{ steps.version.outputs.VERSION }}
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

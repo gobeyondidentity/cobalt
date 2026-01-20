@@ -1,0 +1,37 @@
+# DPU Agent Container Image
+# Built on BlueField runner with DOCA libraries
+#
+# This Dockerfile expects:
+# - dpu-agent binary in the build context (built with CGO and DOCA)
+# - DOCA runtime libraries copied from the host
+
+FROM ubuntu:24.04
+
+# Install minimal runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libstdc++6 \
+    libnl-3-200 \
+    libnl-route-3-200 \
+    libibverbs1 \
+    libmlx5-1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create DOCA library directory
+RUN mkdir -p /opt/mellanox/doca/lib/aarch64-linux-gnu
+
+# Copy DOCA runtime libraries from build context
+COPY doca-libs/ /opt/mellanox/doca/lib/aarch64-linux-gnu/
+
+# Configure library path
+ENV LD_LIBRARY_PATH=/opt/mellanox/doca/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
+
+# Copy the pre-built dpu-agent binary
+COPY dpu-agent /usr/local/bin/dpu-agent
+RUN chmod +x /usr/local/bin/dpu-agent
+
+# Run as non-root user (DPU deployments may override this)
+RUN useradd -r -u 1000 agent
+USER agent
+
+ENTRYPOINT ["/usr/local/bin/dpu-agent"]
