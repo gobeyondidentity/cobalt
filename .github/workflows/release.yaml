@@ -73,7 +73,7 @@ jobs:
           export PATH=/usr/local/go/bin:$PATH
           export CGO_ENABLED=1
           go build -tags doca \
-            -ldflags "-s -w -X github.com/nmelo/secure-infra/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
+            -ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
             -o dpu-agent ./cmd/agent
 
       - name: Generate checksum
@@ -160,8 +160,8 @@ jobs:
 
             ### CLI Tools (Homebrew)
             ```bash
-            brew upgrade gobeyondidentity/secureinfra/bluectl
-            brew upgrade gobeyondidentity/secureinfra/km
+            brew upgrade nmelo/tap/bluectl
+            brew upgrade nmelo/tap/km
             ```
 
             ### CLI Tools (Direct Download)
