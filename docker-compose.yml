@@ -8,8 +8,8 @@
 
 services:
   control-plane:
-    image: ghcr.io/gobeyondidentity/secureinfra-control-plane:latest
-    container_name: secureinfra-control-plane
+    image: ghcr.io/gobeyondidentity/nexus:latest
+    container_name: nexus
     ports:
       - "18080:18080"  # HTTP API
     environment:
@@ -28,8 +28,8 @@ services:
       - secureinfra
 
   host-agent:
-    image: ghcr.io/gobeyondidentity/secureinfra-host-agent:latest
-    container_name: secureinfra-host-agent
+    image: ghcr.io/gobeyondidentity/sentry:latest
+    container_name: sentry
     command: ["--dpu-agent", "http://control-plane:18080"]
     depends_on:
       control-plane:

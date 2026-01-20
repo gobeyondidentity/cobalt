@@ -1,6 +1,6 @@
 # Secure Infrastructure
 
-**v0.6.0** | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
+**v0.6.1** | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 Hardware-bound credential management for AI infrastructure using NVIDIA BlueField DPUs.
 
@@ -71,7 +71,7 @@ sudo yum install bluectl km
 ### Docker
 
 ```bash
-docker pull ghcr.io/gobeyondidentity/secureinfra-control-plane:0.6.0
+docker pull ghcr.io/gobeyondidentity/nexus:0.6.1
 ```
 
 For local development with Docker Compose, see [Local Dev: Docker](docs/guides/local-dev-docker.md).

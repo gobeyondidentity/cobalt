@@ -11,7 +11,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/gobeyondidentity/secureinfra
+  IMAGE_REGISTRY: ghcr.io/gobeyondidentity
   CLOUDSMITH_ORG: beyond-identity
   CLOUDSMITH_REPO: secure-infra
 
@@ -175,10 +175,10 @@ jobs:
 
       - name: Build and push container image
         run: |
-          docker build -f Dockerfile.dpu-agent -t ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }} .
-          docker push ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }}
-          docker tag ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }} ${{ env.IMAGE_PREFIX }}-dpu-agent:latest
-          docker push ${{ env.IMAGE_PREFIX }}-dpu-agent:latest
+          docker build -f Dockerfile.dpu-agent -t ${{ env.IMAGE_REGISTRY }}/aegis:${{ steps.version.outputs.VERSION }} .
+          docker push ${{ env.IMAGE_REGISTRY }}/aegis:${{ steps.version.outputs.VERSION }}
+          docker tag ${{ env.IMAGE_REGISTRY }}/aegis:${{ steps.version.outputs.VERSION }} ${{ env.IMAGE_REGISTRY }}/aegis:latest
+          docker push ${{ env.IMAGE_REGISTRY }}/aegis:latest
 
   # Build amd64 container images (native on workbench-linux)
   docker-amd64:
@@ -187,9 +187,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: host-agent
+          - image: sentry
             dockerfile: Dockerfile.host-agent
-          - image: control-plane
+          - image: nexus
             dockerfile: Dockerfile.control-plane
     steps:
       - name: Checkout
@@ -204,8 +204,8 @@ jobs:
 
       - name: Build and push amd64 image
         run: |
-          docker build --provenance=false -f ${{ matrix.dockerfile }} -t ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 .
-          docker push ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64
+          docker build --provenance=false -f ${{ matrix.dockerfile }} -t ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 .
+          docker push ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64
 
   # Build arm64 container images (native on spark-1)
   docker-arm64:
@@ -214,9 +214,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: host-agent
+          - image: sentry
             dockerfile: Dockerfile.host-agent
-          - image: control-plane
+          - image: nexus
             dockerfile: Dockerfile.control-plane
     steps:
       - name: Checkout
@@ -231,8 +231,8 @@ jobs:
 
       - name: Build and push arm64 image
         run: |
-          docker build --provenance=false -f ${{ matrix.dockerfile }} -t ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64 .
-          docker push ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
+          docker build --provenance=false -f ${{ matrix.dockerfile }} -t ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64 .
+          docker push ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
 
   # Create multi-arch manifests from native images
   docker-manifest:
@@ -240,7 +240,7 @@ jobs:
     needs: [docker-amd64, docker-arm64]
     strategy:
       matrix:
-        image: [host-agent, control-plane]
+        image: [sentry, nexus]
     steps:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -256,16 +256,16 @@ jobs:
       - name: Create and push multi-arch manifest
         run: |
           # Create versioned manifest
-          docker manifest create ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }} \
-            ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 \
-            ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
-          docker manifest push ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}
+          docker manifest create ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }} \
+            ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 \
+            ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
+          docker manifest push ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}
 
           # Create latest manifest
-          docker manifest create ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:latest \
-            ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 \
-            ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
-          docker manifest push ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:latest
+          docker manifest create ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:latest \
+            ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 \
+            ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
+          docker manifest push ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:latest
 
   # Add upgrade instructions to release notes
   release-notes:
@@ -345,8 +345,8 @@ jobs:
 
           ### Container Images
           \`\`\`bash
-          docker pull ghcr.io/gobeyondidentity/secureinfra-host-agent:${{ steps.version.outputs.VERSION }}
-          docker pull ghcr.io/gobeyondidentity/secureinfra-control-plane:${{ steps.version.outputs.VERSION }}
+          docker pull ghcr.io/gobeyondidentity/sentry:${{ steps.version.outputs.VERSION }}
+          docker pull ghcr.io/gobeyondidentity/nexus:${{ steps.version.outputs.VERSION }}
           \`\`\`
 
           ### Aegis (DPU Agent) - Binary
@@ -365,7 +365,7 @@ jobs:
 
           ### Aegis (DPU Agent) - Container
           \`\`\`bash
-          docker pull ghcr.io/gobeyondidentity/secureinfra-dpu-agent:${{ steps.version.outputs.VERSION }}
+          docker pull ghcr.io/gobeyondidentity/aegis:${{ steps.version.outputs.VERSION }}
           \`\`\`
           NOTES
           )"
