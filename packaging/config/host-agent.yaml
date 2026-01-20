@@ -1,0 +1,32 @@
+# Secure Infrastructure Host Agent Configuration
+# See documentation: https://github.com/gobeyondidentity/secure-infra
+
+# Control plane connection
+control_plane:
+  # Address of the control plane server
+  address: "localhost:8443"
+  # TLS configuration
+  tls:
+    enabled: true
+    # Path to CA certificate for verifying control plane
+    ca_cert: "/etc/secureinfra/ca.crt"
+    # Path to client certificate for mutual TLS
+    client_cert: "/etc/secureinfra/host-agent.crt"
+    client_key: "/etc/secureinfra/host-agent.key"
+
+# Agent identification
+agent:
+  # Unique identifier for this host (defaults to hostname if empty)
+  id: ""
+  # Labels for grouping/filtering hosts
+  labels: {}
+
+# Logging configuration
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json" # json, text
+
+# Metrics configuration
+metrics:
+  enabled: true
+  address: ":9090"

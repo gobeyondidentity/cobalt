@@ -1,0 +1,25 @@
+[Unit]
+Description=Secure Infrastructure Host Agent
+Documentation=https://github.com/gobeyondidentity/secure-infra
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=secureinfra
+Group=secureinfra
+ExecStart=/usr/bin/host-agent --config /etc/secureinfra/host-agent.yaml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/secureinfra
+
+[Install]
+WantedBy=multi-user.target

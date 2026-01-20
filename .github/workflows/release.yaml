@@ -87,6 +87,21 @@ jobs:
           cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_comch.so* doca-libs/
           cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_common.so* doca-libs/
 
+      - name: Build Linux packages
+        run: |
+          export VERSION=${{ steps.version.outputs.VERSION }}
+          nfpm package -p deb -f packaging/nfpm-dpu-agent.yaml
+          nfpm package -p rpm -f packaging/nfpm-dpu-agent.yaml
+
+      - name: Upload packages to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            secureinfra-dpu-agent_*.deb
+            secureinfra-dpu-agent-*.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
@@ -212,11 +227,33 @@ jobs:
             brew upgrade nmelo/tap/km
             ```
 
+            ### CLI Tools (Debian/Ubuntu)
+            ```bash
+            # Download from release assets
+            curl -LO https://github.com/gobeyondidentity/secure-infra/releases/download/v${{ steps.version.outputs.VERSION }}/bluectl_${{ steps.version.outputs.VERSION }}_linux_amd64.deb
+            sudo dpkg -i bluectl_${{ steps.version.outputs.VERSION }}_linux_amd64.deb
+            ```
+
+            ### CLI Tools (RHEL/Fedora)
+            ```bash
+            # Download from release assets
+            curl -LO https://github.com/gobeyondidentity/secure-infra/releases/download/v${{ steps.version.outputs.VERSION }}/bluectl-${{ steps.version.outputs.VERSION }}.x86_64.rpm
+            sudo rpm -U bluectl-${{ steps.version.outputs.VERSION }}.x86_64.rpm
+            ```
+
             ### CLI Tools (Direct Download)
             Download the appropriate binary for your platform from the assets below, then:
             ```bash
             chmod +x bluectl km
             sudo mv bluectl km /usr/local/bin/
+            ```
+
+            ### Host Agent / Control Plane (Debian/Ubuntu)
+            ```bash
+            curl -LO https://github.com/gobeyondidentity/secure-infra/releases/download/v${{ steps.version.outputs.VERSION }}/secureinfra-host-agent_${{ steps.version.outputs.VERSION }}_linux_amd64.deb
+            sudo dpkg -i secureinfra-host-agent_${{ steps.version.outputs.VERSION }}_linux_amd64.deb
+            # Configure in /etc/secureinfra/host-agent.yaml, then:
+            sudo systemctl enable --now secureinfra-host-agent
             ```
 
             ### Container Images

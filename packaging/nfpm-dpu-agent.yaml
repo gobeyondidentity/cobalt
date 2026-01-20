@@ -1,0 +1,44 @@
+# nfpm configuration for DPU Agent
+# Built separately on bluefield3 runner with DOCA SDK
+
+name: secureinfra-dpu-agent
+arch: arm64
+platform: linux
+version: "${VERSION}"
+maintainer: Beyond Identity <support@beyondidentity.com>
+description: Secure Infrastructure DPU Agent for BlueField attestation
+vendor: Beyond Identity
+homepage: https://github.com/gobeyondidentity/secure-infra
+license: Apache-2.0
+section: admin
+priority: optional
+
+contents:
+  - src: dpu-agent
+    dst: /usr/bin/dpu-agent
+    file_info:
+      mode: 0755
+
+  - src: packaging/systemd/secureinfra-dpu-agent.service
+    dst: /lib/systemd/system/secureinfra-dpu-agent.service
+    type: config
+
+  - src: packaging/config/dpu-agent.yaml
+    dst: /etc/secureinfra/dpu-agent.yaml
+    type: config|noreplace
+
+  # Include DOCA runtime libraries
+  - src: doca-libs/
+    dst: /opt/mellanox/doca/lib/aarch64-linux-gnu/
+
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+
+overrides:
+  rpm:
+    dependencies:
+      - systemd
+  deb:
+    dependencies:
+      - systemd

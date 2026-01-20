@@ -1,0 +1,26 @@
+[Unit]
+Description=Secure Infrastructure DPU Agent
+Documentation=https://github.com/gobeyondidentity/secure-infra
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=secureinfra
+Group=secureinfra
+ExecStart=/usr/bin/dpu-agent --config /etc/secureinfra/dpu-agent.yaml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# DPU agent needs access to DOCA libraries
+Environment=LD_LIBRARY_PATH=/opt/mellanox/doca/lib/aarch64-linux-gnu
+
+# Security hardening (less restrictive for DPU hardware access)
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

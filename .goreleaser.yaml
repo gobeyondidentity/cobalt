@@ -169,6 +169,107 @@ brews:
     test: |
       system "#{bin}/km", "--help"
 
+nfpms:
+  # CLI tools (no systemd, just binaries)
+  - id: bluectl-pkg
+    package_name: bluectl
+    ids:
+      - bluectl
+    vendor: Beyond Identity
+    homepage: https://github.com/gobeyondidentity/secure-infra
+    maintainer: Beyond Identity <support@beyondidentity.com>
+    description: CLI for managing BlueField DPUs via Secure Infrastructure
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+
+  - id: km-pkg
+    package_name: km
+    ids:
+      - km
+    vendor: Beyond Identity
+    homepage: https://github.com/gobeyondidentity/secure-infra
+    maintainer: Beyond Identity <support@beyondidentity.com>
+    description: Key management CLI for Secure Infrastructure
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+
+  # Services (with systemd, config, and scripts)
+  - id: host-agent-pkg
+    package_name: secureinfra-host-agent
+    ids:
+      - host-agent
+    vendor: Beyond Identity
+    homepage: https://github.com/gobeyondidentity/secure-infra
+    maintainer: Beyond Identity <support@beyondidentity.com>
+    description: Secure Infrastructure Host Agent for attestation and posture collection
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    section: admin
+    priority: optional
+    contents:
+      - src: packaging/systemd/secureinfra-host-agent.service
+        dst: /lib/systemd/system/secureinfra-host-agent.service
+        type: config
+      - src: packaging/config/host-agent.yaml
+        dst: /etc/secureinfra/host-agent.yaml
+        type: config|noreplace
+    scripts:
+      postinstall: packaging/scripts/postinstall.sh
+      preremove: packaging/scripts/preremove.sh
+    overrides:
+      rpm:
+        dependencies:
+          - systemd
+      deb:
+        dependencies:
+          - systemd
+
+  - id: control-plane-pkg
+    package_name: secureinfra-control-plane
+    ids:
+      - control-plane
+    vendor: Beyond Identity
+    homepage: https://github.com/gobeyondidentity/secure-infra
+    maintainer: Beyond Identity <support@beyondidentity.com>
+    description: Secure Infrastructure Control Plane for policy enforcement and attestation verification
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    section: admin
+    priority: optional
+    contents:
+      - src: packaging/systemd/secureinfra-control-plane.service
+        dst: /lib/systemd/system/secureinfra-control-plane.service
+        type: config
+      - src: packaging/config/control-plane.yaml
+        dst: /etc/secureinfra/control-plane.yaml
+        type: config|noreplace
+    scripts:
+      postinstall: packaging/scripts/postinstall.sh
+      preremove: packaging/scripts/preremove.sh
+    overrides:
+      rpm:
+        dependencies:
+          - systemd
+      deb:
+        dependencies:
+          - systemd
+
 release:
   github:
     owner: gobeyondidentity

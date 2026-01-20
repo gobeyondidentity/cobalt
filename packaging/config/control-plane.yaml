@@ -1,0 +1,36 @@
+# Secure Infrastructure Control Plane Configuration
+# See documentation: https://github.com/gobeyondidentity/secure-infra
+
+# Server configuration
+server:
+  # gRPC server address
+  grpc_address: ":8443"
+  # HTTP server address (health checks, metrics)
+  http_address: ":8080"
+  # TLS configuration
+  tls:
+    enabled: true
+    cert: "/etc/secureinfra/control-plane.crt"
+    key: "/etc/secureinfra/control-plane.key"
+    # Path to CA certificate for verifying client certificates
+    client_ca: "/etc/secureinfra/ca.crt"
+
+# Database configuration
+database:
+  # SQLite database path
+  path: "/var/lib/secureinfra/control-plane.db"
+
+# Cedar policy engine
+policy:
+  # Path to Cedar policy files
+  policy_dir: "/etc/secureinfra/policies"
+
+# Logging configuration
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json" # json, text
+
+# Metrics configuration
+metrics:
+  enabled: true
+  address: ":9090"
