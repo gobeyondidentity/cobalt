@@ -92,7 +92,7 @@ jobs:
 
       - name: Build and push container image
         run: |
-          docker build --provenance=false -f Dockerfile.dpu-agent -t ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }} .
+          docker build -f Dockerfile.dpu-agent -t ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }} .
           docker push ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }}
           docker tag ${{ env.IMAGE_PREFIX }}-dpu-agent:${{ steps.version.outputs.VERSION }} ${{ env.IMAGE_PREFIX }}-dpu-agent:latest
           docker push ${{ env.IMAGE_PREFIX }}-dpu-agent:latest
