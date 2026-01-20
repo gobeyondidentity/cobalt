@@ -35,10 +35,5 @@ scripts:
   postinstall: packaging/scripts/postinstall.sh
   preremove: packaging/scripts/preremove.sh
 
-overrides:
-  rpm:
-    dependencies:
-      - systemd
-  deb:
-    dependencies:
-      - systemd
+depends:
+  - systemd
