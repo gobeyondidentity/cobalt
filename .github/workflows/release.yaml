@@ -151,7 +151,7 @@ jobs:
         env:
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         run: |
-          pip install cloudsmith-cli
+          pip install --break-system-packages cloudsmith-cli
           for pkg in aegis_*.deb; do
             cloudsmith push deb ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
           done
