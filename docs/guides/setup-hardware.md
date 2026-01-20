@@ -641,3 +641,181 @@ echo 'source <(bin/bluectl completion bash)' >> ~/.bashrc
 echo 'source <(bin/km completion bash)' >> ~/.bashrc
 source ~/.bashrc
 ```
+
+---
+
+## Appendix C: Multi-DPU Support
+
+Hosts with multiple BlueField DPUs require additional configuration. This appendix covers discovery, identification, and configuration for multi-DPU environments.
+
+### Architecture: One Agent Per DPU
+
+Each DPU runs its own agent. The host agent connects to all DPUs:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                           Host                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │                     Host Agent                         │  │
+│  │  ┌─────────────┐              ┌─────────────┐         │  │
+│  │  │ ComCh Conn  │              │ ComCh Conn  │         │  │
+│  │  │ (DPU-A)     │              │ (DPU-B)     │         │  │
+│  │  └──────┬──────┘              └──────┬──────┘         │  │
+│  └─────────┼────────────────────────────┼────────────────┘  │
+│            │                            │                    │
+│    ┌───────┴───────┐            ┌───────┴───────┐          │
+│    │  BF3 Port 0   │            │  BF3 Port 0   │          │
+│    │  (01:00.0)    │            │  (02:00.0)    │          │
+│    │  guid: ...7cca│            │  guid: ...8ddb│          │
+└────┼───────────────┼────────────┼───────────────┼──────────┘
+     │               │            │               │
+┌────┴───────────────┴──┐    ┌────┴───────────────┴──┐
+│  DPU-A (guid: ...7cca)│    │  DPU-B (guid: ...8ddb)│
+│  ┌─────────────────┐  │    │  ┌─────────────────┐  │
+│  │   DPU Agent A   │  │    │  │   DPU Agent B   │  │
+│  └─────────────────┘  │    │  └─────────────────┘  │
+└───────────────────────┘    └───────────────────────┘
+```
+
+**Why one agent per DPU:**
+
+| Consideration | One per DPU | Single Multi-DPU Agent |
+|---------------|-------------|------------------------|
+| Isolation | Each DPU's secrets isolated | Shared process = shared risk |
+| Failure domain | DPU failure affects only that agent | Single point of failure |
+| Deployment | Standard systemd unit | Custom orchestration |
+
+### Stable Identifiers
+
+Use `sys_image_guid` to identify DPUs. Unlike PCI addresses, GUIDs are stable across reboots and slot changes:
+
+| Identifier | Stability | Use Case |
+|------------|-----------|----------|
+| `sys_image_guid` | Survives reboots, PCI changes | Primary identifier |
+| PCI address | May change on reboot/hotplug | Connection establishment |
+| `node_guid` | Stable (per-port) | Port-specific identification |
+
+Find the GUID:
+
+```bash
+cat /sys/class/infiniband/mlx5_0/sys_image_guid
+# Output: 8c91:3a03:00f4:7cca
+```
+
+### Host Agent Configuration
+
+#### Auto-Discovery (Default)
+
+The host agent automatically discovers all DPUs:
+
+```yaml
+# /etc/secure-infra/host-agent.yaml
+transport:
+  doca_comch:
+    auto_discover: true    # Find all ComCh-capable devices
+    connect_timeout: 5s
+    reconnect_interval: 10s
+```
+
+#### Explicit DPU List
+
+For controlled environments, specify DPUs by GUID:
+
+```yaml
+# /etc/secure-infra/host-agent.yaml
+transport:
+  doca_comch:
+    auto_discover: false
+    dpus:
+      - guid: "8c91:3a03:00f4:7cca"
+        label: "dpu-primary"
+      - guid: "8c91:3a03:00f4:8ddb"
+        label: "dpu-backup"
+```
+
+**When to use explicit config:**
+- Production environments with known hardware
+- When auto-discovery finds unwanted devices
+- For audit compliance (documented inventory)
+
+### DPU Agent Configuration
+
+Each DPU agent discovers only its local hardware:
+
+```yaml
+# /etc/secure-infra/dpu-agent.yaml (on each DPU)
+transport:
+  doca_comch:
+    auto_discover: true     # Finds local device
+    server_name: "secure-infra"
+    max_clients: 1          # One host connection
+```
+
+### Scenarios
+
+#### Scenario 1: Redundant DPUs
+
+Two DPUs for high availability:
+
+```bash
+# Host discovers both
+bin/bluectl host list
+# NAME        DPU           STATUS   CHANNEL
+# compute-01  bf3-prod-01   online   comch
+# compute-01  bf3-prod-02   online   comch
+
+# Workloads can use either DPU for attestation
+# If bf3-prod-01 fails, bf3-prod-02 continues serving
+```
+
+#### Scenario 2: DPU Replacement
+
+When replacing a failed DPU:
+
+```bash
+# Old DPU (guid ...7cca) removed
+# New DPU (guid ...5aab) installed
+
+# With auto_discover: true
+# Host agent detects new DPU automatically
+
+# With explicit config
+# Update config with new GUID, restart host-agent
+```
+
+#### Scenario 3: Mixed BlueField + ConnectX
+
+Host has both DPUs and regular NICs:
+
+```bash
+lspci | grep -i mellanox
+# 01:00.0 ... MT43244 BlueField-3 ...   <- DPU (used)
+# 02:00.0 ... MT43244 BlueField-3 ...   <- DPU (used)
+# 03:00.0 ... MT2910 ConnectX-7 ...     <- NIC (ignored)
+```
+
+The host agent automatically filters to ComCh-capable devices only.
+
+### Verification
+
+Check discovered DPUs:
+
+```bash
+# On host
+~/host-agent --discover-only
+# Output:
+# Discovered 2 DPUs:
+#   guid: 8c91:3a03:00f4:7cca  pci: 01:00.0  status: available
+#   guid: 8c91:3a03:00f4:8ddb  pci: 02:00.0  status: available
+```
+
+Check connections:
+
+```bash
+bin/bluectl host show compute-01
+# Output:
+# Host: compute-01
+# DPU Connections:
+#   bf3-prod-01 (8c91:3a03:00f4:7cca): connected via comch
+#   bf3-prod-02 (8c91:3a03:00f4:8ddb): connected via comch
+```
