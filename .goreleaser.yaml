@@ -141,7 +141,7 @@ brews:
     ids:
       - bluectl-archive
     repository:
-      owner: beyondidentity
+      owner: gobeyondidentity
       name: homebrew-secureinfra
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
@@ -157,7 +157,7 @@ brews:
     ids:
       - km-archive
     repository:
-      owner: beyondidentity
+      owner: gobeyondidentity
       name: homebrew-secureinfra
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
