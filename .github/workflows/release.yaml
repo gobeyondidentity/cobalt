@@ -39,6 +39,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Clean up draft releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete any existing draft releases for this tag (prevents duplicates on retries)
+          TAG=${GITHUB_REF#refs/tags/}
+          gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name == \"$TAG\" and .draft == true) | .id" | \
+            xargs -I {} gh api -X DELETE repos/${{ github.repository }}/releases/{}
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
