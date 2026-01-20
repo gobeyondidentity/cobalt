@@ -75,11 +75,11 @@ jobs:
         env:
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         run: |
-          # Push all deb packages
+          # Push all deb packages (--republish allows re-running failed releases)
           for pkg in packages/*.deb; do
             if [ -f "$pkg" ]; then
               echo "Pushing $pkg to Cloudsmith..."
-              cloudsmith push deb ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+              cloudsmith push deb --republish ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
             fi
           done
 
@@ -87,7 +87,7 @@ jobs:
           for pkg in packages/*.rpm; do
             if [ -f "$pkg" ]; then
               echo "Pushing $pkg to Cloudsmith..."
-              cloudsmith push rpm ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+              cloudsmith push rpm --republish ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
             fi
           done
 
@@ -153,10 +153,10 @@ jobs:
         run: |
           pip install --break-system-packages cloudsmith-cli
           for pkg in aegis_*.deb; do
-            cloudsmith push deb ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+            cloudsmith push deb --republish ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
           done
           for pkg in aegis-*.rpm; do
-            cloudsmith push rpm ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+            cloudsmith push rpm --republish ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
           done
 
       - name: Log in to GitHub Container Registry
