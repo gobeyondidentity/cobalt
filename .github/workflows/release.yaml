@@ -124,18 +124,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Log in to GitHub Container Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | sudo DOCKER_HOST=unix:///var/run/docker.sock docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Build and push arm64 image
-        env:
-          DOCKER_HOST: unix:///var/run/docker.sock
         run: |
-          sudo -E docker build -f ${{ matrix.dockerfile }} -t ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64 .
-          sudo -E docker push ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
+          docker build -f ${{ matrix.dockerfile }} -t ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64 .
+          docker push ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
 
   # Create multi-arch manifests from native images
   docker-manifest:
