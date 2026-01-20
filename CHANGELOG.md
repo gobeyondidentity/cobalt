@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-01-20
+
+### Changed
+- **Docker Image Renames** to match package naming:
+  - `secureinfra-control-plane` → `nexus`
+  - `secureinfra-host-agent` → `sentry`
+  - `secureinfra-dpu-agent` → `aegis`
+- Parallelized Cloudsmith uploads using matrix build strategy (faster releases)
+
+### Added
+- **New Homebrew Formulas**:
+  - `brew install nmelo/tap/sentry` (host agent)
+  - `brew install nmelo/tap/nexus` (control plane)
+  - `brew install nmelo/tap/dpuemu` (DPU emulator for local development)
+
 ## [0.6.1] - 2026-01-20
 
 ### Changed
