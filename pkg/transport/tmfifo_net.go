@@ -288,13 +288,14 @@ func (l *TmfifoNetListener) watchTransportClose(t *TmfifoNetTransport) {
 
 	l.mu.Lock()
 	l.currentTransport = nil
-	l.mu.Unlock()
-
-	// Release accept token for next Accept call
-	select {
-	case l.acceptCh <- struct{}{}:
-	default:
+	// Release accept token if listener not closed
+	if !l.closed {
+		select {
+		case l.acceptCh <- struct{}{}:
+		default:
+		}
 	}
+	l.mu.Unlock()
 }
 
 // Close stops the listener and closes any active transport.
