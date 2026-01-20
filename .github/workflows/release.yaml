@@ -277,90 +277,95 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Append upgrade instructions
-        uses: softprops/action-gh-release@v2
-        with:
-          append_body: true
-          body: |
-
-            ---
-
-            ## Upgrade Instructions
-
-            ### CLI Tools (Homebrew)
-            ```bash
-            brew upgrade nmelo/tap/bluectl
-            brew upgrade nmelo/tap/km
-            ```
-
-            ### CLI Tools (Debian/Ubuntu)
-            ```bash
-            # Add repository
-            curl -fsSL "https://packages.beyondidentity.com/public/secure-infra/gpg.key" | sudo gpg --dearmor -o /usr/share/keyrings/secureinfra.gpg
-            echo "deb [signed-by=/usr/share/keyrings/secureinfra.gpg] https://packages.beyondidentity.com/public/secure-infra/deb/any-distro any-version main" | sudo tee /etc/apt/sources.list.d/secureinfra.list
-            sudo apt update && sudo apt install bluectl km
-            ```
-
-            ### CLI Tools (RHEL/Fedora)
-            ```bash
-            # Add repository
-            sudo tee /etc/yum.repos.d/secureinfra.repo << 'EOF'
-            [secureinfra]
-            name=Secure Infrastructure
-            baseurl=https://packages.beyondidentity.com/public/secure-infra/rpm/any-distro/any-version/$basearch
-            enabled=1
-            gpgcheck=1
-            gpgkey=https://packages.beyondidentity.com/public/secure-infra/gpg.key
-            EOF
-            sudo yum install bluectl km
-            ```
-
-            ### CLI Tools (Direct Download)
-            Download the appropriate binary for your platform from the assets below, then:
-            ```bash
-            chmod +x bluectl km
-            sudo mv bluectl km /usr/local/bin/
-            ```
-
-            ### Sentry (Host Agent)
-            ```bash
-            sudo apt update && sudo apt install sentry
-            # Configure in /etc/secureinfra/sentry.yaml, then:
-            sudo systemctl enable --now sentry
-            ```
-
-            ### Nexus (Control Plane)
-            ```bash
-            sudo apt update && sudo apt install nexus
-            # Configure in /etc/secureinfra/nexus.yaml, then:
-            sudo systemctl enable --now nexus
-            ```
-
-            ### Container Images
-            ```bash
-            docker pull ghcr.io/gobeyondidentity/secureinfra-host-agent:${{ steps.version.outputs.VERSION }}
-            docker pull ghcr.io/gobeyondidentity/secureinfra-control-plane:${{ steps.version.outputs.VERSION }}
-            ```
-
-            ### Aegis (DPU Agent) - Binary
-            Download `dpu-agent_linux_arm64.tar.gz`, then on the BlueField:
-            ```bash
-            tar -xzf dpu-agent_linux_arm64.tar.gz
-            sudo mv dpu-agent /usr/local/bin/aegis
-            sudo systemctl restart aegis  # if running as service
-            ```
-
-            ### Aegis (DPU Agent) - Package
-            ```bash
-            sudo apt install aegis  # or: sudo yum install aegis
-            sudo systemctl enable --now aegis
-            ```
-
-            ### Aegis (DPU Agent) - Container
-            ```bash
-            docker pull ghcr.io/gobeyondidentity/secureinfra-dpu-agent:${{ steps.version.outputs.VERSION }}
-            ```
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get current release body
+          CURRENT_BODY=$(gh release view "v${{ steps.version.outputs.VERSION }}" --json body --jq '.body')
+
+          # Append upgrade instructions
+          gh release edit "v${{ steps.version.outputs.VERSION }}" --notes "$(cat <<NOTES
+          ${CURRENT_BODY}
+
+          ---
+
+          ## Upgrade Instructions
+
+          ### CLI Tools (Homebrew)
+          \`\`\`bash
+          brew upgrade nmelo/tap/bluectl
+          brew upgrade nmelo/tap/km
+          \`\`\`
+
+          ### CLI Tools (Debian/Ubuntu)
+          \`\`\`bash
+          # Add repository
+          curl -fsSL "https://packages.beyondidentity.com/public/secure-infra/gpg.key" | sudo gpg --dearmor -o /usr/share/keyrings/secureinfra.gpg
+          echo "deb [signed-by=/usr/share/keyrings/secureinfra.gpg] https://packages.beyondidentity.com/public/secure-infra/deb/any-distro any-version main" | sudo tee /etc/apt/sources.list.d/secureinfra.list
+          sudo apt update && sudo apt install bluectl km
+          \`\`\`
+
+          ### CLI Tools (RHEL/Fedora)
+          \`\`\`bash
+          # Add repository
+          sudo tee /etc/yum.repos.d/secureinfra.repo << 'EOF'
+          [secureinfra]
+          name=Secure Infrastructure
+          baseurl=https://packages.beyondidentity.com/public/secure-infra/rpm/any-distro/any-version/\$basearch
+          enabled=1
+          gpgcheck=1
+          gpgkey=https://packages.beyondidentity.com/public/secure-infra/gpg.key
+          EOF
+          sudo yum install bluectl km
+          \`\`\`
+
+          ### CLI Tools (Direct Download)
+          Download the appropriate binary for your platform from the assets below, then:
+          \`\`\`bash
+          chmod +x bluectl km
+          sudo mv bluectl km /usr/local/bin/
+          \`\`\`
+
+          ### Sentry (Host Agent)
+          \`\`\`bash
+          sudo apt update && sudo apt install sentry
+          # Configure in /etc/secureinfra/sentry.yaml, then:
+          sudo systemctl enable --now sentry
+          \`\`\`
+
+          ### Nexus (Control Plane)
+          \`\`\`bash
+          sudo apt update && sudo apt install nexus
+          # Configure in /etc/secureinfra/nexus.yaml, then:
+          sudo systemctl enable --now nexus
+          \`\`\`
+
+          ### Container Images
+          \`\`\`bash
+          docker pull ghcr.io/gobeyondidentity/secureinfra-host-agent:${{ steps.version.outputs.VERSION }}
+          docker pull ghcr.io/gobeyondidentity/secureinfra-control-plane:${{ steps.version.outputs.VERSION }}
+          \`\`\`
+
+          ### Aegis (DPU Agent) - Binary
+          Download \`dpu-agent_linux_arm64.tar.gz\`, then on the BlueField:
+          \`\`\`bash
+          tar -xzf dpu-agent_linux_arm64.tar.gz
+          sudo mv dpu-agent /usr/local/bin/aegis
+          sudo systemctl restart aegis  # if running as service
+          \`\`\`
+
+          ### Aegis (DPU Agent) - Package
+          \`\`\`bash
+          sudo apt install aegis  # or: sudo yum install aegis
+          sudo systemctl enable --now aegis
+          \`\`\`
+
+          ### Aegis (DPU Agent) - Container
+          \`\`\`bash
+          docker pull ghcr.io/gobeyondidentity/secureinfra-dpu-agent:${{ steps.version.outputs.VERSION }}
+          \`\`\`
+          NOTES
+          )"
 
   # Final verification
   verify-release:
