@@ -7,12 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-01-20
+
 ### Added
-- DOCA ComCh transport for BlueField DPU communication (si-w4z.1)
-  - Replaces tmfifo with NVIDIA's production-grade PCIe channel (higher throughput, no IP config required)
+- **DOCA ComCh Transport** for BlueField DPU communication (si-w4z)
+  - Production-grade PCIe channel replaces tmfifo (higher throughput, no IP config required)
+  - Ed25519 authentication with Trust-On-First-Use (TOFU) key management
   - Automatic PCI device discovery eliminates manual address configuration
-  - Built-in retry with exponential backoff and circuit breaker for connection resilience
-  - Note: Transport selection config coming in next release (si-w4z.2)
+  - Connection state machine: Connected → Authenticated → Enrolled
+  - Transport priority: ComCh → Tmfifo → Network (automatic fallback)
+  - 89.7% test coverage with protocol, error injection, and hardware test suites
+
+- **Version Check CLI** for bluectl and km (si-853.6)
+  - `bluectl version --check` / `km version --check` to check for updates
+  - `--skip-update-check` flag to disable update checking
+  - 24-hour cache to minimize GitHub API calls
+  - 2-second timeout for graceful network handling
+  - Install-method detection with appropriate upgrade hints (Homebrew, apt, rpm, Docker)
+
+- **Release Infrastructure** (si-853)
+  - Homebrew tap: `brew install nmelo/tap/bluectl` and `brew install nmelo/tap/km`
+  - Linux packages: `.deb` (Debian/Ubuntu) and `.rpm` (RHEL/Fedora)
+  - DPU agent container image: `ghcr.io/gobeyondidentity/secureinfra-dpu-agent`
+  - Docker Compose for local development (`docker-compose up`)
+  - Self-hosted runners for ARM64 builds and hardware testing
+
+### Fixed
+- Data race in TmfifoNetListener.watchTransportClose (found by race detector on self-hosted runners)
+- Host-agent connection using correct `--dpu-agent` flag
+- Docker Compose port mapping for host-agent to DPU-agent communication
+- nfpm package config: use `depends` instead of `dependencies`
 
 ## [0.5.1] - 2026-01-09
 
