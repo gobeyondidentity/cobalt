@@ -9,7 +9,8 @@ Deploy Secure Infrastructure with real BlueField DPUs. This guide covers the ful
 - NVIDIA BlueField-3 DPU with network access
 - SSH access to the DPU (default: `ubuntu@<DPU_IP>`)
 - Linux host with the BlueField DPU installed
-- rshim driver on host (for tmfifo communication)
+- DOCA SDK 2.8+ on both host and DPU (for ComCh transport)
+- rshim driver on host (fallback for tmfifo transport)
 
 ## Clone and Build
 
@@ -286,15 +287,89 @@ Attestation may be unavailable if DOCA is not configured or the BlueField firmwa
 
 ---
 
-## Step 12: Verify tmfifo on Host
+## Step 12: Configure Host-DPU Transport
 
-The host agent communicates with the DPU agent through tmfifo, a hardware FIFO channel over PCIe. This is more secure than network communication because identity is physical: bytes arriving via tmfifo on the DPU can only come from the physically-attached host.
+The host agent communicates with the DPU agent over PCIe. The transport is automatically selected based on what's available:
 
-SSH to the host server (not the DPU) and verify tmfifo is available:
+| Priority | Transport | Requires | Throughput |
+|----------|-----------|----------|------------|
+| 1 | DOCA ComCh | DOCA SDK 2.8+ | ~1 GB/s |
+| 2 | tmfifo | rshim driver | ~10 MB/s |
+| 3 | Network | HTTP connectivity | Varies |
+
+**Why PCIe transports matter:** Network-based enrollment works but is less secure. A compromised host could spoof network traffic. With ComCh or tmfifo, the DPU knows with hardware certainty which physical host is communicating.
+
+SSH to the host server (not the DPU) and verify transport availability:
+
+### Option A: DOCA ComCh (Recommended)
+
+ComCh provides the best performance and supports multiple concurrent connections.
+
+#### 1. Check DOCA Installation
 
 ```bash
 ssh <user>@<HOST_IP>
 
+dpkg -l | grep doca-runtime
+# Expected: ii  doca-runtime-<version>  ...
+```
+
+#### 2. Discover PCI Devices
+
+```bash
+lspci | grep -i mellanox
+# Example output:
+# 01:00.0 Ethernet controller: Mellanox Technologies MT43244 BlueField-3 integrated ConnectX-7 network controller
+# 01:00.1 Ethernet controller: Mellanox Technologies MT43244 BlueField-3 integrated ConnectX-7 network controller
+```
+
+**Understanding the output:**
+
+| Field | Meaning | Example |
+|-------|---------|---------|
+| `01:00.0` | PCI address (bus:device.function) | First port of DPU |
+| `01:00.1` | Second function on same device | Second port of same DPU |
+| `MT43244` | Device ID | BlueField-3 |
+
+**Dual-port DPUs:** BlueField-3 has two ports (`.0` and `.1`). Both ports share the same `sys_image_guid` and belong to the same physical DPU. The host agent connects to port 0 by default.
+
+#### 3. Verify ComCh Capability
+
+```bash
+# Check if device supports ComCh (client mode for host)
+ls /sys/class/infiniband/
+# Expected: mlx5_0  mlx5_1  (one per port)
+
+cat /sys/class/infiniband/mlx5_0/sys_image_guid
+# Expected: 0c42:a103:00a7:89f0 (unique per DPU)
+```
+
+The `sys_image_guid` uniquely identifies the DPU and is stable across reboots.
+
+#### 4. Distinguishing DPUs from ConnectX NICs
+
+If you have both BlueField DPUs and ConnectX NICs:
+
+```bash
+lspci | grep -i mellanox
+# 01:00.0 ... MT43244 BlueField-3 ...     <- DPU (ComCh capable)
+# 03:00.0 ... MT2910 ConnectX-7 ...       <- NIC (NOT ComCh capable)
+```
+
+| Device | Model Prefix | ComCh Support |
+|--------|--------------|---------------|
+| BlueField-3 | MT43244 | Yes |
+| BlueField-2 | MT42822 | No (use tmfifo) |
+| ConnectX-7 | MT2910 | No |
+| ConnectX-6 | MT2892 | No |
+
+The host agent automatically filters to ComCh-capable devices.
+
+### Option B: tmfifo (Fallback)
+
+If DOCA SDK is not installed or you're using BlueField-2, the system falls back to tmfifo:
+
+```bash
 # Check rshim driver is loaded
 lsmod | grep rshim
 # Expected: rshim  <size>  0
@@ -316,7 +391,14 @@ sudo systemctl enable rshim
 sudo systemctl start rshim
 ```
 
-**Why tmfifo matters:** Network-based enrollment (HTTP fallback) works but is less secure. A compromised host could potentially spoof network traffic. With tmfifo, the DPU knows with hardware certainty which physical host is communicating.
+### Troubleshooting: No Devices Found
+
+If `lspci | grep -i mellanox` returns nothing:
+
+1. **Check physical connection:** Ensure the DPU is properly seated in the PCIe slot
+2. **Rescan PCI bus:** `echo 1 | sudo tee /sys/bus/pci/rescan`
+3. **Check dmesg:** `dmesg | grep -i mlx` for driver messages
+4. **Verify power:** Some DPUs require auxiliary power connectors
 
 ---
 
@@ -351,12 +433,24 @@ chmod +x ~/host-agent
 ~/host-agent
 ```
 
-With tmfifo available, the agent enrolls through the hardware channel:
+The agent automatically selects the best available transport:
 
 ```
-# Expected (tmfifo path):
-# Host Agent v0.4.1 starting...
+# Expected (ComCh path - preferred):
+# Host Agent v0.6.0 starting...
 # Initial posture collected: hash=<hash>
+# DOCA ComCh available: mlx5_0 at 01:00.0
+# Enrolling via ComCh...
+# Hostname: <hostname>
+# Paired with DPU: bf3-prod-01
+# Registered as host <host_id>
+```
+
+```
+# Expected (tmfifo path - fallback):
+# Host Agent v0.6.0 starting...
+# Initial posture collected: hash=<hash>
+# DOCA ComCh unavailable, falling back to tmfifo
 # tmfifo detected: /dev/rshim0/misc
 # Enrolling via tmfifo...
 # Hostname: <hostname>
@@ -364,13 +458,13 @@ With tmfifo available, the agent enrolls through the hardware channel:
 # Registered as host <host_id>
 ```
 
-**Fallback (no tmfifo):** If tmfifo is unavailable, use the network path:
+**Network fallback:** If neither PCIe transport is available, use the network path:
 
 ```bash
 ~/host-agent --dpu-agent http://localhost:9443
 # Expected:
-# Host Agent v0.4.1 starting...
-# No tmfifo detected. Using network enrollment.
+# Host Agent v0.6.0 starting...
+# No PCIe transport available. Using network enrollment.
 # DPU Agent: http://localhost:9443
 # ...
 ```
@@ -381,12 +475,15 @@ Verify registration on the control plane:
 bin/bluectl host list
 # Expected:
 # NAME          DPU           STATUS   LAST SEEN    CHANNEL
-# <hostname>    bf3-prod-01   online   <timestamp>  tmfifo
+# <hostname>    bf3-prod-01   online   <timestamp>  comch
 ```
+
+The CHANNEL column shows which transport is in use: `comch`, `tmfifo`, or `network`.
 
 Options:
 - `--oneshot`: Register once and exit (useful for testing)
 - `--dpu-agent <url>`: Force network enrollment to specified URL
+- `--force-tmfifo`: Use tmfifo even if ComCh is available
 
 ---
 
