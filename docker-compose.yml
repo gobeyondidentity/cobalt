@@ -11,19 +11,15 @@ services:
     image: ghcr.io/gobeyondidentity/secureinfra-control-plane:latest
     container_name: secureinfra-control-plane
     ports:
-      - "8443:8443"  # gRPC API
-      - "8080:8080"  # HTTP health/readiness
-      - "9090:9090"  # Metrics
+      - "18080:18080"  # HTTP API
     environment:
-      # Disable TLS for local development
-      - SECUREINFRA_TLS_ENABLED=false
       # Logging
       - SECUREINFRA_LOG_LEVEL=debug
       - SECUREINFRA_LOG_FORMAT=text
     volumes:
       - control-plane-data:/var/lib/secureinfra
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:18080/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -37,14 +33,9 @@ services:
     depends_on:
       control-plane:
         condition: service_healthy
-    ports:
-      - "9091:9090"  # Metrics (different port to avoid conflict)
     environment:
-      # Control plane connection
-      - SECUREINFRA_CONTROL_PLANE_ADDRESS=control-plane:8443
-      - SECUREINFRA_TLS_ENABLED=false
-      # Agent identification
-      - SECUREINFRA_AGENT_ID=local-dev-host
+      # Control plane connection (host-agent reports to control-plane API)
+      - DPU_AGENT_URL=http://control-plane:18080
       # Logging
       - SECUREINFRA_LOG_LEVEL=debug
       - SECUREINFRA_LOG_FORMAT=text
