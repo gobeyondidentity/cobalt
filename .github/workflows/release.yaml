@@ -110,7 +110,7 @@ jobs:
 
   # Build arm64 container images (native on spark-1)
   docker-arm64:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [self-hosted, linux, arm64, fast]
     needs: [test]
     strategy:
       matrix:
