@@ -12,6 +12,8 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/gobeyondidentity/secureinfra
+  CLOUDSMITH_ORG: beyond-identity
+  CLOUDSMITH_REPO: secure-infra
 
 jobs:
   # Run tests before releasing (self-hosted for speed)
@@ -45,6 +47,49 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  # Push Linux packages to Cloudsmith (after goreleaser builds them)
+  cloudsmith-push:
+    runs-on: ubuntu-latest
+    needs: [goreleaser]
+    steps:
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install Cloudsmith CLI
+        run: pip install cloudsmith-cli
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Download all deb and rpm packages from the release
+          gh release download "v${{ steps.version.outputs.VERSION }}" \
+            --repo ${{ github.repository }} \
+            --pattern "*.deb" \
+            --pattern "*.rpm" \
+            --dir packages/
+
+      - name: Push packages to Cloudsmith
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: |
+          # Push all deb packages
+          for pkg in packages/*.deb; do
+            if [ -f "$pkg" ]; then
+              echo "Pushing $pkg to Cloudsmith..."
+              cloudsmith push deb ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+            fi
+          done
+
+          # Push all rpm packages
+          for pkg in packages/*.rpm; do
+            if [ -f "$pkg" ]; then
+              echo "Pushing $pkg to Cloudsmith..."
+              cloudsmith push rpm ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+            fi
+          done
 
   # Build DPU agent on BlueField self-hosted runner
   dpu-agent:
@@ -97,10 +142,22 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            secureinfra-dpu-agent_*.deb
-            secureinfra-dpu-agent-*.rpm
+            aegis_*.deb
+            aegis-*.rpm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push packages to Cloudsmith
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: |
+          pip install cloudsmith-cli
+          for pkg in aegis_*.deb; do
+            cloudsmith push deb ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+          done
+          for pkg in aegis-*.rpm; do
+            cloudsmith push rpm ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+          done
 
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -202,7 +259,7 @@ jobs:
   # Add upgrade instructions to release notes
   release-notes:
     runs-on: ubuntu-latest
-    needs: [goreleaser, dpu-agent, docker-manifest]
+    needs: [goreleaser, dpu-agent, docker-manifest, cloudsmith-push]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -229,16 +286,24 @@ jobs:
 
             ### CLI Tools (Debian/Ubuntu)
             ```bash
-            # Download from release assets
-            curl -LO https://github.com/gobeyondidentity/secure-infra/releases/download/v${{ steps.version.outputs.VERSION }}/bluectl_${{ steps.version.outputs.VERSION }}_linux_amd64.deb
-            sudo dpkg -i bluectl_${{ steps.version.outputs.VERSION }}_linux_amd64.deb
+            # Add repository
+            curl -fsSL "https://packages.beyondidentity.com/public/secure-infra/gpg.key" | sudo gpg --dearmor -o /usr/share/keyrings/secureinfra.gpg
+            echo "deb [signed-by=/usr/share/keyrings/secureinfra.gpg] https://packages.beyondidentity.com/public/secure-infra/deb/any-distro any-version main" | sudo tee /etc/apt/sources.list.d/secureinfra.list
+            sudo apt update && sudo apt install bluectl km
             ```
 
             ### CLI Tools (RHEL/Fedora)
             ```bash
-            # Download from release assets
-            curl -LO https://github.com/gobeyondidentity/secure-infra/releases/download/v${{ steps.version.outputs.VERSION }}/bluectl-${{ steps.version.outputs.VERSION }}.x86_64.rpm
-            sudo rpm -U bluectl-${{ steps.version.outputs.VERSION }}.x86_64.rpm
+            # Add repository
+            sudo tee /etc/yum.repos.d/secureinfra.repo << 'EOF'
+            [secureinfra]
+            name=Secure Infrastructure
+            baseurl=https://packages.beyondidentity.com/public/secure-infra/rpm/any-distro/any-version/$basearch
+            enabled=1
+            gpgcheck=1
+            gpgkey=https://packages.beyondidentity.com/public/secure-infra/gpg.key
+            EOF
+            sudo yum install bluectl km
             ```
 
             ### CLI Tools (Direct Download)
@@ -248,12 +313,18 @@ jobs:
             sudo mv bluectl km /usr/local/bin/
             ```
 
-            ### Host Agent / Control Plane (Debian/Ubuntu)
+            ### Sentry (Host Agent)
             ```bash
-            curl -LO https://github.com/gobeyondidentity/secure-infra/releases/download/v${{ steps.version.outputs.VERSION }}/secureinfra-host-agent_${{ steps.version.outputs.VERSION }}_linux_amd64.deb
-            sudo dpkg -i secureinfra-host-agent_${{ steps.version.outputs.VERSION }}_linux_amd64.deb
-            # Configure in /etc/secureinfra/host-agent.yaml, then:
-            sudo systemctl enable --now secureinfra-host-agent
+            sudo apt update && sudo apt install sentry
+            # Configure in /etc/secureinfra/sentry.yaml, then:
+            sudo systemctl enable --now sentry
+            ```
+
+            ### Nexus (Control Plane)
+            ```bash
+            sudo apt update && sudo apt install nexus
+            # Configure in /etc/secureinfra/nexus.yaml, then:
+            sudo systemctl enable --now nexus
             ```
 
             ### Container Images
@@ -262,15 +333,21 @@ jobs:
             docker pull ghcr.io/gobeyondidentity/secureinfra-control-plane:${{ steps.version.outputs.VERSION }}
             ```
 
-            ### DPU Agent (Binary)
+            ### Aegis (DPU Agent) - Binary
             Download `dpu-agent_linux_arm64.tar.gz`, then on the BlueField:
             ```bash
             tar -xzf dpu-agent_linux_arm64.tar.gz
-            sudo mv dpu-agent /usr/local/bin/
-            sudo systemctl restart dpu-agent  # if running as service
+            sudo mv dpu-agent /usr/local/bin/aegis
+            sudo systemctl restart aegis  # if running as service
             ```
 
-            ### DPU Agent (Container)
+            ### Aegis (DPU Agent) - Package
+            ```bash
+            sudo apt install aegis  # or: sudo yum install aegis
+            sudo systemctl enable --now aegis
+            ```
+
+            ### Aegis (DPU Agent) - Container
             ```bash
             docker pull ghcr.io/gobeyondidentity/secureinfra-dpu-agent:${{ steps.version.outputs.VERSION }}
             ```
@@ -280,7 +357,7 @@ jobs:
   # Final verification
   verify-release:
     runs-on: ubuntu-latest
-    needs: [goreleaser, dpu-agent, docker-manifest, release-notes]
+    needs: [goreleaser, dpu-agent, docker-manifest, cloudsmith-push, release-notes]
     steps:
       - name: Get version from tag
         id: version

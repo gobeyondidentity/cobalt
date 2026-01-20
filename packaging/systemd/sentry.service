@@ -1,5 +1,5 @@
 [Unit]
-Description=Secure Infrastructure Host Agent
+Description=Sentry - Secure Infrastructure Host Agent
 Documentation=https://github.com/gobeyondidentity/secure-infra
 After=network-online.target
 Wants=network-online.target
@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=secureinfra
 Group=secureinfra
-ExecStart=/usr/bin/host-agent --config /etc/secureinfra/host-agent.yaml
+ExecStart=/usr/bin/host-agent --config /etc/secureinfra/sentry.yaml
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

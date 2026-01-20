@@ -205,13 +205,13 @@ nfpms:
 
   # Services (with systemd, config, and scripts)
   - id: host-agent-pkg
-    package_name: secureinfra-host-agent
+    package_name: sentry
     ids:
       - host-agent
     vendor: Beyond Identity
     homepage: https://github.com/gobeyondidentity/secure-infra
     maintainer: Beyond Identity <support@beyondidentity.com>
-    description: Secure Infrastructure Host Agent for attestation and posture collection
+    description: Sentry - Secure Infrastructure host agent for attestation and posture collection
     license: Apache-2.0
     formats:
       - deb
@@ -220,11 +220,11 @@ nfpms:
     section: admin
     priority: optional
     contents:
-      - src: packaging/systemd/secureinfra-host-agent.service
-        dst: /lib/systemd/system/secureinfra-host-agent.service
+      - src: packaging/systemd/sentry.service
+        dst: /lib/systemd/system/sentry.service
         type: config
-      - src: packaging/config/host-agent.yaml
-        dst: /etc/secureinfra/host-agent.yaml
+      - src: packaging/config/sentry.yaml
+        dst: /etc/secureinfra/sentry.yaml
         type: config|noreplace
     scripts:
       postinstall: packaging/scripts/postinstall.sh
@@ -238,13 +238,13 @@ nfpms:
           - systemd
 
   - id: control-plane-pkg
-    package_name: secureinfra-control-plane
+    package_name: nexus
     ids:
       - control-plane
     vendor: Beyond Identity
     homepage: https://github.com/gobeyondidentity/secure-infra
     maintainer: Beyond Identity <support@beyondidentity.com>
-    description: Secure Infrastructure Control Plane for policy enforcement and attestation verification
+    description: Nexus - Secure Infrastructure control plane for policy enforcement and attestation verification
     license: Apache-2.0
     formats:
       - deb
@@ -253,11 +253,11 @@ nfpms:
     section: admin
     priority: optional
     contents:
-      - src: packaging/systemd/secureinfra-control-plane.service
-        dst: /lib/systemd/system/secureinfra-control-plane.service
+      - src: packaging/systemd/nexus.service
+        dst: /lib/systemd/system/nexus.service
         type: config
-      - src: packaging/config/control-plane.yaml
-        dst: /etc/secureinfra/control-plane.yaml
+      - src: packaging/config/nexus.yaml
+        dst: /etc/secureinfra/nexus.yaml
         type: config|noreplace
     scripts:
       postinstall: packaging/scripts/postinstall.sh

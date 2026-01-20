@@ -1,26 +1,22 @@
 [Unit]
-Description=Secure Infrastructure DPU Agent
+Description=Aegis - Secure Infrastructure DPU Agent
 Documentation=https://github.com/gobeyondidentity/secure-infra
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=secureinfra
-Group=secureinfra
-ExecStart=/usr/bin/dpu-agent --config /etc/secureinfra/dpu-agent.yaml
+User=root
+Group=root
+ExecStart=/usr/bin/aegis --config /etc/secureinfra/aegis.yaml
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-
-# DPU agent needs access to DOCA libraries
 Environment=LD_LIBRARY_PATH=/opt/mellanox/doca/lib/aarch64-linux-gnu
 
-# Security hardening (less restrictive for DPU hardware access)
-NoNewPrivileges=true
-ProtectHome=true
-PrivateTmp=true
+# DPU agent needs elevated privileges for hardware access
+AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_RAWIO
 
 [Install]
 WantedBy=multi-user.target

@@ -44,12 +44,28 @@ brew tap nmelo/tap
 brew install bluectl km
 ```
 
-### Linux (apt)
+### Linux (Debian/Ubuntu)
 
 ```bash
-curl -fsSL https://packages.secureinfra.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/secureinfra.gpg
-echo "deb [signed-by=/usr/share/keyrings/secureinfra.gpg] https://packages.secureinfra.io/apt stable main" | sudo tee /etc/apt/sources.list.d/secureinfra.list
+# Add repository
+curl -fsSL "https://packages.beyondidentity.com/public/secure-infra/gpg.key" | sudo gpg --dearmor -o /usr/share/keyrings/secureinfra.gpg
+echo "deb [signed-by=/usr/share/keyrings/secureinfra.gpg] https://packages.beyondidentity.com/public/secure-infra/deb/any-distro any-version main" | sudo tee /etc/apt/sources.list.d/secureinfra.list
 sudo apt update && sudo apt install bluectl km
+```
+
+### Linux (RHEL/Fedora)
+
+```bash
+# Add repository
+sudo tee /etc/yum.repos.d/secureinfra.repo << 'EOF'
+[secureinfra]
+name=Secure Infrastructure
+baseurl=https://packages.beyondidentity.com/public/secure-infra/rpm/any-distro/any-version/$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.beyondidentity.com/public/secure-infra/gpg.key
+EOF
+sudo yum install bluectl km
 ```
 
 ### Docker
@@ -94,15 +110,15 @@ Check for updates anytime: `bluectl version --check`
 
 ## Components
 
-| Component | Description |
-|-----------|-------------|
-| `bluectl` | Admin CLI: DPU management, tenants, operators, attestation |
-| `km` | Operator CLI: SSH CA lifecycle, credential push |
-| `agent` | DPU agent running on BlueField ARM cores |
-| `host-agent` | Host agent for credential receipt via ComCh/tmfifo and posture reporting |
-| `server` | Control plane server |
-| `dpuemu` | DPU emulator for local development |
-| `web/` | Next.js dashboard (in development) |
+| Component | Package | Description |
+|-----------|---------|-------------|
+| `bluectl` | bluectl | Admin CLI: DPU management, tenants, operators, attestation |
+| `km` | km | Operator CLI: SSH CA lifecycle, credential push |
+| `agent` | aegis | DPU agent running on BlueField ARM cores |
+| `host-agent` | sentry | Host agent for credential receipt via ComCh/tmfifo and posture reporting |
+| `server` | nexus | Control plane server |
+| `dpuemu` | - | DPU emulator for local development |
+| `web/` | - | Next.js dashboard (in development) |
 
 ## Tech Stack
 

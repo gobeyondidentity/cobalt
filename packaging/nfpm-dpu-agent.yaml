@@ -1,12 +1,12 @@
 # nfpm configuration for DPU Agent
 # Built separately on bluefield3 runner with DOCA SDK
 
-name: secureinfra-dpu-agent
+name: aegis
 arch: arm64
 platform: linux
 version: "${VERSION}"
 maintainer: Beyond Identity <support@beyondidentity.com>
-description: Secure Infrastructure DPU Agent for BlueField attestation
+description: Aegis - Secure Infrastructure DPU agent for BlueField attestation
 vendor: Beyond Identity
 homepage: https://github.com/gobeyondidentity/secure-infra
 license: Apache-2.0
@@ -15,16 +15,16 @@ priority: optional
 
 contents:
   - src: dpu-agent
-    dst: /usr/bin/dpu-agent
+    dst: /usr/bin/aegis
     file_info:
       mode: 0755
 
-  - src: packaging/systemd/secureinfra-dpu-agent.service
-    dst: /lib/systemd/system/secureinfra-dpu-agent.service
+  - src: packaging/systemd/aegis.service
+    dst: /lib/systemd/system/aegis.service
     type: config
 
-  - src: packaging/config/dpu-agent.yaml
-    dst: /etc/secureinfra/dpu-agent.yaml
+  - src: packaging/config/aegis.yaml
+    dst: /etc/secureinfra/aegis.yaml
     type: config|noreplace
 
   # Include DOCA runtime libraries
