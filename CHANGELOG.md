@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Docker Compose for local development (`docker-compose up`)
   - Self-hosted runners for ARM64 builds and hardware testing
 
+### Changed
+- Transport selection priority: ComCh (if available) → Tmfifo → Network
+- Host agent requires `--auth-key` flag for Ed25519 authentication key storage (default: `/etc/secureinfra/host-agent.key`)
+- DPU agent requires `--keystore` flag for TOFU known-hosts database (default: `/var/lib/secureinfra/known_hosts.json`)
+- `bluectl version` and `km version` now use subcommand instead of `--version` flag
+
 ### Fixed
 - Data race in TmfifoNetListener.watchTransportClose (found by race detector on self-hosted runners)
 - Host-agent connection using correct `--dpu-agent` flag
