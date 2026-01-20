@@ -30,15 +30,10 @@ services:
   host-agent:
     image: ghcr.io/gobeyondidentity/secureinfra-host-agent:latest
     container_name: secureinfra-host-agent
+    command: ["--dpu-agent", "http://control-plane:18080"]
     depends_on:
       control-plane:
         condition: service_healthy
-    environment:
-      # Control plane connection (host-agent reports to control-plane API)
-      - DPU_AGENT_URL=http://control-plane:18080
-      # Logging
-      - SECUREINFRA_LOG_LEVEL=debug
-      - SECUREINFRA_LOG_FORMAT=text
     networks:
       - secureinfra
 
