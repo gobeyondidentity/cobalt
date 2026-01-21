@@ -1,6 +1,6 @@
 # Secure Infrastructure
 
-**v0.6.3** | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
+**v0.6.4** | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 Hardware-bound credential management for AI infrastructure using NVIDIA BlueField DPUs.
 
@@ -40,7 +40,6 @@ The core security property: credentials only flow to verified infrastructure. Wh
 ### macOS (Homebrew)
 
 ```bash
-brew tap nmelo/tap
 brew install nmelo/tap/bluectl nmelo/tap/km                    # CLI tools
 brew install nmelo/tap/sentry nmelo/tap/nexus nmelo/tap/dpuemu # Agents and emulator
 ```
@@ -49,7 +48,7 @@ brew install nmelo/tap/sentry nmelo/tap/nexus nmelo/tap/dpuemu # Agents and emul
 
 ```bash
 # Add repository (auto-detects your distro)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.deb.sh' | sudo bash
+curl -fsSL https://packages.beyondidentity.com/setup.sh | sudo bash
 sudo apt update && sudo apt install bluectl km
 ```
 
@@ -57,16 +56,16 @@ sudo apt update && sudo apt install bluectl km
 
 ```bash
 # Add repository (auto-detects your distro)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.rpm.sh' | sudo bash
+curl -fsSL https://packages.beyondidentity.com/setup.sh | sudo bash
 sudo yum install bluectl km
 ```
 
 ### Docker
 
 ```bash
-docker pull ghcr.io/gobeyondidentity/nexus:0.6.3   # Control plane
-docker pull ghcr.io/gobeyondidentity/sentry:0.6.3  # Host agent
-docker pull ghcr.io/gobeyondidentity/aegis:0.6.3   # DPU agent
+docker pull ghcr.io/gobeyondidentity/nexus:0.6.4   # Control plane
+docker pull ghcr.io/gobeyondidentity/sentry:0.6.4  # Host agent
+docker pull ghcr.io/gobeyondidentity/aegis:0.6.4   # DPU agent
 ```
 
 For local development with Docker Compose, see [Local Dev: Docker](docs/guides/local-dev-docker.md).
