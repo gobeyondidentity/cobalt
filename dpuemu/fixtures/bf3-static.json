@@ -52,6 +52,7 @@
     ]
   },
   "attestation": {
+    "_comment": "NOTE: The certificate chains below are public NVIDIA attestation certificates used for DPU device verification. These are not secrets - they are publicly distributed certificates that devices use to prove their identity and authenticity. The corresponding private keys are securely stored in hardware and never exposed.",
     "status": "ATTESTATION_STATUS_VALID",
     "certificates": [
       {
