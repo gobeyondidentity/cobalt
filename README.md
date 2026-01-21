@@ -155,4 +155,6 @@ secure-infra/
 
 ## License
 
-Proprietary - Beyond Identity, Inc.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
+Copyright 2024-2026 Beyond Identity, Inc.
