@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-01-20
+
+### Fixed
+- **apt/yum Repository Setup**: Replaced manual `any-distro/any-version` paths with Cloudsmith setup script that auto-detects distribution (ubuntu/jammy, debian/bookworm, rhel/9, etc.)
+- **Homebrew Formula Names**: Use fully-qualified names (`nmelo/tap/nexus` not `nexus`) to prevent conflict with Sonatype Nexus in homebrew-core
+- **Docker Images**: Made `ghcr.io/gobeyondidentity/{nexus,sentry,aegis}` images public (no authentication required to pull)
+
 ## [0.6.3] - 2026-01-20
 
 ### Changed
