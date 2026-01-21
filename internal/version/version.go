@@ -2,4 +2,5 @@
 package version
 
 // Version is the current release version.
-const Version = "0.5.2"
+// This is a var (not const) so ldflags -X can override it at build time.
+var Version = "0.5.2"
