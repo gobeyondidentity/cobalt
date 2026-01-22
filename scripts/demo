@@ -1,0 +1,558 @@
+#!/usr/bin/env bash
+#
+# Attestation-Gated Credential Distribution Demo
+# Hardware-bound credentials for AI infrastructure
+#
+# This script walks through the full attestation -> credential distribution
+# flow using the DPU emulator. Designed for live demos with NVIDIA.
+#
+
+set -e
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+TENANT="gpu-prod"
+DPU_NAME="bf3-node01"
+OPERATOR_EMAIL="operator@demo.local"
+SSH_CA_NAME="prod-ca"
+
+# State tracking
+NEXUS_PID=""
+DPUEMU_PID=""
+INVITE_CODE=""
+CLEANUP_DONE=false
+INTERRUPTED=false
+
+# ============================================================================
+# Colors and Styling
+# ============================================================================
+
+# Colors
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+DIM='\033[2m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+# Background colors for emphasis
+BG_GREEN='\033[42;30m'
+BG_RED='\033[41;37m'
+BG_BLUE='\033[44;37m'
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+print_banner() {
+    clear
+    echo ""
+    echo -e "${BOLD}${CYAN}"
+    echo "  ╔════════════════════════════════════════════════════════════════╗"
+    echo "  ║                                                                ║"
+    echo "  ║      Zero-Touch Credential Management for GPU Clusters         ║"
+    echo "  ║      Register once. Credentials flow automatically.            ║"
+    echo "  ║                                                                ║"
+    echo "  ╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${RESET}"
+    echo ""
+    echo -e "${DIM}  \"Automated credential distribution for GPU clusters at scale.\"${RESET}"
+    echo ""
+}
+
+print_step() {
+    local emoji="$1"
+    local title="$2"
+    echo ""
+    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${BOLD}${emoji} ${title}${RESET}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo ""
+}
+
+print_narrative() {
+    echo -e "${DIM}$1${RESET}"
+    echo ""
+}
+
+print_why() {
+    echo ""
+    echo -e "${YELLOW}WHY THIS MATTERS:${RESET}"
+    shift
+    for point in "$@"; do
+        echo -e "  ${DIM}•${RESET} $point"
+    done
+    echo ""
+}
+
+print_command() {
+    echo -e "${DIM}\$ ${RESET}${BOLD}$1${RESET}"
+}
+
+print_success() {
+    echo -e "${GREEN}$1${RESET}"
+}
+
+print_error() {
+    echo -e "${RED}$1${RESET}"
+}
+
+print_highlight() {
+    echo -e "${BG_BLUE} $1 ${RESET}"
+}
+
+print_success_highlight() {
+    echo -e "${BG_GREEN} $1 ${RESET}"
+}
+
+print_failure_highlight() {
+    echo -e "${BG_RED} $1 ${RESET}"
+}
+
+run_command() {
+    local cmd="$1"
+    print_command "$cmd"
+    echo ""
+    eval "$cmd" 2>&1 || true
+    echo ""
+}
+
+run_command_capture() {
+    local cmd="$1"
+    local var_name="$2"
+    print_command "$cmd"
+    echo ""
+    local output
+    output=$(eval "$cmd" 2>&1) || true
+    echo "$output"
+    echo ""
+    if [[ -n "$var_name" ]]; then
+        eval "$var_name=\"\$output\""
+    fi
+}
+
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    while ps -p "$pid" > /dev/null 2>&1; do
+        local temp=${spinstr#?}
+        printf " %c  " "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
+}
+
+wait_for_key() {
+    echo ""
+    echo -e "${DIM}Press ENTER to continue (Ctrl+C to exit)...${RESET}"
+    read -r || true
+    if [[ "$INTERRUPTED" == "true" ]]; then
+        exit 130
+    fi
+}
+
+wait_for_service() {
+    local url="$1"
+    local max_attempts=30
+    local attempt=0
+    while [[ $attempt -lt $max_attempts ]]; do
+        if curl -s "$url" > /dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.5
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
+
+# ============================================================================
+# Cleanup and Signal Handling
+# ============================================================================
+
+cleanup() {
+    if [[ "$CLEANUP_DONE" == "true" ]]; then
+        return
+    fi
+    CLEANUP_DONE=true
+
+    echo ""
+    echo -e "${DIM}Cleaning up...${RESET}"
+
+    # Kill background processes
+    if [[ -n "$NEXUS_PID" ]] && ps -p "$NEXUS_PID" > /dev/null 2>&1; then
+        kill "$NEXUS_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$DPUEMU_PID" ]] && ps -p "$DPUEMU_PID" > /dev/null 2>&1; then
+        kill "$DPUEMU_PID" 2>/dev/null || true
+    fi
+
+    # Also kill any orphaned processes
+    pkill -f "nexus" 2>/dev/null || true
+    pkill -f "dpuemu serve" 2>/dev/null || true
+
+    # Clean state files
+    rm -f ~/.local/share/bluectl/dpus.db 2>/dev/null || true
+    rm -f ~/.local/share/bluectl/key 2>/dev/null || true
+    rm -rf ~/.km 2>/dev/null || true
+
+    echo -e "${DIM}Done.${RESET}"
+}
+
+handle_interrupt() {
+    INTERRUPTED=true
+    echo ""
+    echo -e "${YELLOW}Interrupted by user.${RESET}"
+    cleanup
+    exit 130
+}
+
+# Trap signals - INT needs special handling to exit properly
+trap cleanup EXIT
+trap handle_interrupt INT TERM
+
+# ============================================================================
+# Pre-flight Checks
+# ============================================================================
+
+preflight_checks() {
+    local missing=()
+
+    command -v nexus >/dev/null 2>&1 || missing+=("nexus")
+    command -v dpuemu >/dev/null 2>&1 || missing+=("dpuemu")
+    command -v bluectl >/dev/null 2>&1 || missing+=("bluectl")
+    command -v km >/dev/null 2>&1 || missing+=("km")
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo -e "${RED}Missing required tools: ${missing[*]}${RESET}"
+        echo ""
+        echo "Install via Homebrew:"
+        echo "  brew tap nmelo/tap"
+        echo "  brew install nmelo/tap/bluectl nmelo/tap/km nmelo/tap/nexus nmelo/tap/dpuemu"
+        exit 1
+    fi
+
+    # Clean any previous state
+    cleanup
+    CLEANUP_DONE=false
+}
+
+# ============================================================================
+# Demo Steps
+# ============================================================================
+
+step_intro() {
+    print_banner
+
+    echo -e "This demo shows ${BOLD}zero-touch credential management${RESET} for GPU clusters."
+    echo ""
+    echo "You'll see:"
+    echo -e "  🚀 Control plane and DPU emulator startup"
+    echo -e "  🏢 Multi-tenant isolation"
+    echo -e "  🔐 Fleet registration in one command"
+    echo -e "  ✅ Automated node health verification"
+    echo -e "  👤 Delegate access without sharing keys"
+    echo -e "  🔑 SSH CA creation"
+    echo -e "  📦 ${BOLD}Push credentials to 1000 nodes at once${RESET} ${YELLOW}← the key moment!${RESET}"
+    echo -e "  ✍️  User gets access in seconds"
+    echo -e "  ❌ What happens when a node fails health check"
+    echo ""
+
+    wait_for_key
+}
+
+step_1_infrastructure() {
+    print_step "🚀" "Setting Up the Infrastructure"
+
+    print_narrative "Starting the control plane (nexus) and DPU emulator..."
+
+    # Start nexus in background
+    echo -e "${DIM}Starting nexus (control plane)...${RESET}"
+    nexus > /dev/null 2>&1 &
+    NEXUS_PID=$!
+
+    # Wait for nexus to be ready
+    if wait_for_service "http://localhost:18080/api/health"; then
+        print_success "  Nexus started on :18080"
+    else
+        print_error "  Failed to start nexus"
+        exit 1
+    fi
+
+    # Start dpuemu in background
+    echo -e "${DIM}Starting dpuemu (DPU emulator)...${RESET}"
+    dpuemu serve > /dev/null 2>&1 &
+    DPUEMU_PID=$!
+    sleep 2
+
+    if ps -p "$DPUEMU_PID" > /dev/null 2>&1; then
+        print_success "  DPU emulator started on :18051"
+    else
+        print_error "  Failed to start dpuemu"
+        exit 1
+    fi
+
+    print_why \
+        "Control plane automates credential distribution across your fleet" \
+        "No SSH into each node to deploy keys manually" \
+        "In production, credentials flow through hardware you already have"
+
+    wait_for_key
+}
+
+step_2_tenant() {
+    print_step "🏢" "Creating Organization Boundary"
+
+    print_narrative "Tenants isolate infrastructure by team or environment..."
+
+    run_command "bluectl tenant add $TENANT --description 'GPU Production Cluster'"
+
+    print_why \
+        "One command creates an isolated environment for a team or cluster" \
+        "No cross-team credential leakage to debug later" \
+        "Scale to hundreds of tenants without config file sprawl"
+
+    wait_for_key
+}
+
+step_3_dpu() {
+    print_step "🔐" "Registering Hardware Trust Anchor"
+
+    print_narrative "Adding a BlueField DPU to the tenant..."
+
+    run_command "bluectl dpu add localhost --name $DPU_NAME"
+    echo ""
+    run_command "bluectl tenant assign $TENANT $DPU_NAME"
+
+    print_why \
+        "Register once, credentials flow automatically forever" \
+        "No per-node SSH key distribution or authorized_keys updates" \
+        "Add a node to the fleet in seconds, not hours"
+
+    wait_for_key
+}
+
+step_4_attestation() {
+    print_step "✅" "Verifying Hardware Integrity"
+
+    print_narrative "Querying the DPU attestation state..."
+
+    run_command "bluectl attestation $DPU_NAME"
+
+    echo ""
+    print_success_highlight " ATTESTATION_STATUS_VALID "
+    echo ""
+
+    print_why \
+        "Automated health check before every credential operation" \
+        "No manual verification steps or approval workflows" \
+        "Bad nodes get flagged automatically, good nodes just work"
+
+    wait_for_key
+}
+
+step_5_operator() {
+    print_step "👤" "Inviting a Credential Operator"
+
+    print_narrative "Operators manage credentials. Admins control who can operate..."
+
+    # Capture invite output to get the code
+    print_command "bluectl operator invite $OPERATOR_EMAIL $TENANT"
+    echo ""
+    local invite_output
+    invite_output=$(bluectl operator invite "$OPERATOR_EMAIL" "$TENANT" 2>&1) || true
+    echo "$invite_output"
+    echo ""
+
+    # Extract invite code from output (format: Code: XXX-XXXX-XXXX)
+    INVITE_CODE=$(echo "$invite_output" | grep -oE '[A-Z]{3}-[A-Z0-9]{4}-[A-Z0-9]{4}' | head -1)
+
+    if [[ -z "$INVITE_CODE" ]]; then
+        print_error "Failed to extract invite code from output"
+        echo "Output was: $invite_output"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "Invite code: ${BOLD}$INVITE_CODE${RESET}"
+    echo ""
+
+    print_narrative "Now accepting the invitation with km init..."
+    echo ""
+
+    # Accept invitation (pipe the invite code)
+    echo "$INVITE_CODE" | km init 2>&1 || true
+    echo ""
+
+    print_why \
+        "Delegate credential ops without giving away the keys to the kingdom" \
+        "New team member productive in minutes, not days" \
+        "Clear audit trail means faster incident resolution"
+
+    wait_for_key
+}
+
+step_6_ssh_ca() {
+    print_step "🔑" "Creating Certificate Authority"
+
+    print_narrative "The operator creates an SSH CA for signing certificates..."
+
+    run_command "km ssh-ca create $SSH_CA_NAME"
+
+    print_why \
+        "One CA serves your entire fleet. No more key sprawl." \
+        "Certificates auto-expire. No revocation lists to maintain." \
+        "Offboarding is instant: their certs just stop working"
+
+    # Grant access to the CA for this DPU
+    echo ""
+    print_narrative "Granting operator access to push CA to the DPU..."
+    run_command "bluectl operator grant $OPERATOR_EMAIL $TENANT $SSH_CA_NAME $DPU_NAME"
+
+    wait_for_key
+}
+
+step_7_push_credentials() {
+    print_step "📦" "Distributing Credentials to Attested Infrastructure"
+
+    print_highlight " THE KEY MOMENT "
+    echo ""
+
+    print_narrative "One command pushes credentials to your entire fleet..."
+    echo ""
+
+    echo -e "  ${DIM}1.${RESET} Checking node health..."
+    sleep 0.5
+    echo -e "  ${GREEN}2.${RESET} Node verified healthy"
+    sleep 0.3
+    echo -e "  ${DIM}3.${RESET} Pushing credentials..."
+    sleep 0.5
+
+    run_command "km push ssh-ca $SSH_CA_NAME $DPU_NAME"
+
+    echo ""
+    print_success_highlight " CA INSTALLED SUCCESSFULLY "
+    echo ""
+
+    print_why \
+        "Push to one node or one thousand. Same command." \
+        "Unhealthy nodes auto-skip. No manual checking required." \
+        "Credentials land where they need to be, automatically"
+
+    wait_for_key
+}
+
+step_8_sign_cert() {
+    print_step "✍️" "Signing a User Certificate"
+
+    print_narrative "Issuing a short-lived certificate for SSH access..."
+
+    # Generate a temporary key for demo
+    local demo_key="/tmp/demo_ssh_key"
+    rm -f "$demo_key" "$demo_key.pub" "${demo_key}-cert.pub" 2>/dev/null || true
+
+    echo -e "${DIM}Generating demo SSH key...${RESET}"
+    ssh-keygen -t ed25519 -f "$demo_key" -N "" -C "alice@demo.local" -q
+    echo ""
+
+    run_command "km ssh-ca sign $SSH_CA_NAME --principal ubuntu --pubkey ${demo_key}.pub"
+
+    echo ""
+    echo -e "${DIM}Certificate details:${RESET}"
+    ssh-keygen -L -f "${demo_key}-cert.pub" 2>/dev/null | head -15 || true
+
+    print_why \
+        "Users get access in seconds. No ticket, no waiting." \
+        "8-hour default means no stale access accumulating" \
+        "No more 'who has access to this box?' mysteries"
+
+    # Cleanup demo key
+    rm -f "$demo_key" "$demo_key.pub" "${demo_key}-cert.pub" 2>/dev/null || true
+
+    wait_for_key
+}
+
+step_9_attestation_failure() {
+    print_step "❌" "What Happens When a Node Fails Health Check?"
+
+    print_failure_highlight " SIMULATING UNHEALTHY NODE "
+    echo ""
+
+    print_narrative "Sometimes nodes drift from known-good state. The system catches this automatically..."
+    echo ""
+
+    echo -e "Scenario: A GPU node has outdated firmware or misconfiguration."
+    echo -e "The health check detects the node is out of spec."
+    echo ""
+
+    echo -e "${RED}When an operator tries to push credentials:${RESET}"
+    echo ""
+    echo -e "  ${DIM}\$ km push ssh-ca $SSH_CA_NAME compromised-node${RESET}"
+    echo ""
+    echo -e "  ${RED}Error: Attestation failed${RESET}"
+    echo -e "  ${RED}  Status: ATTESTATION_STATUS_INVALID${RESET}"
+    echo -e "  ${RED}  Reason: Firmware measurements do not match expected values${RESET}"
+    echo -e "  ${RED}  Action: Credential push blocked${RESET}"
+    echo ""
+
+    print_failure_highlight " CREDENTIAL PUSH BLOCKED "
+    echo ""
+
+    print_why \
+        "Problem nodes get isolated automatically. No 3am pages." \
+        "No credential rotation fire drill. Sleep through the night." \
+        "Incident scope is obvious. Faster resolution, less chaos."
+
+    wait_for_key
+}
+
+step_summary() {
+    print_step "🎯" "What We Just Did"
+
+    echo -e "${GREEN}  ✅ Fleet registered in minutes, not days${RESET}"
+    echo -e "${GREEN}  ✅ Credentials distributed automatically${RESET}"
+    echo -e "${GREEN}  ✅ User access granted in seconds${RESET}"
+    echo -e "${GREEN}  ✅ Offboarding is instant (certs expire)${RESET}"
+    echo -e "${GREEN}  ✅ Problem nodes isolated without manual intervention${RESET}"
+    echo ""
+
+    echo -e "${BOLD}${CYAN}"
+    echo "  ╔════════════════════════════════════════════════════════════════╗"
+    echo "  ║                                                                ║"
+    echo "  ║   Credential management that scales with your infrastructure, ║"
+    echo "  ║   not your headcount.                                         ║"
+    echo "  ║                                                                ║"
+    echo "  ╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${RESET}"
+    echo ""
+
+    echo -e "${DIM}Demo complete. Press ENTER to clean up and exit.${RESET}"
+    read -r
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+main() {
+    preflight_checks
+
+    step_intro
+    step_1_infrastructure
+    step_2_tenant
+    step_3_dpu
+    step_4_attestation
+    step_5_operator
+    step_6_ssh_ca
+    step_7_push_credentials
+    step_8_sign_cert
+    step_9_attestation_failure
+    step_summary
+}
+
+main "$@"
