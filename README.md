@@ -1,6 +1,6 @@
 # Secure Infrastructure
 
-**v0.6.4** | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
+**v0.6.4** | [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 Automated credential lifecycle for AI infrastructure. No manual rotation. No secret sprawl. Credentials refresh automatically when you reimage nodes.
 
@@ -21,6 +21,8 @@ This works because credentials are tied to specific hardware via NVIDIA BlueFiel
 - **Health-gated operations**: Distribution proceeds only when hosts pass automatic health checks
 
 ## Quick Start
+
+> **See it in action:** Run `./scripts/demo` to watch the full credential lifecycle in 2 minutes.
 
 Choose your path:
 
