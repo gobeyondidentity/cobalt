@@ -129,7 +129,9 @@ step_prereqs() {
     print_narrative "Verifying Homebrew is installed..."
 
     if command -v brew >/dev/null 2>&1; then
+        echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
         print_command "brew --version"
+        echo ""
         brew --version | head -1
         echo ""
         print_success "  Homebrew is installed"
@@ -172,8 +174,9 @@ step_bluectl() {
 
     run_command "brew install nmelo/tap/bluectl"
 
-    echo ""
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
     print_command "bluectl version"
+    echo ""
     bluectl version 2>/dev/null || echo "  (will show version after install)"
     echo ""
 
@@ -192,8 +195,9 @@ step_km() {
 
     run_command "brew install nmelo/tap/km"
 
-    echo ""
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
     print_command "km version"
+    echo ""
     km version 2>/dev/null || echo "  (will show version after install)"
     echo ""
 
@@ -212,8 +216,9 @@ step_nexus() {
 
     run_command "brew install nmelo/tap/nexus"
 
-    echo ""
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
     print_command "nexus --help | head -5"
+    echo ""
     nexus --help 2>/dev/null | head -5 || echo "  (will show help after install)"
     echo ""
 
@@ -232,8 +237,9 @@ step_dpuemu() {
 
     run_command "brew install nmelo/tap/dpuemu"
 
-    echo ""
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
     print_command "dpuemu --help | head -5"
+    echo ""
     dpuemu --help 2>/dev/null | head -5 || echo "  (will show help after install)"
     echo ""
 
