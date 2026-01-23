@@ -234,7 +234,7 @@ step_nexus() {
     print_comment "Verify installation..."
     print_command "nexus --help | head -5"
     echo ""
-    nexus --help 2>/dev/null | head -5 || echo "(will show help after install)"
+    nexus --help 2>&1 | head -5 || echo "(will show help after install)"
     echo ""
 
     print_why \
@@ -256,7 +256,7 @@ step_dpuemu() {
     print_comment "Verify installation..."
     print_command "dpuemu --help | head -5"
     echo ""
-    dpuemu --help 2>/dev/null | head -5 || echo "(will show help after install)"
+    dpuemu --help 2>&1 | head -5 || echo "(will show help after install)"
     echo ""
 
     print_why \
