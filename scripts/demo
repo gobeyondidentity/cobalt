@@ -44,6 +44,9 @@ BG_GREEN='\033[42;30m'
 BG_RED='\033[41;37m'
 BG_BLUE='\033[44;37m'
 
+# Progress tab labels (short names for visual continuity)
+STEP_LABELS=("Setup" "Tenant" "DPU" "Attest" "Invite" "Accept" "CA" "Push" "Sign" "Fail" "Done")
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -64,14 +67,43 @@ print_banner() {
     echo ""
 }
 
+print_tabs() {
+    local current="$1"
+    local tabs=""
+    for ((i=1; i<=${#STEP_LABELS[@]}; i++)); do
+        local label="${STEP_LABELS[$((i-1))]}"
+        if [[ $i -eq $current ]]; then
+            tabs+="${BOLD}${CYAN}${i} ${label}${RESET}"
+        else
+            tabs+="${DIM}${i} ${label}${RESET}"
+        fi
+        # Add separator except after last
+        if [[ $i -lt ${#STEP_LABELS[@]} ]]; then
+            tabs+="${DIM} · ${RESET}"
+        fi
+    done
+    echo -e "$tabs"
+}
+
 print_step() {
-    local emoji="$1"
-    local title="$2"
+    local step_num="$1"
+    local emoji="$2"
+    local title="$3"
     clear
     echo ""
-    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-    echo -e "${BOLD}${emoji} ${title}${RESET}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    if [[ $step_num -gt 0 ]]; then
+        echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+        print_tabs "$step_num"
+        echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+        echo ""
+    fi
+    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    if [[ $step_num -gt 0 && $step_num -le 10 ]]; then
+        echo -e "${BOLD}${emoji} Step ${step_num}: ${title}${RESET}"
+    else
+        echo -e "${BOLD}${emoji} ${title}${RESET}"
+    fi
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
     echo ""
 }
 
@@ -122,7 +154,7 @@ run_command() {
     local comment="$1"
     local cmd="$2"
     echo ""
-    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
     print_comment "$comment"
     print_command "$cmd"
     echo ""
@@ -265,27 +297,27 @@ step_intro() {
     echo -e "This demo shows ${BOLD}zero-touch credential management${RESET} for GPU clusters."
     echo ""
     echo "You'll see:"
-    echo -e "  🚀 Control plane and DPU emulator startup"
-    echo -e "  🏢 Multi-tenant isolation"
-    echo -e "  🔐 Fleet registration in one command"
-    echo -e "  ✅ Automated node health verification"
-    echo -e "  👤 Delegate access without sharing keys"
-    echo -e "  🔑 SSH CA creation"
-    echo -e "  📦 ${BOLD}Push credentials to 1000 nodes at once${RESET} ${YELLOW}← the key moment!${RESET}"
-    echo -e "  ✍️  User gets access in seconds"
-    echo -e "  ❌ What happens when a node fails health check"
+    echo -e "   1. 🚀 Control plane and DPU emulator startup"
+    echo -e "   2. 🏢 Multi-tenant isolation"
+    echo -e "   3. 🔐 Fleet registration in one command"
+    echo -e "   4. ✅ Automated node health verification"
+    echo -e "   5. 👤 Delegate access without sharing keys"
+    echo -e "   6. 🔑 SSH CA creation"
+    echo -e "   7. 📦 ${BOLD}Push credentials to 1000 nodes at once${RESET} ${YELLOW}← the key moment!${RESET}"
+    echo -e "   8. ✍️  User gets access in seconds"
+    echo -e "   9. ❌ What happens when a node fails health check"
     echo ""
 
     wait_for_key
 }
 
 step_1_infrastructure() {
-    print_step "🚀" "Setting Up the Infrastructure"
+    print_step 1 "🚀" "Setting Up the Infrastructure"
 
     print_narrative "Starting the control plane (nexus) and DPU emulator..."
 
     # Start nexus in background
-    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
     print_comment "Start the control plane..."
     print_command "nexus &"
     nexus > /dev/null 2>&1 &
@@ -301,7 +333,7 @@ step_1_infrastructure() {
     echo ""
 
     # Start dpuemu in background
-    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
     print_comment "Start the DPU emulator..."
     print_command "dpuemu serve &"
     dpuemu serve > /dev/null 2>&1 &
@@ -324,7 +356,7 @@ step_1_infrastructure() {
 }
 
 step_2_tenant() {
-    print_step "🏢" "Creating Organization Boundary"
+    print_step 2 "🏢" "Creating Organization Boundary"
 
     print_narrative "Tenants isolate infrastructure by team or environment..."
 
@@ -339,7 +371,7 @@ step_2_tenant() {
 }
 
 step_3_dpu() {
-    print_step "🔐" "Registering Hardware Trust Anchor"
+    print_step 3 "🔐" "Registering Hardware Trust Anchor"
 
     print_narrative "Adding a BlueField DPU to the tenant..."
 
@@ -356,7 +388,7 @@ step_3_dpu() {
 }
 
 step_4_attestation() {
-    print_step "✅" "Verifying Hardware Integrity"
+    print_step 4 "✅" "Verifying Hardware Integrity"
 
     print_narrative "Querying the DPU attestation state..."
 
@@ -375,12 +407,12 @@ step_4_attestation() {
 }
 
 step_5_invite() {
-    print_step "👤" "Inviting a Credential Operator"
+    print_step 5 "👤" "Inviting a Credential Operator"
 
     print_narrative "Operators manage credentials. Admins control who can operate..."
 
     # Capture invite output to get the code
-    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
     print_comment "Create an operator invitation..."
     print_command "bluectl operator invite $OPERATOR_EMAIL $TENANT"
     echo ""
@@ -408,7 +440,7 @@ step_5_invite() {
 }
 
 step_6_accept() {
-    print_step "✅" "Accepting the Invitation"
+    print_step 6 "✅" "Accepting the Invitation"
 
     print_narrative "The operator uses km to accept the invite and bind to the server..."
 
@@ -417,7 +449,7 @@ step_6_accept() {
     echo ""
 
     # Accept invitation (pipe the invite code)
-    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
     print_comment "Accept the invitation..."
     print_command "km init"
     echo ""
@@ -434,7 +466,7 @@ step_6_accept() {
 }
 
 step_7_ssh_ca() {
-    print_step "🔑" "Creating Certificate Authority"
+    print_step 7 "🔑" "Creating Certificate Authority"
 
     print_narrative "The operator creates an SSH CA for signing certificates..."
 
@@ -454,7 +486,7 @@ step_7_ssh_ca() {
 }
 
 step_8_push_credentials() {
-    print_step "📦" "Distributing Credentials to Attested Infrastructure"
+    print_step 8 "📦" "Distributing Credentials to Attested Infrastructure"
 
     print_highlight " THE KEY MOMENT "
     echo ""
@@ -484,7 +516,7 @@ step_8_push_credentials() {
 }
 
 step_9_sign_cert() {
-    print_step "✍️" "Signing a User Certificate"
+    print_step 9 "✍️" "Signing a User Certificate"
 
     print_narrative "Issuing a short-lived certificate for SSH access..."
 
@@ -492,7 +524,7 @@ step_9_sign_cert() {
     local demo_key="/tmp/demo_ssh_key"
     rm -f "$demo_key" "$demo_key.pub" "${demo_key}-cert.pub" 2>/dev/null || true
 
-    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
     print_comment "Generate a demo SSH key..."
     print_command "ssh-keygen -t ed25519 -f /tmp/demo_ssh_key -N '' -C 'alice@demo.local'"
     ssh-keygen -t ed25519 -f "$demo_key" -N "" -C "alice@demo.local" -q
@@ -501,7 +533,7 @@ step_9_sign_cert() {
 
     run_command "Sign a certificate for the user..." "km ssh-ca sign $SSH_CA_NAME --principal ubuntu --pubkey ${demo_key}.pub"
 
-    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
     print_comment "Show certificate details..."
     print_command "ssh-keygen -L -f /tmp/demo_ssh_key-cert.pub"
     echo ""
@@ -519,7 +551,7 @@ step_9_sign_cert() {
 }
 
 step_10_attestation_failure() {
-    print_step "❌" "What Happens When a Node Fails Health Check?"
+    print_step 10 "❌" "What Happens When a Node Fails Health Check?"
 
     print_failure_highlight " SIMULATING UNHEALTHY NODE "
     echo ""
@@ -553,7 +585,7 @@ step_10_attestation_failure() {
 }
 
 step_summary() {
-    print_step "🎯" "What We Just Did"
+    print_step 11 "🎯" "What We Just Did"
 
     echo -e "${GREEN}  ✅ Fleet registered in minutes, not days${RESET}"
     echo -e "${GREEN}  ✅ Credentials distributed automatically${RESET}"
@@ -565,8 +597,8 @@ step_summary() {
     echo -e "${BOLD}${CYAN}"
     echo "  ╔════════════════════════════════════════════════════════════════╗"
     echo "  ║                                                                ║"
-    echo "  ║     Credential management that scales with your fleet,        ║"
-    echo "  ║     not your headcount.                                       ║"
+    echo "  ║     Credential management that scales with your fleet,         ║"
+    echo "  ║     not your headcount.                                        ║"
     echo "  ║                                                                ║"
     echo "  ╚════════════════════════════════════════════════════════════════╝"
     echo -e "${RESET}"
