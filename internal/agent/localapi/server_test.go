@@ -358,6 +358,43 @@ func TestLocalAPI_RejectsNonLocalRequests(t *testing.T) {
 	}
 }
 
+func TestLocalAPI_AllowsTmfifoNetSubnet(t *testing.T) {
+	mock := newMockControlPlane()
+	defer mock.close()
+
+	server, err := NewServer(&Config{
+		ListenAddr:      "0.0.0.0:9443",
+		ControlPlaneURL: mock.url(),
+		DPUName:         "dpu-test",
+		AllowTmfifoNet:  true, // Enable tmfifo_net subnet
+	})
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	// Request from tmfifo_net subnet should be allowed
+	req := httptest.NewRequest(http.MethodGet, "/local/v1/health", nil)
+	req.RemoteAddr = "192.168.100.2:12345" // tmfifo_net0 host IP
+	w := httptest.NewRecorder()
+
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200 for tmfifo_net IP, got %d", w.Code)
+	}
+
+	// Request from other private IP should still be rejected
+	req2 := httptest.NewRequest(http.MethodGet, "/local/v1/health", nil)
+	req2.RemoteAddr = "192.168.1.100:12345" // Regular private IP
+	w2 := httptest.NewRecorder()
+
+	server.server.Handler.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusForbidden {
+		t.Errorf("expected status 403 for non-tmfifo IP, got %d", w2.Code)
+	}
+}
+
 func TestLocalAPI_HostnamePairing(t *testing.T) {
 	mock := newMockControlPlane()
 	defer mock.close()

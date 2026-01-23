@@ -31,8 +31,9 @@ var (
 	listenAddr      = flag.String("listen", ":18051", "gRPC listen address")
 	bmcAddr         = flag.String("bmc-addr", "", "BMC address for Redfish API (optional)")
 	bmcUser         = flag.String("bmc-user", "root", "BMC username")
-	localAPIEnabled = flag.Bool("local-api", false, "Enable local HTTP API for Host Agent")
-	localListen     = flag.String("local-listen", "localhost:9443", "Local API listen address")
+	localAPIEnabled  = flag.Bool("local-api", false, "Enable local HTTP API for Host Agent")
+	localListen      = flag.String("local-listen", "localhost:9443", "Local API listen address")
+	allowTmfifoNet   = flag.Bool("allow-tmfifo-net", false, "Allow connections from tmfifo_net subnet (192.168.100.0/24)")
 	controlPlane    = flag.String("control-plane", "", "Control Plane URL (required if local API enabled)")
 	dpuName         = flag.String("dpu-name", "", "DPU name for registration (required if local API enabled)")
 	keystorePath    = flag.String("keystore", "/var/lib/secureinfra/known_hosts.json", "Path to TOFU keystore for host authentication")
@@ -177,6 +178,7 @@ func startLocalAPI(ctx context.Context, cfg *agent.Config, agentServer *agent.Se
 		DPUID:            cfg.DPUID,
 		DPUSerial:        cfg.DPUSerial,
 		AllowedHostnames: cfg.AllowedHostnames,
+		AllowTmfifoNet:   *allowTmfifoNet,
 		AttestationFetcher: func(ctx context.Context) (*localapi.AttestationInfo, error) {
 			return fetchAttestation(ctx, agentServer)
 		},

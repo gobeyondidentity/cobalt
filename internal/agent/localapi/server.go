@@ -40,6 +40,10 @@ type Config struct {
 	// AllowedHostnames restricts which hostnames can register (empty = allow all)
 	AllowedHostnames []string
 
+	// AllowTmfifoNet permits connections from tmfifo_net subnet (192.168.100.0/24).
+	// Enable this when using IP-over-PCIe via rshim's tmfifo_net0 interface.
+	AllowTmfifoNet bool
+
 	// AttestationFetcher is a function to get current attestation status
 	AttestationFetcher func(ctx context.Context) (*AttestationInfo, error)
 
@@ -180,7 +184,18 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// localhostMiddleware ensures requests only come from localhost (for TCP listeners).
+// tmfifoNetSubnet is the IP range used by rshim's tmfifo_net0 interface (IP-over-PCIe).
+var tmfifoNetSubnet = mustParseCIDR("192.168.100.0/24")
+
+func mustParseCIDR(s string) *net.IPNet {
+	_, ipnet, err := net.ParseCIDR(s)
+	if err != nil {
+		panic(err)
+	}
+	return ipnet
+}
+
+// localhostMiddleware ensures requests only come from localhost or allowed subnets (for TCP listeners).
 func (s *Server) localhostMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Unix sockets are inherently local, skip check
@@ -189,7 +204,7 @@ func (s *Server) localhostMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// For TCP, verify the connection is from localhost
+		// For TCP, verify the connection is from localhost or allowed subnet
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			s.writeError(w, http.StatusForbidden, "invalid remote address")
@@ -202,13 +217,20 @@ func (s *Server) localhostMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if !ip.IsLoopback() {
-			log.Printf("Local API: rejected non-local request from %s", r.RemoteAddr)
-			s.writeError(w, http.StatusForbidden, "local API only accepts connections from localhost")
+		// Allow loopback
+		if ip.IsLoopback() {
+			next.ServeHTTP(w, r)
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		// Allow tmfifo_net subnet if configured (IP-over-PCIe via rshim)
+		if s.config.AllowTmfifoNet && tmfifoNetSubnet.Contains(ip) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		log.Printf("Local API: rejected non-local request from %s", r.RemoteAddr)
+		s.writeError(w, http.StatusForbidden, "local API only accepts connections from localhost")
 	})
 }
 
