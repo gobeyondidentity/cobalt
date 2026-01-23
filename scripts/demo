@@ -66,6 +66,7 @@ print_banner() {
 print_step() {
     local emoji="$1"
     local title="$2"
+    clear
     echo ""
     echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
     echo -e "${BOLD}${emoji} ${title}${RESET}"
