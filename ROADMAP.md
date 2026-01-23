@@ -17,9 +17,6 @@
 - Binary packaging (Homebrew, apt/yum, Docker images)
 - Automated release infrastructure (GitHub Actions, self-hosted runners)
 - Version check in CLI (`--check` flag)
-- Real BlueField-3 hardware validation (v0.6.6)
-- tmfifo_net fallback mode with `--allow-tmfifo-net` flag (v0.6.6)
-- QA test harnesses for hardware and VM workflows (v0.6.6)
 
 ---
 
