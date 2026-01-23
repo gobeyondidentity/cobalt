@@ -66,8 +66,12 @@ print_why() {
     echo ""
 }
 
+print_comment() {
+    echo -e "${CYAN}# $1${RESET}"
+}
+
 print_command() {
-    echo -e "${DIM}\$ ${RESET}${BOLD}$1${RESET}"
+    echo -e "${BOLD}> $1${RESET}"
 }
 
 print_success() {
@@ -87,8 +91,11 @@ print_success_highlight() {
 }
 
 run_command() {
-    local cmd="$1"
+    local comment="$1"
+    local cmd="$2"
+    echo ""
     echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "$comment"
     print_command "$cmd"
     echo ""
     eval "$cmd" 2>&1 || true
@@ -129,16 +136,20 @@ step_prereqs() {
     print_narrative "Verifying Homebrew is installed..."
 
     if command -v brew >/dev/null 2>&1; then
+        echo ""
         echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+        print_comment "Check Homebrew version..."
         print_command "brew --version"
         echo ""
         brew --version | head -1
         echo ""
-        print_success "  Homebrew is installed"
+        print_success "Homebrew is installed"
     else
-        print_error "  Homebrew not found"
+        print_error "Homebrew not found"
         echo ""
         echo "Install Homebrew first:"
+        echo ""
+        print_comment "Install Homebrew..."
         print_command '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
         echo ""
         exit 1
@@ -157,7 +168,7 @@ step_tap() {
 
     print_narrative "A tap is a third-party package source. This adds our formulas to Homebrew..."
 
-    run_command "brew tap nmelo/tap"
+    run_command "Add the package source..." "brew tap nmelo/tap"
 
     print_why \
         "Taps let you install software not in the main Homebrew repo" \
@@ -172,12 +183,13 @@ step_bluectl() {
 
     print_narrative "bluectl is the admin tool for managing tenants, DPUs, and operators..."
 
-    run_command "brew install nmelo/tap/bluectl"
+    run_command "Install bluectl..." "brew install nmelo/tap/bluectl"
 
     echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Verify installation..."
     print_command "bluectl version"
     echo ""
-    bluectl version 2>/dev/null || echo "  (will show version after install)"
+    bluectl version 2>/dev/null || echo "(will show version after install)"
     echo ""
 
     print_why \
@@ -193,12 +205,13 @@ step_km() {
 
     print_narrative "km is the operator tool for managing credentials and certificates..."
 
-    run_command "brew install nmelo/tap/km"
+    run_command "Install km..." "brew install nmelo/tap/km"
 
     echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Verify installation..."
     print_command "km version"
     echo ""
-    km version 2>/dev/null || echo "  (will show version after install)"
+    km version 2>/dev/null || echo "(will show version after install)"
     echo ""
 
     print_why \
@@ -214,12 +227,13 @@ step_nexus() {
 
     print_narrative "nexus is the server that coordinates everything..."
 
-    run_command "brew install nmelo/tap/nexus"
+    run_command "Install nexus..." "brew install nmelo/tap/nexus"
 
     echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Verify installation..."
     print_command "nexus --help | head -5"
     echo ""
-    nexus --help 2>/dev/null | head -5 || echo "  (will show help after install)"
+    nexus --help 2>/dev/null | head -5 || echo "(will show help after install)"
     echo ""
 
     print_why \
@@ -235,12 +249,13 @@ step_dpuemu() {
 
     print_narrative "dpuemu simulates a BlueField DPU for development and testing..."
 
-    run_command "brew install nmelo/tap/dpuemu"
+    run_command "Install dpuemu..." "brew install nmelo/tap/dpuemu"
 
     echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Verify installation..."
     print_command "dpuemu --help | head -5"
     echo ""
-    dpuemu --help 2>/dev/null | head -5 || echo "  (will show help after install)"
+    dpuemu --help 2>/dev/null | head -5 || echo "(will show help after install)"
     echo ""
 
     print_why \

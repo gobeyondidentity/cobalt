@@ -88,8 +88,12 @@ print_why() {
     echo ""
 }
 
+print_comment() {
+    echo -e "${CYAN}# $1${RESET}"
+}
+
 print_command() {
-    echo -e "${DIM}\$ ${RESET}${BOLD}$1${RESET}"
+    echo -e "${BOLD}> $1${RESET}"
 }
 
 print_success() {
@@ -113,8 +117,11 @@ print_failure_highlight() {
 }
 
 run_command() {
-    local cmd="$1"
+    local comment="$1"
+    local cmd="$2"
+    echo ""
     echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "$comment"
     print_command "$cmd"
     echo ""
     eval "$cmd" 2>&1 || true
@@ -273,6 +280,8 @@ step_1_infrastructure() {
     print_narrative "Starting the control plane (nexus) and DPU emulator..."
 
     # Start nexus in background
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Start the control plane..."
     print_command "nexus &"
     nexus > /dev/null 2>&1 &
     NEXUS_PID=$!
@@ -287,6 +296,8 @@ step_1_infrastructure() {
     echo ""
 
     # Start dpuemu in background
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Start the DPU emulator..."
     print_command "dpuemu serve &"
     dpuemu serve > /dev/null 2>&1 &
     DPUEMU_PID=$!
@@ -312,7 +323,7 @@ step_2_tenant() {
 
     print_narrative "Tenants isolate infrastructure by team or environment..."
 
-    run_command "bluectl tenant add $TENANT --description 'GPU Production Cluster'"
+    run_command "Create a new tenant..." "bluectl tenant add $TENANT --description 'GPU Production Cluster'"
 
     print_why \
         "One command creates an isolated environment for a team or cluster" \
@@ -327,9 +338,9 @@ step_3_dpu() {
 
     print_narrative "Adding a BlueField DPU to the tenant..."
 
-    run_command "bluectl dpu add localhost --name $DPU_NAME"
-    echo ""
-    run_command "bluectl tenant assign $TENANT $DPU_NAME"
+    run_command "Register the DPU..." "bluectl dpu add localhost --name $DPU_NAME"
+
+    run_command "Assign DPU to tenant..." "bluectl tenant assign $TENANT $DPU_NAME"
 
     print_why \
         "Register once, credentials flow automatically forever" \
@@ -344,7 +355,7 @@ step_4_attestation() {
 
     print_narrative "Querying the DPU attestation state..."
 
-    run_command "bluectl attestation $DPU_NAME"
+    run_command "Query attestation status..." "bluectl attestation $DPU_NAME"
 
     echo ""
     print_success_highlight " ATTESTATION_STATUS_VALID "
@@ -364,6 +375,8 @@ step_5_operator() {
     print_narrative "Operators manage credentials. Admins control who can operate..."
 
     # Capture invite output to get the code
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Create an operator invitation..."
     print_command "bluectl operator invite $OPERATOR_EMAIL $TENANT"
     echo ""
     local invite_output
@@ -388,6 +401,8 @@ step_5_operator() {
     echo ""
 
     # Accept invitation (pipe the invite code)
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Accept the invitation..."
     print_command "km init"
     echo ""
     echo "$INVITE_CODE" | km init 2>&1 || true
@@ -406,7 +421,7 @@ step_6_ssh_ca() {
 
     print_narrative "The operator creates an SSH CA for signing certificates..."
 
-    run_command "km ssh-ca create $SSH_CA_NAME"
+    run_command "Create SSH certificate authority..." "km ssh-ca create $SSH_CA_NAME"
 
     print_why \
         "One CA serves your entire fleet. No more key sprawl." \
@@ -416,7 +431,7 @@ step_6_ssh_ca() {
     # Grant access to the CA for this DPU
     echo ""
     print_narrative "Granting operator access to push CA to the DPU..."
-    run_command "bluectl operator grant $OPERATOR_EMAIL $TENANT $SSH_CA_NAME $DPU_NAME"
+    run_command "Grant operator access to CA and DPU..." "bluectl operator grant $OPERATOR_EMAIL $TENANT $SSH_CA_NAME $DPU_NAME"
 
     wait_for_key
 }
@@ -437,7 +452,7 @@ step_7_push_credentials() {
     echo -e "  ${DIM}3.${RESET} Pushing credentials..."
     sleep 0.5
 
-    run_command "km push ssh-ca $SSH_CA_NAME $DPU_NAME"
+    run_command "Push CA to the DPU..." "km push ssh-ca $SSH_CA_NAME $DPU_NAME"
 
     echo ""
     print_success_highlight " CA INSTALLED SUCCESSFULLY "
@@ -460,14 +475,17 @@ step_8_sign_cert() {
     local demo_key="/tmp/demo_ssh_key"
     rm -f "$demo_key" "$demo_key.pub" "${demo_key}-cert.pub" 2>/dev/null || true
 
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Generate a demo SSH key..."
     print_command "ssh-keygen -t ed25519 -f /tmp/demo_ssh_key -N '' -C 'alice@demo.local'"
     ssh-keygen -t ed25519 -f "$demo_key" -N "" -C "alice@demo.local" -q
-    print_success "  Key generated"
+    print_success "Key generated"
     echo ""
 
-    run_command "km ssh-ca sign $SSH_CA_NAME --principal ubuntu --pubkey ${demo_key}.pub"
+    run_command "Sign a certificate for the user..." "km ssh-ca sign $SSH_CA_NAME --principal ubuntu --pubkey ${demo_key}.pub"
 
-    echo ""
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Show certificate details..."
     print_command "ssh-keygen -L -f /tmp/demo_ssh_key-cert.pub"
     echo ""
     ssh-keygen -L -f "${demo_key}-cert.pub" 2>/dev/null | head -15 || true
