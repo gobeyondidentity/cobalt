@@ -22,6 +22,7 @@ var (
 )
 
 func main() {
+	flag.CommandLine.SetOutput(os.Stdout)
 	flag.Parse()
 
 	log.Printf("Fabric Console API v%s starting...", version.Version)
