@@ -114,11 +114,10 @@ print_failure_highlight() {
 
 run_command() {
     local cmd="$1"
+    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
     print_command "$cmd"
     echo ""
     eval "$cmd" 2>&1 || true
-    echo ""
-    echo -e "${DIM}────────────────────────────────────────────────────────────────────${RESET}"
     echo ""
 }
 
