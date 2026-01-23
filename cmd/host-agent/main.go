@@ -38,6 +38,9 @@ func main() {
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	forceTmfifo := flag.Bool("force-tmfifo", false, "Fail if tmfifo is not available (no network fallback)")
 	forceNetwork := flag.Bool("force-network", false, "Use network enrollment even if tmfifo is available")
+	forceComCh := flag.Bool("force-comch", false, "Force DOCA ComCh transport (requires BlueField PCIe connection)")
+	docaPCIAddr := flag.String("doca-pci-addr", "", "PCI address of BlueField device (e.g., \"0000:01:00.0\")")
+	docaServerName := flag.String("doca-server-name", "secure-infra", "ComCh server name to connect to")
 	authKeyPath := flag.String("auth-key", "/etc/secureinfra/host-agent.key", "Path to host authentication key")
 	flag.Parse()
 
@@ -66,11 +69,14 @@ func main() {
 
 	// Build transport configuration
 	transportCfg := &transport.Config{
-		TmfifoPath:   "", // Use default
-		DPUAddr:      *dpuAgent,
-		Hostname:     hostname,
-		ForceTmfifo:  *forceTmfifo,
-		ForceNetwork: *forceNetwork,
+		TmfifoPath:     "", // Use default
+		DPUAddr:        *dpuAgent,
+		Hostname:       hostname,
+		ForceTmfifo:    *forceTmfifo,
+		ForceNetwork:   *forceNetwork,
+		ForceComCh:     *forceComCh,
+		DOCAPCIAddr:    *docaPCIAddr,
+		DOCAServerName: *docaServerName,
 	}
 
 	// Select transport via NewHostTransport

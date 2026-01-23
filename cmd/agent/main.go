@@ -31,12 +31,17 @@ var (
 	listenAddr      = flag.String("listen", ":18051", "gRPC listen address")
 	bmcAddr         = flag.String("bmc-addr", "", "BMC address for Redfish API (optional)")
 	bmcUser         = flag.String("bmc-user", "root", "BMC username")
-	localAPIEnabled  = flag.Bool("local-api", false, "Enable local HTTP API for Host Agent")
-	localListen      = flag.String("local-listen", "localhost:9443", "Local API listen address")
-	allowTmfifoNet   = flag.Bool("allow-tmfifo-net", false, "Allow connections from tmfifo_net subnet (192.168.100.0/24)")
+	localAPIEnabled = flag.Bool("local-api", false, "Enable local HTTP API for Host Agent")
+	localListen     = flag.String("local-listen", "localhost:9443", "Local API listen address")
+	allowTmfifoNet  = flag.Bool("allow-tmfifo-net", false, "Allow connections from tmfifo_net subnet (192.168.100.0/30)")
 	controlPlane    = flag.String("control-plane", "", "Control Plane URL (required if local API enabled)")
 	dpuName         = flag.String("dpu-name", "", "DPU name for registration (required if local API enabled)")
 	keystorePath    = flag.String("keystore", "/var/lib/secureinfra/known_hosts.json", "Path to TOFU keystore for host authentication")
+
+	// DOCA ComCh configuration
+	docaPCIAddr    = flag.String("doca-pci-addr", "", "PCI address of DOCA device on DPU (e.g., \"03:00.0\")")
+	docaRepPCIAddr = flag.String("doca-rep-pci-addr", "", "Representor PCI address for host connection")
+	docaServerName = flag.String("doca-server-name", "secure-infra", "ComCh server name for host communication")
 )
 
 func main() {
@@ -107,7 +112,7 @@ func main() {
 		}
 
 		// Try to start transport listener for Host Agent communication
-		hostListener = tryStartTransportListener()
+		hostListener = tryStartTransportListener(*docaPCIAddr, *docaRepPCIAddr, *docaServerName)
 		if hostListener != nil {
 			localServer.SetHostListener(hostListener)
 			agentServer.SetHostListener(hostListener)
@@ -203,16 +208,21 @@ func startLocalAPI(ctx context.Context, cfg *agent.Config, agentServer *agent.Se
 // tryStartTransportListener attempts to create a transport listener for Host Agent communication.
 // Selection priority: ComCh (if DOCA available) -> Tmfifo -> Network
 // Returns nil if no transport is available.
-func tryStartTransportListener() transport.TransportListener {
-	// Build config from agent configuration
+func tryStartTransportListener(pciAddr, repPCIAddr, serverName string) transport.TransportListener {
+	// Build config from CLI flags
 	cfg := &transport.Config{
+		DOCAPCIAddr:    pciAddr,
+		DOCARepPCIAddr: repPCIAddr,
+		DOCAServerName: serverName,
 		// TmfifoPath uses default if empty
-		// DOCAPCIAddr, DOCARepPCIAddr, DOCAServerName can be set via agent config if needed
 	}
 
 	// Try ComCh first (priority 1)
 	if transport.DOCAComchAvailable() {
 		log.Printf("transport: DOCA ComCh available, creating ComCh listener")
+		if pciAddr != "" {
+			log.Printf("transport: using PCI address %s, rep %s, server name %s", pciAddr, repPCIAddr, serverName)
+		}
 		listener, err := transport.NewDPUTransportListener(cfg)
 		if err != nil {
 			log.Printf("transport: ComCh listener creation failed (%v), falling back", err)
@@ -317,7 +327,7 @@ func handleTransportConnection(ctx context.Context, t transport.Transport, local
 func handleTransportMessage(ctx context.Context, msg *transport.Message, localServer *localapi.Server) *transport.Message {
 	switch msg.Type {
 	case transport.MessageEnrollRequest:
-		return handleEnrollRequest(ctx, msg)
+		return handleEnrollRequest(ctx, msg, localServer)
 	case transport.MessagePostureReport:
 		return handlePostureReport(ctx, msg)
 	case transport.MessageCredentialAck:
@@ -330,7 +340,7 @@ func handleTransportMessage(ctx context.Context, msg *transport.Message, localSe
 }
 
 // handleEnrollRequest processes ENROLL_REQUEST messages from the Host Agent.
-func handleEnrollRequest(ctx context.Context, msg *transport.Message) *transport.Message {
+func handleEnrollRequest(ctx context.Context, msg *transport.Message, localServer *localapi.Server) *transport.Message {
 	var payload struct {
 		Hostname string          `json:"hostname"`
 		Posture  json.RawMessage `json:"posture,omitempty"`
@@ -340,18 +350,44 @@ func handleEnrollRequest(ctx context.Context, msg *transport.Message) *transport
 		return nil
 	}
 
-	// TODO: Bridge to local API registration
 	log.Printf("transport: enroll request from host '%s'", payload.Hostname)
+
+	// Parse posture if provided
+	var posture *localapi.PosturePayload
+	if len(payload.Posture) > 0 {
+		posture = &localapi.PosturePayload{}
+		if err := json.Unmarshal(payload.Posture, posture); err != nil {
+			log.Printf("transport: invalid posture payload: %v", err)
+			// Continue without posture rather than failing
+			posture = nil
+		}
+	}
+
+	// Bridge to control plane registration via local API server
+	resp, err := localServer.RegisterViaTransport(ctx, payload.Hostname, posture)
+	if err != nil {
+		log.Printf("transport: registration failed: %v", err)
+		respPayload, _ := json.Marshal(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return &transport.Message{
+			Type:    transport.MessageEnrollResponse,
+			Payload: respPayload,
+			ID:      generateMessageNonce(),
+		}
+	}
 
 	respPayload, _ := json.Marshal(map[string]interface{}{
 		"success":  true,
-		"dpu_name": "dpu-agent",
+		"host_id":  resp.HostID,
+		"dpu_name": resp.DPUName,
 	})
 
 	return &transport.Message{
 		Type:    transport.MessageEnrollResponse,
 		Payload: respPayload,
-		ID:   generateMessageNonce(),
+		ID:      generateMessageNonce(),
 	}
 }
 
@@ -376,7 +412,7 @@ func handlePostureReport(ctx context.Context, msg *transport.Message) *transport
 	return &transport.Message{
 		Type:    transport.MessagePostureAck,
 		Payload: respPayload,
-		ID:   generateMessageNonce(),
+		ID:      generateMessageNonce(),
 	}
 }
 

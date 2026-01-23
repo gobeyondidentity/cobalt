@@ -30,6 +30,7 @@ dist/
 
 # Binaries
 /agent
+/host-agent
 /bluectl
 /dpuemu/dpuemu
 bin/

@@ -40,7 +40,7 @@ type Config struct {
 	// AllowedHostnames restricts which hostnames can register (empty = allow all)
 	AllowedHostnames []string
 
-	// AllowTmfifoNet permits connections from tmfifo_net subnet (192.168.100.0/24).
+	// AllowTmfifoNet permits connections from tmfifo_net subnet (192.168.100.0/30).
 	// Enable this when using IP-over-PCIe via rshim's tmfifo_net0 interface.
 	AllowTmfifoNet bool
 
@@ -185,7 +185,7 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 }
 
 // tmfifoNetSubnet is the IP range used by rshim's tmfifo_net0 interface (IP-over-PCIe).
-var tmfifoNetSubnet = mustParseCIDR("192.168.100.0/24")
+var tmfifoNetSubnet = mustParseCIDR("192.168.100.0/30")
 
 func mustParseCIDR(s string) *net.IPNet {
 	_, ipnet, err := net.ParseCIDR(s)
@@ -427,4 +427,60 @@ func (s *Server) GetQueuedCredentials() []*QueuedCredential {
 	creds := s.credentialQueue
 	s.credentialQueue = nil
 	return creds
+}
+
+// RegisterViaTransport handles host registration received via ComCh or other transport.
+// This replicates the logic from handleRegister but accepts parameters directly
+// instead of parsing from an HTTP request.
+func (s *Server) RegisterViaTransport(ctx context.Context, hostname string, posture *PosturePayload) (*RegisterResponse, error) {
+	// Validate request
+	if hostname == "" {
+		return nil, fmt.Errorf("hostname is required")
+	}
+
+	// Check hostname allowlist
+	if !s.isHostnameAllowed(hostname) {
+		log.Printf("Transport: registration rejected for hostname %s (not in allowlist)", hostname)
+		return nil, fmt.Errorf("hostname not allowed to register with this DPU")
+	}
+
+	// Check if another host is already paired
+	if !s.isPairedHost(hostname) {
+		log.Printf("Transport: registration rejected for %s (DPU already paired with different host)", hostname)
+		return nil, fmt.Errorf("DPU is already paired with a different host")
+	}
+
+	// Get current attestation status
+	attestation := s.getAttestation(ctx)
+	log.Printf("Transport: registering host %s with attestation status %s", hostname, attestation.Status)
+
+	// Build proxied request with DPU identity
+	proxiedReq := ProxiedRegisterRequest{
+		Hostname:          hostname,
+		Posture:           posture,
+		DPUName:           s.config.DPUName,
+		DPUID:             s.config.DPUID,
+		DPUSerial:         s.config.DPUSerial,
+		AttestationStatus: attestation.Status,
+	}
+
+	// Proxy to Control Plane
+	resp, err := s.controlPlane.RegisterHost(ctx, &proxiedReq)
+	if err != nil {
+		log.Printf("Transport: Control Plane registration failed: %v", err)
+		return nil, fmt.Errorf("Control Plane registration failed: %w", err)
+	}
+
+	// Record the pairing
+	if !s.setPairedHost(hostname, resp.HostID) {
+		// Race condition: another registration succeeded first
+		return nil, fmt.Errorf("DPU was paired with different host during registration")
+	}
+
+	log.Printf("Transport: host %s registered successfully as %s", hostname, resp.HostID)
+
+	return &RegisterResponse{
+		HostID:  resp.HostID,
+		DPUName: s.config.DPUName,
+	}, nil
 }

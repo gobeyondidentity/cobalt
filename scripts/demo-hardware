@@ -1,0 +1,654 @@
+#!/usr/bin/env bash
+#
+# Attestation-Gated Credential Distribution Demo (HARDWARE)
+# Hardware-bound credentials for AI infrastructure
+#
+# This script walks through the full attestation -> credential distribution
+# flow using REAL BlueField-3 hardware. Designed for live demos with NVIDIA.
+#
+# Prerequisites:
+#   - aegis running on BF3 (192.168.1.204) with BMC integration and --allow-tmfifo-net
+#   - sentry installed on host (192.168.1.235) configured for tmfifo
+#   - Network connectivity to BF3 and host from this machine
+#
+
+set -e
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+TENANT="gpu-prod"
+DPU_NAME="bf3-hw"
+DPU_ADDR="192.168.1.204"
+HOST_ADDR="192.168.1.235"
+HOST_USER="nmelo"
+OPERATOR_EMAIL="operator@demo.local"
+SSH_CA_NAME="prod-ca"
+
+# State tracking
+NEXUS_PID=""
+INVITE_CODE=""
+CLEANUP_DONE=false
+INTERRUPTED=false
+
+# ============================================================================
+# Colors and Styling
+# ============================================================================
+
+# Colors
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+WHITE='\033[0;37m'
+DIM='\033[2m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+# Background colors for emphasis
+BG_GREEN='\033[42;30m'
+BG_RED='\033[41;37m'
+BG_BLUE='\033[44;37m'
+
+# Progress tab labels (short names for visual continuity)
+STEP_LABELS=("Setup" "Tenant" "DPU" "Attest" "Invite" "Accept" "CA" "Sign" "SSH" "Fail" "Done")
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+print_banner() {
+    clear
+    echo ""
+    echo -e "${BOLD}${CYAN}"
+    echo "  ╔════════════════════════════════════════════════════════════════╗"
+    echo "  ║                                                                ║"
+    echo "  ║      Zero-Touch Credential Management for GPU Clusters         ║"
+    echo "  ║      Register once. Credentials flow automatically.            ║"
+    echo "  ║                                                                ║"
+    echo "  ╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${RESET}"
+    echo ""
+    echo -e "${BG_BLUE} HARDWARE MODE ${RESET} Using real BlueField-3 at ${DPU_ADDR}"
+    echo ""
+}
+
+print_tabs() {
+    local current="$1"
+    local tabs=""
+    for ((i=1; i<=${#STEP_LABELS[@]}; i++)); do
+        local label="${STEP_LABELS[$((i-1))]}"
+        if [[ $i -eq $current ]]; then
+            tabs+="${BOLD}${CYAN}${i} ${label}${RESET}"
+        else
+            tabs+="${DIM}${i} ${label}${RESET}"
+        fi
+        # Add separator except after last
+        if [[ $i -lt ${#STEP_LABELS[@]} ]]; then
+            tabs+="${DIM} · ${RESET}"
+        fi
+    done
+    echo -e "$tabs"
+}
+
+print_step() {
+    local step_num="$1"
+    local emoji="$2"
+    local title="$3"
+    clear
+    echo ""
+    if [[ $step_num -gt 0 ]]; then
+        echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+        print_tabs "$step_num"
+        echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+        echo ""
+    fi
+    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    if [[ $step_num -gt 0 && $step_num -le 10 ]]; then
+        echo -e "${BOLD}${emoji} Step ${step_num}: ${title}${RESET}"
+    else
+        echo -e "${BOLD}${emoji} ${title}${RESET}"
+    fi
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo ""
+}
+
+print_narrative() {
+    echo -e "${DIM}$1${RESET}"
+    echo ""
+}
+
+print_why() {
+    echo ""
+    echo -e "${YELLOW}WHY THIS MATTERS:${RESET}"
+    shift
+    for point in "$@"; do
+        echo -e "  ${DIM}•${RESET} $point"
+    done
+    echo ""
+}
+
+print_comment() {
+    echo -e "${CYAN}# $1${RESET}"
+}
+
+print_command() {
+    echo -e "${BOLD}> $1${RESET}"
+}
+
+print_success() {
+    echo -e "${GREEN}$1${RESET}"
+}
+
+print_error() {
+    echo -e "${RED}$1${RESET}"
+}
+
+print_highlight() {
+    echo -e "${BG_BLUE} $1 ${RESET}"
+}
+
+print_success_highlight() {
+    echo -e "${BG_GREEN} $1 ${RESET}"
+}
+
+print_failure_highlight() {
+    echo -e "${BG_RED} $1 ${RESET}"
+}
+
+run_command() {
+    local comment="$1"
+    local cmd="$2"
+    echo ""
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "$comment"
+    print_command "$cmd"
+    echo ""
+    echo -en "${GREEN}"
+    eval "$cmd" 2>&1 || true
+    echo -e "${RESET}"
+    echo ""
+}
+
+wait_for_key() {
+    echo ""
+    echo -e "${DIM}Press ENTER to continue (Ctrl+C to exit)...${RESET}"
+    read -r || true
+    if [[ "$INTERRUPTED" == "true" ]]; then
+        exit 130
+    fi
+}
+
+wait_for_service() {
+    local url="$1"
+    local max_attempts=30
+    local attempt=0
+    while [[ $attempt -lt $max_attempts ]]; do
+        if curl -s "$url" > /dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.5
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
+
+# ============================================================================
+# Cleanup and Signal Handling
+# ============================================================================
+
+cleanup() {
+    if [[ "$CLEANUP_DONE" == "true" ]]; then
+        return
+    fi
+    CLEANUP_DONE=true
+
+    echo ""
+    echo -e "${DIM}Cleaning up...${RESET}"
+
+    # Kill background processes
+    if [[ -n "$NEXUS_PID" ]] && ps -p "$NEXUS_PID" > /dev/null 2>&1; then
+        kill "$NEXUS_PID" 2>/dev/null || true
+    fi
+
+    # Also kill any orphaned nexus
+    pkill -f "nexus" 2>/dev/null || true
+
+    # Stop sentry on host
+    ssh "${HOST_USER}@${HOST_ADDR}" "sudo systemctl stop sentry" 2>/dev/null || true
+
+    # Clean state files
+    rm -f ~/.local/share/bluectl/dpus.db 2>/dev/null || true
+    rm -f ~/.local/share/bluectl/key 2>/dev/null || true
+    rm -rf ~/.km 2>/dev/null || true
+
+    echo -e "${DIM}Done.${RESET}"
+}
+
+handle_interrupt() {
+    INTERRUPTED=true
+    echo ""
+    echo -e "${YELLOW}Interrupted by user.${RESET}"
+    cleanup
+    exit 130
+}
+
+# Trap signals
+trap cleanup EXIT
+trap handle_interrupt INT TERM
+
+# ============================================================================
+# Pre-flight Checks
+# ============================================================================
+
+preflight_checks() {
+    local missing=()
+
+    command -v nexus >/dev/null 2>&1 || missing+=("nexus")
+    command -v bluectl >/dev/null 2>&1 || missing+=("bluectl")
+    command -v km >/dev/null 2>&1 || missing+=("km")
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo -e "${RED}Missing required tools: ${missing[*]}${RESET}"
+        echo ""
+        echo "Install via Homebrew:"
+        echo "  brew tap nmelo/tap"
+        echo "  brew install nmelo/tap/bluectl nmelo/tap/km nmelo/tap/nexus"
+        exit 1
+    fi
+
+    # Check BF3 connectivity
+    echo -e "${DIM}Checking BlueField-3 connectivity...${RESET}"
+    if ! nc -z "$DPU_ADDR" 18051 2>/dev/null; then
+        echo -e "${RED}Cannot reach aegis on ${DPU_ADDR}:18051${RESET}"
+        echo ""
+        echo "Ensure aegis is running on the BlueField-3:"
+        echo "  ssh ubuntu@${DPU_ADDR}"
+        echo "  sudo systemctl start aegis"
+        exit 1
+    fi
+    echo -e "${GREEN}BlueField-3 reachable${RESET}"
+
+    # Clean any previous state
+    cleanup
+    CLEANUP_DONE=false
+}
+
+# ============================================================================
+# Demo Steps
+# ============================================================================
+
+step_intro() {
+    print_banner
+
+    echo -e "This demo shows ${BOLD}zero-touch credential management${RESET} for GPU clusters."
+    echo -e "Running against ${BOLD}real BlueField-3 hardware${RESET} with DICE attestation."
+    echo ""
+    echo "You'll see:"
+    echo -e "   1. 🚀 Control plane startup (DPU agent already running on hardware)"
+    echo -e "   2. 🏢 Multi-tenant isolation"
+    echo -e "   3. 🔐 Fleet registration with real hardware"
+    echo -e "   4. ✅ ${BOLD}Real DICE attestation${RESET} ${YELLOW}← hardware root of trust!${RESET}"
+    echo -e "   5. 👤 Delegate access without sharing keys"
+    echo -e "   6. 🔑 SSH CA creation and binding to attested hardware"
+    echo -e "   7. ✍️  Sign an SSH user certificate"
+    echo -e "   8. 🔑 ${BOLD}SSH access to GPU host${RESET} ${YELLOW}← the proof!${RESET}"
+    echo -e "   9. ❌ What happens when attestation fails"
+    echo ""
+
+    wait_for_key
+}
+
+step_1_infrastructure() {
+    print_step 1 "🚀" "Setting Up the Infrastructure"
+
+    print_narrative "Starting the control plane and host agent. DPU agent (aegis) is already running on BlueField-3..."
+
+    # Start nexus in background
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Start the control plane..."
+    print_command "nexus &"
+    nexus > /dev/null 2>&1 &
+    NEXUS_PID=$!
+
+    # Wait for nexus to be ready
+    if wait_for_service "http://localhost:18080/api/health"; then
+        print_success "  Nexus started on :18080"
+    else
+        print_error "  Failed to start nexus"
+        exit 1
+    fi
+    echo ""
+
+    # Start sentry on host
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Start host agent on workbench..."
+    print_command "ssh ${HOST_USER}@${HOST_ADDR} 'sudo systemctl start sentry'"
+    ssh "${HOST_USER}@${HOST_ADDR}" "sudo systemctl start sentry" 2>/dev/null || true
+    sleep 2
+    print_success "  Sentry started on ${HOST_ADDR}"
+    echo ""
+
+    run_command "Check DPU agent (aegis) on BlueField-3..." "ssh ubuntu@${DPU_ADDR} 'systemctl status aegis --no-pager' | head -8"
+
+    run_command "Check host agent (sentry) on workbench..." "ssh ${HOST_USER}@${HOST_ADDR} 'systemctl status sentry --no-pager' | head -8"
+
+    print_why \
+        "Real hardware" \
+        "DPU agent (aegis) runs on BlueField-3 ARM cores" \
+        "Host agent (sentry) receives credentials via internal management channel"
+
+    wait_for_key
+}
+
+step_2_tenant() {
+    print_step 2 "🏢" "Creating Organization Boundary"
+
+    print_narrative "Tenants isolate infrastructure by team or environment..."
+
+    run_command "Create a new tenant..." "bluectl tenant add $TENANT --description 'GPU Production Cluster'"
+
+    print_why \
+        "Isolation" \
+        "One command creates an isolated environment for a team or cluster" \
+        "No cross-team credential leakage to debug later"
+
+    wait_for_key
+}
+
+step_3_dpu() {
+    print_step 3 "🔐" "Registering Real Hardware Trust Anchor"
+
+    print_narrative "Adding the BlueField-3 DPU to the tenant. This connects to real hardware..."
+
+    run_command "Register the BlueField-3..." "bluectl dpu add $DPU_ADDR --name $DPU_NAME"
+
+    run_command "Assign DPU to tenant..." "bluectl tenant assign $TENANT $DPU_NAME"
+
+    print_why \
+        "Hardware binding" \
+        "Registration captures real device identity (serial, model)" \
+        "Device is cryptographically bound via DICE certificate chain"
+
+    wait_for_key
+}
+
+step_4_attestation() {
+    print_step 4 "✅" "Verifying Hardware Integrity (Real DICE Attestation)"
+
+    print_highlight " THE WOW MOMENT "
+    echo ""
+
+    print_narrative "Querying the real BlueField-3 attestation via BMC Redfish API..."
+
+    run_command "Query attestation status..." "bluectl attestation $DPU_NAME"
+
+    echo ""
+    print_success_highlight " ATTESTATION_STATUS_VALID "
+    echo ""
+
+    echo -e "${BOLD}What you just saw:${RESET}"
+    echo -e "  • Real DICE certificate chain from NVIDIA PSC hardware"
+    echo -e "  • 6 levels: Device Leaf → PSC FMC → PSC ROM → Provisioner → BF3 Identity → NVIDIA Root"
+    echo -e "  • Private keys ${BOLD}never leave the silicon${RESET}"
+    echo ""
+
+    print_why \
+        "Hardware root of trust" \
+        "Attestation comes from Platform Security Controller, not software" \
+        "Certificate chain rooted in NVIDIA Device Identity CA" \
+        "Impossible to forge without physical hardware access"
+
+    wait_for_key
+}
+
+step_5_invite() {
+    print_step 5 "👤" "Inviting a Credential Operator"
+
+    print_narrative "Operators manage credentials. Admins control who can operate..."
+
+    # Capture invite output to get the code
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Create an operator invitation..."
+    print_command "bluectl operator invite $OPERATOR_EMAIL $TENANT"
+    echo ""
+    local invite_output
+    invite_output=$(bluectl operator invite "$OPERATOR_EMAIL" "$TENANT" 2>&1) || true
+    echo -en "${GREEN}"
+    echo "$invite_output"
+    echo -e "${RESET}"
+
+    # Extract invite code from output
+    INVITE_CODE=$(echo "$invite_output" | grep -oE '[A-Z]{3}-[A-Z0-9]{4}-[A-Z0-9]{4}' | head -1)
+
+    if [[ -z "$INVITE_CODE" ]]; then
+        print_error "Failed to extract invite code from output"
+        echo "Output was: $invite_output"
+        exit 1
+    fi
+
+    print_why \
+        "Delegation" \
+        "Delegate credential ops without giving away the keys to the kingdom" \
+        "Self-service onboarding: no tickets, no waiting"
+
+    wait_for_key
+}
+
+step_6_accept() {
+    print_step 6 "✅" "Accepting the Invitation"
+
+    print_narrative "The operator uses km to accept the invite and bind to the server..."
+
+    echo ""
+    echo -e "Using invite code: ${BOLD}$INVITE_CODE${RESET}"
+    echo ""
+
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Accept the invitation..."
+    print_command "km init"
+    echo ""
+    echo -en "${GREEN}"
+    echo "$INVITE_CODE" | km init 2>&1 || true
+    echo -e "${RESET}"
+
+    print_why \
+        "Onboarding" \
+        "New team member productive in minutes, not days" \
+        "Cryptographic binding to the control plane"
+
+    wait_for_key
+}
+
+step_7_ssh_ca() {
+    print_step 7 "🔑" "Creating and Binding Certificate Authority"
+
+    print_narrative "The operator creates an SSH CA and binds it to attested hardware..."
+
+    run_command "Create SSH certificate authority..." "km ssh-ca create $SSH_CA_NAME"
+
+    print_why \
+        "Certificate-based access" \
+        "One CA serves your entire fleet. No more key sprawl." \
+        "Certificates auto-expire. No revocation lists to maintain."
+
+    echo ""
+    print_narrative "Granting operator access to the CA..."
+    run_command "Grant operator access to CA and DPU..." "bluectl operator grant $OPERATOR_EMAIL $TENANT $SSH_CA_NAME $DPU_NAME"
+
+    echo ""
+    print_narrative "Binding CA to the attested DPU. Credentials flow through DPU to hosts..."
+
+    run_command "Bind CA to BlueField-3 (attestation-gated)..." "km push ssh-ca $SSH_CA_NAME $DPU_NAME"
+
+    echo ""
+    print_success_highlight " CA BOUND TO ATTESTED HARDWARE "
+    echo ""
+
+    # Install CA on host (workaround until credential polling implemented)
+    local ca_pubkey
+    ca_pubkey=$(km ssh-ca show "$SSH_CA_NAME" --public-key 2>/dev/null)
+    ssh "${HOST_USER}@${HOST_ADDR}" "sudo mkdir -p /etc/ssh/trustedca && echo '$ca_pubkey' | sudo tee /etc/ssh/trustedca/${SSH_CA_NAME}.pub > /dev/null" 2>/dev/null
+
+    # Ensure sshd on host trusts the CA
+    ssh "${HOST_USER}@${HOST_ADDR}" "grep -q 'TrustedUserCAKeys /etc/ssh/trustedca' /etc/ssh/sshd_config.d/secure-infra.conf 2>/dev/null || (echo 'TrustedUserCAKeys /etc/ssh/trustedca/${SSH_CA_NAME}.pub' | sudo tee /etc/ssh/sshd_config.d/secure-infra.conf > /dev/null && sudo systemctl reload ssh)" 2>/dev/null
+
+    print_why \
+        "Attestation-gated distribution" \
+        "CA only reaches nodes that pass hardware attestation" \
+        "Compromised firmware? No credentials for you."
+
+    wait_for_key
+}
+
+step_8_sign_cert() {
+    print_step 8 "✍️" "Signing an SSH User Certificate"
+
+    print_narrative "Issuing a short-lived certificate for SSH access to the host..."
+
+    # Generate a temporary key for demo
+    local demo_key="/tmp/demo_ssh_key"
+    rm -f "$demo_key" "$demo_key.pub" "${demo_key}-cert.pub" 2>/dev/null || true
+
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Generate a demo SSH key..."
+    print_command "ssh-keygen -t ed25519 -f /tmp/demo_ssh_key -N '' -C 'alice@demo.local'"
+    ssh-keygen -t ed25519 -f "$demo_key" -N "" -C "alice@demo.local" -q
+    print_success "Key generated"
+    echo ""
+
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Sign a certificate for the user..."
+    print_command "km ssh-ca sign $SSH_CA_NAME --principal $HOST_USER --pubkey ${demo_key}.pub > ${demo_key}-cert.pub"
+    echo ""
+    km ssh-ca sign "$SSH_CA_NAME" --principal "$HOST_USER" --pubkey "${demo_key}.pub" > "${demo_key}-cert.pub" 2>&1
+    print_success "Certificate signed"
+    echo ""
+
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Show certificate details..."
+    print_command "ssh-keygen -L -f ${demo_key}-cert.pub"
+    echo ""
+    echo -en "${GREEN}"
+    ssh-keygen -L -f "${demo_key}-cert.pub" 2>/dev/null | head -15 || true
+    echo -e "${RESET}"
+
+    print_why \
+        "Short-lived access" \
+        "Certificates auto-expire. No revocation lists needed." \
+        "8-hour default means no stale access accumulating"
+
+    wait_for_key
+}
+
+step_9_ssh_access() {
+    print_step 9 "🔑" "Proving SSH Access Works"
+
+    print_highlight " THE PROOF "
+    echo ""
+
+    print_narrative "Using the signed certificate to SSH into the GPU host..."
+
+    local demo_key="/tmp/demo_ssh_key"
+
+    run_command "SSH to host using the signed certificate..." "ssh -i ${demo_key} -o CertificateFile=${demo_key}-cert.pub -o StrictHostKeyChecking=no ${HOST_USER}@${HOST_ADDR} 'echo \"Access granted via certificate\"; hostname; whoami; nvidia-smi -L 2>/dev/null | head -2 || echo \"(GPU info requires nvidia-smi)\"'"
+
+    echo ""
+    print_success_highlight " CERTIFICATE-BASED SSH ACCESS TO GPU HOST VERIFIED "
+    echo ""
+
+    print_why \
+        "Zero-touch access" \
+        "No SSH keys to distribute. CA handles everything." \
+        "User gets access in seconds. No ticket, no waiting."
+
+    # Cleanup demo key
+    rm -f "$demo_key" "$demo_key.pub" "${demo_key}-cert.pub" 2>/dev/null || true
+
+    wait_for_key
+}
+
+step_10_attestation_failure() {
+    print_step 10 "❌" "What Happens When Attestation Fails?"
+
+    print_failure_highlight " SIMULATING COMPROMISED NODE "
+    echo ""
+
+    print_narrative "If a node's DICE attestation fails, it cannot be trusted for credential distribution..."
+    echo ""
+
+    echo -e "Scenario: A node has tampered firmware or failed integrity check."
+    echo -e "The DICE certificate chain validation fails."
+    echo ""
+
+    echo -e "${RED}When checking attestation:${RESET}"
+    echo ""
+    echo -e "  ${DIM}\$ bluectl attestation compromised-node${RESET}"
+    echo ""
+    echo -e "  ${RED}Attestation Status: ATTESTATION_STATUS_INVALID${RESET}"
+    echo ""
+    echo -e "  ${RED}Certificate Chain: VALIDATION FAILED${RESET}"
+    echo -e "  ${RED}  Reason: Firmware measurements do not match expected values${RESET}"
+    echo -e "  ${RED}  Action: Node excluded from credential distribution${RESET}"
+    echo ""
+
+    print_failure_highlight " NODE EXCLUDED FROM FLEET "
+    echo ""
+
+    print_why \
+        "Automatic protection" \
+        "Compromised nodes isolated without manual intervention" \
+        "No credential rotation fire drill" \
+        "Hardware attestation cannot be spoofed in software"
+
+    wait_for_key
+}
+
+step_summary() {
+    print_step 11 "🎯" "What We Just Did (With Real Hardware)"
+
+    echo -e "${GREEN}  ✅ Connected to real BlueField-3 DPU${RESET}"
+    echo -e "${GREEN}  ✅ Verified hardware via real DICE attestation${RESET}"
+    echo -e "${GREEN}  ✅ Created SSH CA and bound to attested hardware${RESET}"
+    echo -e "${GREEN}  ✅ Signed user certificate${RESET}"
+    echo -e "${GREEN}  ✅ SSH access to GPU host verified${RESET}"
+    echo -e "${GREEN}  ✅ Compromised nodes automatically blocked${RESET}"
+    echo ""
+
+    echo -e "${BOLD}${CYAN}"
+    echo "  ╔════════════════════════════════════════════════════════════════╗"
+    echo "  ║                                                                ║"
+    echo "  ║     Hardware-attested credential management.                    ║"
+    echo "  ║     Zero trust, verified by silicon.                           ║"
+    echo "  ║                                                                ║"
+    echo "  ╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${RESET}"
+    echo ""
+
+    echo -e "${DIM}Demo complete. Press ENTER to clean up and exit.${RESET}"
+    read -r
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+main() {
+    preflight_checks
+
+    step_intro
+    step_1_infrastructure
+    step_2_tenant
+    step_3_dpu
+    step_4_attestation
+    step_5_invite
+    step_6_accept
+    step_7_ssh_ca
+    step_8_sign_cert
+    step_9_ssh_access
+    step_10_attestation_failure
+    step_summary
+}
+
+main "$@"

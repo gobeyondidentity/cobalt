@@ -104,7 +104,11 @@ func NewHostTransport(cfg *Config) (Transport, error) {
 		if !DOCAComchAvailable() {
 			return nil, errors.New("DOCA ComCh not available (required by ForceComCh)")
 		}
-		return NewDOCAComchTransport()
+		clientCfg := DOCAComchClientConfig{
+			PCIAddr:    cfg.DOCAPCIAddr,
+			ServerName: cfg.DOCAServerName,
+		}
+		return NewDOCAComchClient(clientCfg)
 	}
 
 	// Determine tmfifo path
@@ -122,8 +126,12 @@ func NewHostTransport(cfg *Config) (Transport, error) {
 	}
 
 	// Priority 2: DOCA Comch (preferred on BlueField)
-	if DOCAComchAvailable() {
-		return NewDOCAComchTransport()
+	if DOCAComchAvailable() && cfg.DOCAPCIAddr != "" {
+		clientCfg := DOCAComchClientConfig{
+			PCIAddr:    cfg.DOCAPCIAddr,
+			ServerName: cfg.DOCAServerName,
+		}
+		return NewDOCAComchClient(clientCfg)
 	}
 
 	// Priority 3: Tmfifo device (legacy BlueField or emulator)

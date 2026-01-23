@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-01-23
+
+### Added
+- **DOCA ComCh CLI Flags** for hardware configuration:
+  - aegis: `--doca-pci-addr`, `--doca-rep-pci-addr`, `--doca-server-name`
+  - sentry: `--force-comch`, `--doca-pci-addr`, `--doca-server-name`
+- **IP-over-PCIe Support**: `--allow-tmfifo-net` flag for aegis to accept connections from tmfifo_net subnet
+- **Interactive Demo Script** for NVIDIA presentation with DPU-to-host credential flow
+
+### Changed
+- **Multi-arch DOCA Builds**: CGO LDFLAGS now support both arm64 (DPU) and amd64 (host) architectures
+
+### Fixed
+- **DOCA ComCh Transport**: Selector now uses real `NewDOCAComchClient()` implementation instead of stub
+- **ComCh Enrollment Bridging**: `handleEnrollRequest()` now calls control plane via `RegisterViaTransport()`, enabling `km push` over ComCh
+- **CLI Help Output**: nexus `--help` now outputs to stdout instead of stderr
+- **Homebrew Tap Name**: Fixed tap reference from `beyondidentity/tap` to `nmelo/tap`
+
 ## [0.6.5] - 2026-01-21
 
 ### Security
