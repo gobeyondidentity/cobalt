@@ -125,7 +125,9 @@ run_command() {
     print_comment "$comment"
     print_command "$cmd"
     echo ""
+    echo -e "${DIM}"
     eval "$cmd" 2>&1 || true
+    echo -e "${RESET}"
     echo ""
 }
 
