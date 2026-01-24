@@ -14,7 +14,7 @@ section: admin
 priority: optional
 
 contents:
-  - src: dpu-agent
+  - src: aegis
     dst: /usr/bin/aegis
     file_info:
       mode: 0755

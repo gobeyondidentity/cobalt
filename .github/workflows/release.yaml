@@ -94,9 +94,9 @@ jobs:
             [ -f "$pkg" ] && cloudsmith push rpm --republish ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
           done
 
-  # Build DPU agent on BlueField self-hosted runner
+  # Build aegis (DPU agent) on BlueField self-hosted runner
   # Runs after goreleaser to avoid race conditions on GitHub release uploads
-  dpu-agent:
+  aegis:
     runs-on: [self-hosted, dpu-arm64]
     needs: [goreleaser]
     steps:
@@ -107,19 +107,19 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Build dpu-agent with DOCA
+      - name: Build aegis with DOCA
         run: |
           export PATH=/usr/local/go/bin:$PATH
           export CGO_ENABLED=1
           go build -tags doca \
             -ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
-            -o dpu-agent ./cmd/agent
+            -o aegis ./cmd/agent
 
       - name: Generate checksum
-        run: sha256sum dpu-agent > dpu-agent_linux_arm64.sha256
+        run: sha256sum aegis > aegis_linux_arm64.sha256
 
       - name: Create tarball
-        run: tar -czvf dpu-agent_linux_arm64.tar.gz dpu-agent
+        run: tar -czvf aegis_linux_arm64.tar.gz aegis
 
       - name: Install GitHub CLI
         run: |
@@ -132,8 +132,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "v${{ steps.version.outputs.VERSION }}" \
-            dpu-agent_linux_arm64.tar.gz \
-            dpu-agent_linux_arm64.sha256 \
+            aegis_linux_arm64.tar.gz \
+            aegis_linux_arm64.sha256 \
             --clobber
 
       - name: Copy DOCA runtime libraries
@@ -145,8 +145,8 @@ jobs:
       - name: Build Linux packages
         run: |
           export VERSION=${{ steps.version.outputs.VERSION }}
-          nfpm package -p deb -f packaging/nfpm-dpu-agent.yaml
-          nfpm package -p rpm -f packaging/nfpm-dpu-agent.yaml
+          nfpm package -p deb -f packaging/nfpm-aegis.yaml
+          nfpm package -p rpm -f packaging/nfpm-aegis.yaml
 
       - name: Upload packages to release
         env:
@@ -179,6 +179,76 @@ jobs:
           docker push ${{ env.IMAGE_REGISTRY }}/aegis:${{ steps.version.outputs.VERSION }}
           docker tag ${{ env.IMAGE_REGISTRY }}/aegis:${{ steps.version.outputs.VERSION }} ${{ env.IMAGE_REGISTRY }}/aegis:latest
           docker push ${{ env.IMAGE_REGISTRY }}/aegis:latest
+
+  # Build host-agent with DOCA support on workbench-linux
+  # Provides ComCh transport for hosts with BlueField PCIe connection
+  sentry-doca:
+    runs-on: [self-hosted, linux, x64, fast]
+    needs: [goreleaser]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build host-agent with DOCA
+        run: |
+          export CGO_ENABLED=1
+          export CGO_LDFLAGS="-L/opt/mellanox/doca/lib/x86_64-linux-gnu"
+          go build -tags doca \
+            -ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
+            -o host-agent ./cmd/host-agent
+
+      - name: Generate checksum
+        run: sha256sum host-agent > sentry-doca_linux_amd64.sha256
+
+      - name: Create tarball
+        run: tar -czvf sentry-doca_linux_amd64.tar.gz host-agent
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ steps.version.outputs.VERSION }}" \
+            sentry-doca_linux_amd64.tar.gz \
+            sentry-doca_linux_amd64.sha256 \
+            --clobber
+
+      - name: Copy DOCA runtime libraries
+        run: |
+          mkdir -p doca-libs
+          cp /opt/mellanox/doca/lib/x86_64-linux-gnu/libdoca_comch.so* doca-libs/
+          cp /opt/mellanox/doca/lib/x86_64-linux-gnu/libdoca_common.so* doca-libs/
+
+      - name: Build Linux packages
+        run: |
+          export VERSION=${{ steps.version.outputs.VERSION }}
+          nfpm package -p deb -f packaging/nfpm-sentry-doca.yaml
+          nfpm package -p rpm -f packaging/nfpm-sentry-doca.yaml
+
+      - name: Upload packages to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ steps.version.outputs.VERSION }}" \
+            sentry-doca_*.deb \
+            sentry-doca-*.rpm \
+            --clobber
+
+      - name: Push packages to Cloudsmith
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: |
+          pip install --break-system-packages cloudsmith-cli
+          export PATH="$HOME/.local/bin:$PATH"
+          for pkg in sentry-doca_*.deb; do
+            cloudsmith push deb --republish ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+          done
+          for pkg in sentry-doca-*.rpm; do
+            cloudsmith push rpm --republish ${{ env.CLOUDSMITH_ORG }}/${{ env.CLOUDSMITH_REPO }}/any-distro/any-version "$pkg"
+          done
 
   # Build amd64 container images (native on workbench-linux)
   docker-amd64:
@@ -270,7 +340,7 @@ jobs:
   # Add upgrade instructions to release notes
   release-notes:
     runs-on: ubuntu-latest
-    needs: [goreleaser, dpu-agent, docker-manifest, cloudsmith-push]
+    needs: [goreleaser, aegis, sentry-doca, docker-manifest, cloudsmith-push]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -342,10 +412,10 @@ jobs:
           \`\`\`
 
           ### Aegis (DPU Agent) - Binary
-          Download \`dpu-agent_linux_arm64.tar.gz\`, then on the BlueField:
+          Download \`aegis_linux_arm64.tar.gz\`, then on the BlueField:
           \`\`\`bash
-          tar -xzf dpu-agent_linux_arm64.tar.gz
-          sudo mv dpu-agent /usr/local/bin/aegis
+          tar -xzf aegis_linux_arm64.tar.gz
+          sudo mv aegis /usr/local/bin/aegis
           sudo systemctl restart aegis  # if running as service
           \`\`\`
 
@@ -365,7 +435,7 @@ jobs:
   # Final verification
   verify-release:
     runs-on: ubuntu-latest
-    needs: [goreleaser, dpu-agent, docker-manifest, cloudsmith-push, release-notes]
+    needs: [goreleaser, aegis, sentry-doca, docker-manifest, cloudsmith-push, release-notes]
     steps:
       - name: Get version from tag
         id: version
@@ -380,7 +450,8 @@ jobs:
           # Check CLI binaries
           gh release view "v${{ steps.version.outputs.VERSION }}" --repo ${{ github.repository }} --json assets --jq '.assets[].name' | grep -q "bluectl_darwin_arm64.tar.gz" && echo "✓ bluectl darwin/arm64"
           gh release view "v${{ steps.version.outputs.VERSION }}" --repo ${{ github.repository }} --json assets --jq '.assets[].name' | grep -q "km_darwin_arm64.tar.gz" && echo "✓ km darwin/arm64"
-          gh release view "v${{ steps.version.outputs.VERSION }}" --repo ${{ github.repository }} --json assets --jq '.assets[].name' | grep -q "dpu-agent_linux_arm64.tar.gz" && echo "✓ dpu-agent linux/arm64"
+          gh release view "v${{ steps.version.outputs.VERSION }}" --repo ${{ github.repository }} --json assets --jq '.assets[].name' | grep -q "aegis_linux_arm64.tar.gz" && echo "✓ aegis linux/arm64"
+          gh release view "v${{ steps.version.outputs.VERSION }}" --repo ${{ github.repository }} --json assets --jq '.assets[].name' | grep -q "sentry-doca_linux_amd64.tar.gz" && echo "✓ sentry-doca linux/amd64"
           gh release view "v${{ steps.version.outputs.VERSION }}" --repo ${{ github.repository }} --json assets --jq '.assets[].name' | grep -q "checksums.txt" && echo "✓ checksums"
 
           echo ""

@@ -1,0 +1,49 @@
+# nfpm configuration for Sentry with DOCA ComCh support
+# Built separately on workbench-linux runner with DOCA SDK
+
+name: sentry-doca
+arch: amd64
+platform: linux
+version: "${VERSION}"
+maintainer: Beyond Identity <support@beyondidentity.com>
+description: Sentry - Secure Infrastructure host agent with DOCA ComCh transport support
+vendor: Beyond Identity
+homepage: https://github.com/gobeyondidentity/secure-infra
+license: Apache-2.0
+section: admin
+priority: optional
+
+contents:
+  - src: host-agent
+    dst: /usr/bin/sentry
+    file_info:
+      mode: 0755
+
+  - src: packaging/systemd/sentry.service
+    dst: /lib/systemd/system/sentry.service
+    type: config
+
+  - src: packaging/config/sentry.yaml
+    dst: /etc/secureinfra/sentry.yaml
+    type: config|noreplace
+
+  # Include DOCA runtime libraries for x86_64
+  - src: doca-libs/
+    dst: /opt/mellanox/doca/lib/x86_64-linux-gnu/
+
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+
+depends:
+  - systemd
+
+# This package provides sentry, conflicts with non-DOCA version
+provides:
+  - sentry
+
+conflicts:
+  - sentry
+
+replaces:
+  - sentry
