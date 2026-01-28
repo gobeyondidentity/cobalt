@@ -554,10 +554,9 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	}
 
 	// Check for [CRED-DELIVERY] markers in aegis
-	// Note: We push directly to localapi, so aegis gRPC marker is not emitted
+	// Note: We push directly to localapi HTTP handler which calls pushCredentialViaTransport
 	expectedAegisMarkers := []string{
-		"[CRED-DELIVERY] localapi: pushing credential",
-		"[CRED-DELIVERY] localapi: credential sent via transport",
+		"[CRED-DELIVERY] localapi: sending CREDENTIAL_PUSH message",
 	}
 
 	for _, marker := range expectedAegisMarkers {
