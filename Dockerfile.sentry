@@ -8,17 +8,17 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o host-agent ./cmd/host-agent
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o sentry ./cmd/host-agent
 
 # Runtime image
 FROM alpine:3.20
 
 RUN apk --no-cache add ca-certificates tzdata
 
-COPY --from=builder /build/host-agent /usr/local/bin/host-agent
+COPY --from=builder /build/sentry /usr/local/bin/sentry
 
 # Run as non-root user
 RUN adduser -D -u 1000 agent
 USER agent
 
-ENTRYPOINT ["/usr/local/bin/host-agent"]
+ENTRYPOINT ["/usr/local/bin/sentry"]

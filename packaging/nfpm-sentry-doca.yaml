@@ -14,7 +14,7 @@ section: admin
 priority: optional
 
 contents:
-  - src: host-agent
+  - src: sentry
     dst: /usr/bin/sentry
     file_info:
       mode: 0755

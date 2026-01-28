@@ -193,19 +193,19 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Build host-agent with DOCA
+      - name: Build sentry with DOCA
         run: |
           export CGO_ENABLED=1
           export CGO_LDFLAGS="-L/opt/mellanox/doca/lib/x86_64-linux-gnu"
           go build -tags doca \
             -ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
-            -o host-agent ./cmd/host-agent
+            -o sentry ./cmd/host-agent
 
       - name: Generate checksum
-        run: sha256sum host-agent > sentry-doca_linux_amd64.sha256
+        run: sha256sum sentry > sentry-doca_linux_amd64.sha256
 
       - name: Create tarball
-        run: tar -czvf sentry-doca_linux_amd64.tar.gz host-agent
+        run: tar -czvf sentry-doca_linux_amd64.tar.gz sentry
 
       - name: Install GitHub CLI
         run: |
