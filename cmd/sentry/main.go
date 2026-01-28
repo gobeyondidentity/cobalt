@@ -1,4 +1,4 @@
-// Fabric Console Host Agent
+// Sentry - Secure Infrastructure host agent
 // Lightweight agent that runs on Linux hosts, collects security posture,
 // and reports to the DPU Agent's local API.
 package main
@@ -46,7 +46,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("host-agent v%s\n", version.Version)
+		fmt.Printf("sentry v%s\n", version.Version)
 		os.Exit(0)
 	}
 
@@ -55,7 +55,7 @@ func main() {
 		hostname = "unknown"
 	}
 
-	log.Printf("Host Agent v%s starting...", version.Version)
+	log.Printf("Sentry v%s starting...", version.Version)
 
 	// Handle certificate request mode (uses network)
 	if *requestCertFlag {
@@ -104,7 +104,7 @@ func main() {
 	runWithTransport(t, hostname, p, *interval, *oneshot, *dpuAgent, *authKeyPath, *pollInterval, sigCh, stopCh)
 }
 
-// runWithTransport runs the Host Agent using the provided transport.
+// runWithTransport runs Sentry using the provided transport.
 // This unified function handles both tmfifo and network transports.
 func runWithTransport(t transport.Transport, hostname string, p *posture.Posture, interval time.Duration, oneshot bool, dpuAgentURL string, authKeyPath string, pollInterval time.Duration, sigCh <-chan os.Signal, stopCh chan struct{}) {
 	ctx := context.Background()
@@ -157,7 +157,7 @@ func runWithTransport(t transport.Transport, hostname string, p *posture.Posture
 	client.StartListener()
 	log.Printf("Listening for credential pushes via %s", t.Type())
 
-	log.Printf("Host Agent running. Posture reports every %s.", interval)
+	log.Printf("Sentry running. Posture reports every %s.", interval)
 
 	// Run posture loop
 	go func() {
@@ -176,7 +176,7 @@ func runWithTransport(t transport.Transport, hostname string, p *posture.Posture
 	client.Close()
 }
 
-// runNetworkModeLegacy runs the Host Agent using legacy HTTP for DPU communication.
+// runNetworkModeLegacy runs Sentry using legacy HTTP for DPU communication.
 // This preserves the existing network mode behavior until the Transport-based
 // protocol is fully implemented on the server side.
 func runNetworkModeLegacy(dpuAgent, hostname string, p *posture.Posture, interval time.Duration, oneshot bool, pollInterval time.Duration, sigCh <-chan os.Signal, stopCh chan struct{}) {
@@ -203,7 +203,7 @@ func runNetworkModeLegacy(dpuAgent, hostname string, p *posture.Posture, interva
 	credentialTicker := time.NewTicker(pollInterval)
 	defer credentialTicker.Stop()
 
-	log.Printf("Host Agent running. Posture reports every %s, credential polling every %s.", interval, pollInterval)
+	log.Printf("Sentry running. Posture reports every %s, credential polling every %s.", interval, pollInterval)
 
 	for {
 		select {
