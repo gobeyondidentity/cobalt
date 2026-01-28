@@ -24,6 +24,8 @@ This works because credentials are tied to specific hardware via NVIDIA BlueFiel
 
 > **See it in action:** Run `./scripts/demo` to watch the full credential lifecycle in 2 minutes.
 
+<video src="assets/demo.mp4" controls width="100%"></video>
+
 Choose your path:
 
 | Path | Time | Requirements |
