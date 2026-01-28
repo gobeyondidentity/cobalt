@@ -198,6 +198,17 @@ func (m *MockTransport) Close() error {
 	return nil
 }
 
+// Reset clears the closed state, allowing the transport to reconnect.
+func (m *MockTransport) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.closed = false
+	m.connected = false
+	m.sendCh = make(chan *Message, 100)
+	m.recvCh = make(chan *Message, 100)
+}
+
 // Type returns TransportMock.
 func (m *MockTransport) Type() TransportType {
 	return TransportMock

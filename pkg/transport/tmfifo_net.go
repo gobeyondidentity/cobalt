@@ -175,10 +175,26 @@ func (t *TmfifoNetTransport) Close() error {
 		if err := t.device.Close(); err != nil {
 			return fmt.Errorf("close tmfifo device: %w", err)
 		}
+		t.device = nil
 	}
 
 	log.Printf("tmfifo: transport closed")
 	return nil
+}
+
+// Reset clears the closed state, allowing the transport to reconnect.
+// This is used by sentry for automatic reconnection after aegis restarts.
+// The transport must be closed before calling Reset.
+func (t *TmfifoNetTransport) Reset() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.closed = false
+	t.connected = false
+	t.device = nil
+	t.reader = nil
+
+	log.Printf("tmfifo: transport reset for reconnection")
 }
 
 // Type returns TransportTmfifoNet.

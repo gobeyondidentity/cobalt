@@ -25,6 +25,9 @@ type Client struct {
 	stopCh chan struct{}
 	wg     sync.WaitGroup
 	mu     sync.Mutex
+
+	// reconnection state
+	reconnecting bool
 }
 
 // NewClient creates a new Host Agent client using the provided transport.
@@ -183,8 +186,11 @@ func (c *Client) StartListener() {
 }
 
 // listenLoop continuously reads messages from the transport.
+// On transport errors, it attempts automatic reconnection with exponential backoff.
 func (c *Client) listenLoop() {
 	defer c.wg.Done()
+
+	consecutiveErrors := 0
 
 	for {
 		select {
@@ -199,16 +205,82 @@ func (c *Client) listenLoop() {
 			case <-c.stopCh:
 				return
 			default:
-				log.Printf("transport recv error: %v", err)
-				time.Sleep(time.Second)
+				consecutiveErrors++
+				log.Printf("[RECONNECT] sentry: transport recv error: %v (consecutive: %d)", err, consecutiveErrors)
+
+				// Attempt reconnection after first error
+				if err := c.reconnect(); err != nil {
+					log.Printf("[RECONNECT] sentry: reconnection failed: %v", err)
+					// Exponential backoff: 1s, 2s, 4s, 8s, max 10s
+					backoff := min(time.Duration(1<<min(consecutiveErrors-1, 3))*time.Second, 10*time.Second)
+					log.Printf("[RECONNECT] sentry: waiting %v before next attempt", backoff)
+					select {
+					case <-c.stopCh:
+						return
+					case <-time.After(backoff):
+					}
+					continue
+				}
+
+				// Reconnection succeeded, reset error counter
+				consecutiveErrors = 0
+				log.Printf("[RECONNECT] sentry: reconnected successfully")
 				continue
 			}
 		}
+
+		// Reset error counter on successful receive
+		consecutiveErrors = 0
 
 		if err := c.handleMessage(msg); err != nil {
 			log.Printf("handle message error: %v", err)
 		}
 	}
+}
+
+// reconnect attempts to re-establish the transport connection and re-authenticate.
+// It does NOT re-enroll; session state (hostID, dpuName) is preserved.
+func (c *Client) reconnect() error {
+	c.mu.Lock()
+	if c.reconnecting {
+		c.mu.Unlock()
+		return fmt.Errorf("reconnection already in progress")
+	}
+	c.reconnecting = true
+	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		c.reconnecting = false
+		c.mu.Unlock()
+	}()
+
+	log.Printf("[RECONNECT] sentry: transport disconnected, attempting reconnection...")
+
+	// Close existing transport to release resources
+	c.transport.Close()
+
+	// Reset the transport if it supports reconnection
+	if resettable, ok := c.transport.(transport.Resettable); ok {
+		resettable.Reset()
+	}
+
+	// Reconnect the transport
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := c.transport.Connect(ctx); err != nil {
+		return fmt.Errorf("transport reconnect: %w", err)
+	}
+
+	// Re-authenticate (key already loaded, no re-enrollment needed)
+	// The auth layer supports reconnection with known key.
+	// See pkg/transport/auth.go: "PEM-encoded public key (first connection only, empty on reconnect)"
+	if err := c.authClient.Authenticate(ctx); err != nil {
+		return fmt.Errorf("re-authentication: %w", err)
+	}
+
+	return nil
 }
 
 // handleMessage dispatches incoming messages to appropriate handlers.

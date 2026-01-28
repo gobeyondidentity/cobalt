@@ -53,6 +53,16 @@ type Transport interface {
 	Type() TransportType
 }
 
+// Resettable is an optional interface for transports that support reconnection.
+// Transports implementing this interface can be reset after Close() to allow
+// re-establishing the connection without creating a new transport instance.
+// Used by sentry for automatic reconnection after aegis restarts.
+type Resettable interface {
+	// Reset clears the closed state, allowing the transport to reconnect.
+	// Must be called after Close() and before Connect().
+	Reset()
+}
+
 // TransportListener defines the server-side interface for accepting connections.
 // Used by the DPU Agent to accept incoming Host Agent connections.
 type TransportListener interface {

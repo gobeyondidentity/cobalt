@@ -103,6 +103,16 @@ func (n *networkTransport) Close() error {
 	return nil
 }
 
+// Reset clears the closed state, allowing the transport to reconnect.
+func (n *networkTransport) Reset() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.closed = false
+	n.connected = false
+	n.pendingRecv = make(chan *Message, 10)
+}
+
 // Type returns TransportNetwork.
 func (n *networkTransport) Type() TransportType {
 	return TransportNetwork

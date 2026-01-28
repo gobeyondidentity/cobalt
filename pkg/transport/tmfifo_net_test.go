@@ -142,6 +142,86 @@ func TestTmfifoNetTransport_ConnectAfterClose(t *testing.T) {
 	}
 }
 
+func TestTmfifoNetTransport_ResetAndReconnect(t *testing.T) {
+	tmpDir := t.TempDir()
+	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
+
+	f, _ := os.Create(fakePath)
+	f.Close()
+
+	transport, _ := NewTmfifoNetTransport(fakePath)
+	tt := transport.(*TmfifoNetTransport)
+
+	// First connection
+	err := tt.Connect(context.Background())
+	if err != nil {
+		t.Fatalf("first connect failed: %v", err)
+	}
+
+	// Close
+	tt.Close()
+
+	// Connect after close should fail
+	err = tt.Connect(context.Background())
+	if err == nil {
+		t.Error("expected error connecting after close")
+	}
+
+	// Reset should clear the closed state
+	tt.Reset()
+
+	// Now connect should succeed
+	err = tt.Connect(context.Background())
+	if err != nil {
+		t.Errorf("connect after reset failed: %v", err)
+	}
+
+	tt.mu.Lock()
+	connected := tt.connected
+	closed := tt.closed
+	tt.mu.Unlock()
+
+	if !connected {
+		t.Error("expected connected = true after reset + connect")
+	}
+	if closed {
+		t.Error("expected closed = false after reset")
+	}
+
+	tt.Close()
+}
+
+func TestTmfifoNetTransport_ResetImplementsResettable(t *testing.T) {
+	tmpDir := t.TempDir()
+	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
+
+	f, _ := os.Create(fakePath)
+	f.Close()
+
+	transport, _ := NewTmfifoNetTransport(fakePath)
+
+	// Verify Transport implements Resettable
+	resettable, ok := transport.(Resettable)
+	if !ok {
+		t.Fatal("TmfifoNetTransport does not implement Resettable interface")
+	}
+
+	tt := transport.(*TmfifoNetTransport)
+	tt.Connect(context.Background())
+	tt.Close()
+
+	// Use the Resettable interface
+	resettable.Reset()
+
+	// Verify we can reconnect
+	err := tt.Connect(context.Background())
+	if err != nil {
+		t.Errorf("connect after Reset() via interface failed: %v", err)
+	}
+
+	tt.Close()
+}
+
 func TestTmfifoNetTransport_SendNotConnected(t *testing.T) {
 	transport := &TmfifoNetTransport{devicePath: "/fake"}
 

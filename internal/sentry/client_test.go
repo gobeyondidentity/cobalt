@@ -1,6 +1,7 @@
 package sentry
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -15,7 +16,7 @@ func TestClient_ReportPosture_handlesCredentialPushBeforeAck(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	mockTransport := transport.NewMockTransport()
-	if err := mockTransport.Connect(nil); err != nil {
+	if err := mockTransport.Connect(context.TODO()); err != nil {
 		t.Fatalf("connect mock transport: %v", err)
 	}
 
@@ -82,7 +83,7 @@ func TestClient_ReportPosture_multipleCredentialPushesBeforeAck(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	mockTransport := transport.NewMockTransport()
-	if err := mockTransport.Connect(nil); err != nil {
+	if err := mockTransport.Connect(context.TODO()); err != nil {
 		t.Fatalf("connect mock transport: %v", err)
 	}
 
@@ -140,7 +141,7 @@ func TestClient_ReportPosture_ackStillRequired(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	mockTransport := transport.NewMockTransport()
-	if err := mockTransport.Connect(nil); err != nil {
+	if err := mockTransport.Connect(context.TODO()); err != nil {
 		t.Fatalf("connect mock transport: %v", err)
 	}
 
@@ -185,7 +186,7 @@ func TestClient_ReportPosture_ackStillRequired(t *testing.T) {
 func TestClient_ReportPosture_unexpectedMessageType(t *testing.T) {
 	// Test that unexpected message types (not CREDENTIAL_PUSH or POSTURE_ACK) cause an error
 	mockTransport := transport.NewMockTransport()
-	if err := mockTransport.Connect(nil); err != nil {
+	if err := mockTransport.Connect(context.TODO()); err != nil {
 		t.Fatalf("connect mock transport: %v", err)
 	}
 

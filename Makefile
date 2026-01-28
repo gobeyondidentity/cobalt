@@ -866,7 +866,7 @@ qa-remote-test:
 	@echo "=== Syncing integration test to workbench ==="
 	scp integration_test.go $(WORKBENCH_USER)@$(WORKBENCH_IP):$(WORKBENCH_DIR)/
 	@echo "=== Running Go integration tests on workbench ==="
-	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 15m -run 'Test(TMFIFOTransportIntegration|CredentialDeliveryE2E|NexusRestartPersistence)'"
+	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 15m -run 'Test(TMFIFOTransportIntegration|CredentialDeliveryE2E|NexusRestartPersistence|AegisRestartSentryReconnection)'"
 
 # Run integration test with VM rebuild (full setup)
 qa-remote-test-full: qa-remote-vm-create qa-remote-build qa-remote-test
