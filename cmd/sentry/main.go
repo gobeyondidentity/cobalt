@@ -44,6 +44,7 @@ func main() {
 	docaServerName := flag.String("doca-server-name", "secure-infra", "ComCh server name to connect to")
 	authKeyPath := flag.String("auth-key", "/etc/secureinfra/host-agent.key", "Path to host authentication key")
 	pollInterval := flag.Duration("poll-interval", 30*time.Second, "Credential polling interval (HTTP transport only)")
+	hostnameFlag := flag.String("hostname", "", "Override hostname (for testing)")
 	flag.Parse()
 
 	if *showVersion {
@@ -54,6 +55,9 @@ func main() {
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
+	}
+	if *hostnameFlag != "" {
+		hostname = *hostnameFlag
 	}
 
 	log.Printf("Sentry v%s starting...", version.Version)

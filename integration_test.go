@@ -160,6 +160,28 @@ func logInfo(t *testing.T, format string, args ...interface{}) {
 	fmt.Printf("    %s\n", fmt.Sprintf(format, args...))
 }
 
+// makeTestHostname generates a unique hostname for a test
+// Format: qa-host-{shortname} where shortname is test name truncated and sanitized
+func makeTestHostname(t *testing.T) string {
+	name := t.Name()
+	// Remove "Test" prefix and truncate for readability
+	name = strings.TrimPrefix(name, "Test")
+	// Sanitize: lowercase, replace non-alphanumeric with dash
+	var sb strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune('-')
+		}
+	}
+	shortName := sb.String()
+	if len(shortName) > 20 {
+		shortName = shortName[:20]
+	}
+	return "qa-host-" + shortName
+}
+
 // TestVMsRunning verifies all VMs are accessible
 func TestVMsRunning(t *testing.T) {
 	cfg := newTestConfig(t)
@@ -188,6 +210,7 @@ func TestTMFIFOTransportIntegration(t *testing.T) {
 	}
 
 	cfg := newTestConfig(t)
+	testHostname := makeTestHostname(t)
 	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
 
 	// Overall test timeout
@@ -288,7 +311,7 @@ func TestTMFIFOTransportIntegration(t *testing.T) {
 	sentryCtx, sentryCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer sentryCancel()
 
-	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--hostname", testHostname, "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
 
 	// Check results
 	if err != nil {
@@ -322,6 +345,7 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	}
 
 	cfg := newTestConfig(t)
+	testHostname := makeTestHostname(t)
 	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
 
 	// Overall test timeout
@@ -420,7 +444,7 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	logStep(t, 4, "Starting sentry daemon (will enroll on connect)...")
 	cfg.killProcess(ctx, cfg.HostVM, "sentry")
 	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", dpuIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --hostname %s --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", testHostname, dpuIP))
 	if err != nil {
 		t.Fatalf("Failed to start sentry daemon: %v", err)
 	}
@@ -922,6 +946,7 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 
 	cfg := newTestConfig(t)
+	testHostname := makeTestHostname(t)
 	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
 
 	// Overall test timeout (longer due to multiple restart cycles)
@@ -1027,7 +1052,7 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	logStep(t, 4, "Starting sentry daemon (will enroll on connect)...")
 	cfg.killProcess(ctx, cfg.HostVM, "sentry")
 	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", dpuIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --hostname %s --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", testHostname, dpuIP))
 	if err != nil {
 		t.Fatalf("Failed to start sentry daemon: %v", err)
 	}
@@ -1300,6 +1325,7 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	}
 
 	cfg := newTestConfig(t)
+	testHostname := makeTestHostname(t)
 	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
 
 	// Overall test timeout
@@ -1396,7 +1422,7 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	logStep(t, 4, "Starting sentry daemon (first enrollment)...")
 	cfg.killProcess(ctx, cfg.HostVM, "sentry")
 	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", dpuIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --hostname %s --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", testHostname, dpuIP))
 	if err != nil {
 		t.Fatalf("Failed to start sentry daemon: %v", err)
 	}
@@ -1444,7 +1470,7 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	_, _ = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c", "sudo truncate -s 0 /tmp/sentry.log")
 
 	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", dpuIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --hostname %s --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", testHostname, dpuIP))
 	if err != nil {
 		t.Fatalf("Failed to restart sentry: %v", err)
 	}
@@ -1602,6 +1628,7 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	}
 
 	cfg := newTestConfig(t)
+	testHostname := makeTestHostname(t)
 	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
 
 	// Overall test timeout
@@ -1692,7 +1719,7 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	sentryCtx, sentryCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer sentryCancel()
 
-	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--hostname", testHostname, "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
 	if err != nil {
 		aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-30", "/tmp/aegis.log")
 		fmt.Printf("    Aegis log:\n%s\n", aegisLog)
@@ -1776,7 +1803,7 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	// We'll verify by checking that a posture update from the original host works
 	// For simplicity, we re-run sentry oneshot which should succeed because
 	// the hostname matches the paired host
-	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--hostname", testHostname, "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
 	if err != nil {
 		// This might fail if the transport is in a bad state, but the pairing should still work
 		// Check the aegis log to see if registration was attempted
@@ -2071,6 +2098,7 @@ func TestDPURegistrationFlows(t *testing.T) {
 	}
 
 	cfg := newTestConfig(t)
+	testHostname := makeTestHostname(t)
 	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
 
 	// Overall test timeout
@@ -2218,7 +2246,7 @@ func TestDPURegistrationFlows(t *testing.T) {
 	sentryCtx, sentryCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer sentryCancel()
 
-	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--hostname", testHostname, "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
 	if err != nil {
 		aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-30", "/tmp/aegis.log")
 		logInfo(t, "Aegis log:\n%s", aegisLog)
@@ -2356,6 +2384,7 @@ func TestTenantLifecycle(t *testing.T) {
 	}
 
 	cfg := newTestConfig(t)
+	testHostname := makeTestHostname(t)
 	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
 
 	// Overall test timeout
@@ -2660,7 +2689,7 @@ func TestTenantLifecycle(t *testing.T) {
 	defer sentryCancel()
 
 	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry",
-		"--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
+		"--hostname", testHostname, "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
 	if err != nil {
 		aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-30", "/tmp/aegis.log")
 		logInfo(t, "Aegis log:\n%s", aegisLog)
