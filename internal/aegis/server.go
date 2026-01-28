@@ -1,5 +1,5 @@
-// Package agent implements the DPU agent gRPC server.
-package agent
+// Package aegis implements the DPU agent gRPC server.
+package aegis
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"time"
 
 	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
-	"github.com/nmelo/secure-infra/internal/agent/localapi"
+	"github.com/nmelo/secure-infra/internal/aegis/localapi"
 	"github.com/nmelo/secure-infra/internal/version"
 	"github.com/nmelo/secure-infra/pkg/attestation"
 	"github.com/nmelo/secure-infra/pkg/doca"

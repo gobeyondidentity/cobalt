@@ -1,5 +1,5 @@
-// Package hostagent implements the Host Agent functionality.
-package hostagent
+// Package sentry implements the Host Agent functionality.
+package sentry
 
 import (
 	"bufio"
@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nmelo/secure-infra/internal/agent/tmfifo"
+	"github.com/nmelo/secure-infra/internal/aegis/tmfifo"
 )
 
 const (
@@ -154,6 +154,11 @@ func (c *TmfifoClient) ReportPosture(posture json.RawMessage) error {
 		return fmt.Errorf("tmfifo not open")
 	}
 
+	return c.reportPostureWithReader(posture, c.device, c.device)
+}
+
+// reportPostureWithReader is the internal implementation that allows injection of reader/writer for testing.
+func (c *TmfifoClient) reportPostureWithReader(posture json.RawMessage, reader io.Reader, writer io.Writer) error {
 	payload := tmfifo.PostureReportPayload{
 		Hostname: c.hostname,
 		Posture:  posture,
@@ -166,30 +171,119 @@ func (c *TmfifoClient) ReportPosture(posture json.RawMessage) error {
 	req := tmfifo.Message{
 		Type:    tmfifo.TypePostureReport,
 		Payload: payloadBytes,
-		ID:   generateNonce(),
+		ID:      generateNonce(),
 	}
 
-	if err := c.sendMessage(&req); err != nil {
+	// Send posture report
+	reqData, err := json.Marshal(&req)
+	if err != nil {
+		return fmt.Errorf("marshal posture request: %w", err)
+	}
+	reqData = append(reqData, '\n')
+	if _, err := writer.Write(reqData); err != nil {
 		return fmt.Errorf("send posture report: %w", err)
 	}
 
-	// Read ack
-	resp, err := c.readMessage()
+	// Read messages until we get the PostureAck
+	// The DPU may send CREDENTIAL_PUSH messages before the ack
+	bufReader := bufio.NewReader(reader)
+	for {
+		line, err := bufReader.ReadBytes('\n')
+		if err != nil {
+			return fmt.Errorf("read posture ack: %w", err)
+		}
+
+		var resp tmfifo.Message
+		if err := json.Unmarshal(line, &resp); err != nil {
+			return fmt.Errorf("parse message: %w", err)
+		}
+
+		// Handle CREDENTIAL_PUSH inline
+		if resp.Type == tmfifo.TypeCredentialPush {
+			if err := c.handleCredentialPushWithWriter(&resp, writer); err != nil {
+				log.Printf("credential push handling failed: %v", err)
+			}
+			continue // Keep waiting for ack
+		}
+
+		// Check for expected ack
+		if resp.Type != tmfifo.TypePostureAck {
+			return fmt.Errorf("unexpected response type: %s", resp.Type)
+		}
+
+		var ack tmfifo.PostureAckPayload
+		if err := json.Unmarshal(resp.Payload, &ack); err != nil {
+			return fmt.Errorf("parse posture ack: %w", err)
+		}
+
+		if !ack.Accepted {
+			return fmt.Errorf("posture rejected: %s", ack.Error)
+		}
+
+		return nil
+	}
+}
+
+// handleCredentialPushWithWriter processes a CREDENTIAL_PUSH message and sends ack via the provided writer.
+func (c *TmfifoClient) handleCredentialPushWithWriter(msg *tmfifo.Message, writer io.Writer) error {
+	var payload tmfifo.CredentialPushPayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return c.sendCredentialAckWithWriter(false, "", fmt.Sprintf("parse error: %v", err), writer)
+	}
+
+	log.Printf("tmfifo: received credential push: type=%s, name=%s",
+		payload.CredentialType, payload.CredentialName)
+
+	var installedPath string
+	var err error
+
+	switch payload.CredentialType {
+	case "ssh-ca":
+		result, installErr := c.credInstaller.InstallSSHCA(payload.CredentialName, payload.Data)
+		if installErr != nil {
+			err = installErr
+		} else {
+			installedPath = result.InstalledPath
+			log.Printf("tmfifo: SSH CA installed at %s (sshd_reloaded=%v, config_updated=%v)",
+				result.InstalledPath, result.SshdReloaded, result.ConfigUpdated)
+		}
+	default:
+		err = fmt.Errorf("unsupported credential type: %s", payload.CredentialType)
+	}
+
 	if err != nil {
-		return fmt.Errorf("read posture ack: %w", err)
+		log.Printf("tmfifo: credential installation failed: %v", err)
+		return c.sendCredentialAckWithWriter(false, "", err.Error(), writer)
 	}
 
-	if resp.Type != tmfifo.TypePostureAck {
-		return fmt.Errorf("unexpected response type: %s", resp.Type)
+	return c.sendCredentialAckWithWriter(true, installedPath, "", writer)
+}
+
+// sendCredentialAckWithWriter sends a CREDENTIAL_ACK response via the provided writer.
+func (c *TmfifoClient) sendCredentialAckWithWriter(success bool, installedPath, errMsg string, writer io.Writer) error {
+	payload := tmfifo.CredentialAckPayload{
+		Success:       success,
+		InstalledPath: installedPath,
+		Error:         errMsg,
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal credential ack: %w", err)
 	}
 
-	var ack tmfifo.PostureAckPayload
-	if err := json.Unmarshal(resp.Payload, &ack); err != nil {
-		return fmt.Errorf("parse posture ack: %w", err)
+	msg := tmfifo.Message{
+		Type:    tmfifo.TypeCredentialAck,
+		Payload: payloadBytes,
+		ID:      generateNonce(),
 	}
 
-	if !ack.Accepted {
-		return fmt.Errorf("posture rejected: %s", ack.Error)
+	data, err := json.Marshal(&msg)
+	if err != nil {
+		return fmt.Errorf("marshal message: %w", err)
+	}
+	data = append(data, '\n')
+	if _, err := writer.Write(data); err != nil {
+		return fmt.Errorf("write credential ack: %w", err)
 	}
 
 	return nil

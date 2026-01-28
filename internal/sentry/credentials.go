@@ -1,5 +1,5 @@
-// Package hostagent implements the Host Agent functionality.
-package hostagent
+// Package sentry implements the Host Agent functionality.
+package sentry
 
 import (
 	"bufio"

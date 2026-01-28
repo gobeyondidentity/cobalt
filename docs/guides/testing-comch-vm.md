@@ -161,7 +161,7 @@ Tests message formats using TCP emulator. Same protocol, different transport.
 bin/dpuemu --control-plane http://localhost:18080
 
 # Run protocol tests
-go test ./internal/hostagent/... -tags=emulator
+go test ./internal/sentry/... -tags=emulator
 ```
 
 **Coverage:**

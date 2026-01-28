@@ -1,4 +1,4 @@
-package hostagent
+package sentry
 
 import (
 	"context"
@@ -135,33 +135,45 @@ func (c *Client) ReportPosture(posture json.RawMessage) error {
 	req := &transport.Message{
 		Type:    transport.MessagePostureReport,
 		Payload: payloadBytes,
-		ID:   generateNonce(),
+		ID:      generateNonce(),
 	}
 
 	if err := c.transport.Send(req); err != nil {
 		return fmt.Errorf("send posture report: %w", err)
 	}
 
-	// Read ack
-	resp, err := c.transport.Recv()
-	if err != nil {
-		return fmt.Errorf("read posture ack: %w", err)
-	}
+	// Read messages until we get the PostureAck
+	// The DPU may send CREDENTIAL_PUSH messages before the ack
+	for {
+		resp, err := c.transport.Recv()
+		if err != nil {
+			return fmt.Errorf("read posture ack: %w", err)
+		}
 
-	if resp.Type != transport.MessagePostureAck {
-		return fmt.Errorf("unexpected response type: %s", resp.Type)
-	}
+		// Handle CREDENTIAL_PUSH inline
+		if resp.Type == transport.MessageCredentialPush {
+			if err := c.handleCredentialPush(resp); err != nil {
+				log.Printf("credential push handling failed: %v", err)
+			}
+			continue // Keep waiting for ack
+		}
 
-	var ack PostureAckPayload
-	if err := json.Unmarshal(resp.Payload, &ack); err != nil {
-		return fmt.Errorf("parse posture ack: %w", err)
-	}
+		// Check for expected ack
+		if resp.Type != transport.MessagePostureAck {
+			return fmt.Errorf("unexpected response type: %s", resp.Type)
+		}
 
-	if !ack.Accepted {
-		return fmt.Errorf("posture rejected: %s", ack.Error)
-	}
+		var ack PostureAckPayload
+		if err := json.Unmarshal(resp.Payload, &ack); err != nil {
+			return fmt.Errorf("parse posture ack: %w", err)
+		}
 
-	return nil
+		if !ack.Accepted {
+			return fmt.Errorf("posture rejected: %s", ack.Error)
+		}
+
+		return nil
+	}
 }
 
 // StartListener starts a goroutine to listen for incoming messages (CREDENTIAL_PUSH).
@@ -292,7 +304,7 @@ func (c *Client) TransportType() transport.TransportType {
 }
 
 // Payload types for the transport protocol.
-// These match the types in internal/agent/tmfifo/types.go for wire compatibility.
+// These match the types in internal/aegis/tmfifo/types.go for wire compatibility.
 
 // EnrollRequestPayload is the payload for ENROLL_REQUEST messages.
 type EnrollRequestPayload struct {

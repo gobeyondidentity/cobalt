@@ -17,8 +17,8 @@ import (
 	"time"
 
 	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
-	"github.com/nmelo/secure-infra/internal/agent"
-	"github.com/nmelo/secure-infra/internal/agent/localapi"
+	"github.com/nmelo/secure-infra/internal/aegis"
+	"github.com/nmelo/secure-infra/internal/aegis/localapi"
 	"github.com/nmelo/secure-infra/internal/version"
 	"github.com/nmelo/secure-infra/pkg/transport"
 	"google.golang.org/grpc"
@@ -50,7 +50,7 @@ func main() {
 	log.Printf("Fabric Console Agent v%s starting...", version.Version)
 
 	// Build configuration
-	cfg := agent.DefaultConfig()
+	cfg := aegis.DefaultConfig()
 	cfg.ListenAddr = *listenAddr
 	cfg.BMCAddr = *bmcAddr
 	cfg.BMCUser = *bmcUser
@@ -71,7 +71,7 @@ func main() {
 
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
-	agentServer, err := agent.NewServer(cfg)
+	agentServer, err := aegis.NewServer(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create agent server: %v", err)
 	}
@@ -173,7 +173,7 @@ func main() {
 }
 
 // startLocalAPI initializes and starts the local HTTP API server.
-func startLocalAPI(ctx context.Context, cfg *agent.Config, agentServer *agent.Server) (*localapi.Server, error) {
+func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Server) (*localapi.Server, error) {
 	log.Printf("Starting local API for Host Agent communication...")
 
 	localCfg := &localapi.Config{
@@ -446,7 +446,7 @@ func generateMessageNonce() string {
 }
 
 // fetchAttestation retrieves the current DPU attestation status.
-func fetchAttestation(ctx context.Context, agentServer *agent.Server) (*localapi.AttestationInfo, error) {
+func fetchAttestation(ctx context.Context, agentServer *aegis.Server) (*localapi.AttestationInfo, error) {
 	resp, err := agentServer.GetAttestation(ctx, &agentv1.GetAttestationRequest{
 		Target: "irot", // Use internal Root of Trust
 	})

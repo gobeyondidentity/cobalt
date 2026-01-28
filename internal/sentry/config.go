@@ -1,5 +1,5 @@
-// Package hostagent implements the Host Agent gRPC server.
-package hostagent
+// Package sentry implements the Host Agent gRPC server.
+package sentry
 
 import (
 	"fmt"

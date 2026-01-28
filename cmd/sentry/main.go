@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nmelo/secure-infra/internal/hostagent"
+	"github.com/nmelo/secure-infra/internal/sentry"
 	"github.com/nmelo/secure-infra/internal/version"
 	"github.com/nmelo/secure-infra/pkg/posture"
 	"github.com/nmelo/secure-infra/pkg/transport"
@@ -117,7 +117,7 @@ func runWithTransport(t transport.Transport, hostname string, p *posture.Posture
 	}
 
 	// Create client using the transport
-	client := hostagent.NewClient(t, hostname, authKeyPath)
+	client := sentry.NewClient(t, hostname, authKeyPath)
 
 	// Connect the transport
 	if err := client.Connect(ctx); err != nil {
