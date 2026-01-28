@@ -861,12 +861,12 @@ qa-remote-up:
 qa-remote-down:
 	$(WORKBENCH_SSH) "cd $(WORKBENCH_DIR) && make qa-down"
 
-# Run integration test on workbench
+# Run integration tests on workbench
 qa-remote-test:
 	@echo "=== Syncing integration test to workbench ==="
 	scp integration_test.go $(WORKBENCH_USER)@$(WORKBENCH_IP):$(WORKBENCH_DIR)/
-	@echo "=== Running Go integration test on workbench ==="
-	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 5m -run TestTMFIFOTransportIntegration"
+	@echo "=== Running Go integration tests on workbench ==="
+	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 15m -run 'Test(TMFIFOTransportIntegration|CredentialDeliveryE2E|NexusRestartPersistence)'"
 
 # Run integration test with VM rebuild (full setup)
 qa-remote-test-full: qa-remote-vm-create qa-remote-build qa-remote-test
