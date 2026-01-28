@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -75,6 +76,11 @@ Examples:
 		// Validate role
 		if role != "admin" && role != "operator" {
 			return fmt.Errorf("invalid role: %s (must be 'admin' or 'operator')", role)
+		}
+
+		// Use remote Nexus server if configured
+		if serverURL := GetServer(); serverURL != "" {
+			return inviteOperatorRemote(cmd.Context(), serverURL, email, tenantName, role)
 		}
 
 		// Get tenant
@@ -160,6 +166,33 @@ Examples:
 
 		return nil
 	},
+}
+
+func inviteOperatorRemote(ctx context.Context, serverURL, email, tenantName, role string) error {
+	client := NewNexusClient(serverURL)
+	resp, err := client.InviteOperator(ctx, email, tenantName, role)
+	if err != nil {
+		return fmt.Errorf("failed to invite operator on server: %w", err)
+	}
+
+	if outputFormat == "json" || outputFormat == "yaml" {
+		return formatOutput(resp)
+	}
+
+	if resp.Status == "already_exists" {
+		fmt.Printf("Operator '%s' already exists (status: %s)\n", email, resp.Operator.Status)
+		return nil
+	}
+
+	fmt.Printf("Invite created for %s\n", email)
+	fmt.Printf("Code: %s\n", resp.InviteCode)
+	fmt.Printf("Expires: %s\n", resp.ExpiresAt)
+	fmt.Println()
+	fmt.Println("Share this code with the operator. They will need to:")
+	fmt.Println("  1. Run: km init")
+	fmt.Println("  2. Enter the invite code when prompted")
+
+	return nil
 }
 
 var operatorListCmd = &cobra.Command{

@@ -87,6 +87,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// KeyMaker routes
 	mux.HandleFunc("POST /api/v1/keymakers/bind", s.handleBindKeyMaker)
 
+	// Operator routes
+	mux.HandleFunc("POST /api/v1/operators/invite", s.handleInviteOperator)
+
 	// Authorization routes
 	mux.HandleFunc("POST /api/v1/authorizations", s.handleCreateAuthorization)
 	mux.HandleFunc("GET /api/v1/authorizations", s.handleListAuthorizations)

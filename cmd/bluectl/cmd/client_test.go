@@ -937,3 +937,127 @@ func TestNexusClient_UnassignDPUFromTenant(t *testing.T) {
 		})
 	}
 }
+
+// ----- Operator Client Tests -----
+
+func TestNexusClient_InviteOperator(t *testing.T) {
+	tests := []struct {
+		name       string
+		email      string
+		tenantName string
+		role       string
+		serverResp inviteOperatorResponse
+		serverCode int
+		wantErr    bool
+	}{
+		{
+			name:       "successful invite",
+			email:      "nelson@acme.com",
+			tenantName: "acme",
+			role:       "operator",
+			serverResp: inviteOperatorResponse{
+				Status:     "invited",
+				InviteCode: "ACME-ABCD-1234",
+				ExpiresAt:  "2024-01-02T00:00:00Z",
+				Operator: struct {
+					ID     string `json:"id"`
+					Email  string `json:"email"`
+					Status string `json:"status"`
+				}{
+					ID:     "op_abc123",
+					Email:  "nelson@acme.com",
+					Status: "pending_invite",
+				},
+			},
+			serverCode: http.StatusCreated,
+			wantErr:    false,
+		},
+		{
+			name:       "operator already exists",
+			email:      "nelson@acme.com",
+			tenantName: "acme",
+			role:       "operator",
+			serverResp: inviteOperatorResponse{
+				Status: "already_exists",
+				Operator: struct {
+					ID     string `json:"id"`
+					Email  string `json:"email"`
+					Status string `json:"status"`
+				}{
+					ID:     "op_abc123",
+					Email:  "nelson@acme.com",
+					Status: "active",
+				},
+			},
+			serverCode: http.StatusOK,
+			wantErr:    false,
+		},
+		{
+			name:       "tenant not found",
+			email:      "nelson@acme.com",
+			tenantName: "nonexistent",
+			role:       "operator",
+			serverCode: http.StatusNotFound,
+			wantErr:    true,
+		},
+		{
+			name:       "server error",
+			email:      "nelson@acme.com",
+			tenantName: "acme",
+			role:       "operator",
+			serverCode: http.StatusInternalServerError,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Errorf("expected POST, got %s", r.Method)
+				}
+				if r.URL.Path != "/api/v1/operators/invite" {
+					t.Errorf("expected /api/v1/operators/invite, got %s", r.URL.Path)
+				}
+
+				// Verify request body
+				var req inviteOperatorRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("failed to decode request body: %v", err)
+				}
+				if req.Email != tt.email {
+					t.Errorf("expected email %s, got %s", tt.email, req.Email)
+				}
+				if req.TenantName != tt.tenantName {
+					t.Errorf("expected tenant_name %s, got %s", tt.tenantName, req.TenantName)
+				}
+				if req.Role != tt.role {
+					t.Errorf("expected role %s, got %s", tt.role, req.Role)
+				}
+
+				w.WriteHeader(tt.serverCode)
+				if tt.serverCode == http.StatusCreated || tt.serverCode == http.StatusOK {
+					json.NewEncoder(w).Encode(tt.serverResp)
+				}
+			}))
+			defer server.Close()
+
+			client := NewNexusClient(server.URL)
+			resp, err := client.InviteOperator(context.Background(), tt.email, tt.tenantName, tt.role)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InviteOperator() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if resp.Status != tt.serverResp.Status {
+					t.Errorf("expected status %s, got %s", tt.serverResp.Status, resp.Status)
+				}
+				if resp.Operator.Email != tt.serverResp.Operator.Email {
+					t.Errorf("expected operator email %s, got %s", tt.serverResp.Operator.Email, resp.Operator.Email)
+				}
+			}
+		})
+	}
+}
