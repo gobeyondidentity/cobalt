@@ -10,13 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.8] - 2026-01-28
 
 ### Fixed
-- **Sentry naming**: Version output now shows `sentry` instead of `host-agent`
-- **Nexus naming**: All references updated from `control-plane` to `nexus`
-- **Version string**: Dev builds show git-derived version instead of hardcoded 0.5.2
+- **Credential delivery** (Critical): Sentry now correctly handles CREDENTIAL_PUSH messages via ComCh transport
 - **Tenant assign**: Remote DPU lookup now works when server is configured
 - **Operator invite**: Now uses remote server when configured (consistent with tenant commands)
 - **Invite code caching**: New codes recognized immediately without nexus restart (SQLite WAL mode)
+- **DPU state persistence**: State now persists correctly across nexus restarts
 - **Cert paths**: systemd config paths now match postinstall.sh generated paths
+- **Version string**: Dev builds show git-derived version instead of hardcoded 0.5.2
+- **Sentry naming**: Version output now shows `sentry` instead of `host-agent`
+- **Nexus naming**: All references updated from `control-plane` to `nexus`
+
+### Changed
+- **Source folder renames**: `internal/hostagent` → `internal/sentry`, `internal/agent` → `internal/aegis`
+- **Release artifact naming**: Standardized to sentry, aegis, nexus
 
 ## [0.6.6] - 2026-01-23
 
