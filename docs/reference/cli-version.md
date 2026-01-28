@@ -83,7 +83,7 @@ The CLI detects how it was installed and shows the appropriate upgrade command:
 | Homebrew | Path contains `/Cellar/` or `/homebrew/` | `brew upgrade nmelo/tap/bluectl` |
 | Apt (Debian/Ubuntu) | `/var/lib/dpkg/info/bluectl.list` exists | `sudo apt update && sudo apt upgrade bluectl` |
 | RPM (RHEL/Fedora) | RPM database query | `sudo dnf upgrade bluectl` |
-| Docker | `/.dockerenv` exists | `docker pull ghcr.io/gobeyondidentity/secureinfra-host-agent:<version>` |
+| Docker | `/.dockerenv` exists | `docker pull ghcr.io/gobeyondidentity/sentry:<version>` |
 | Direct download | Default fallback | Download from GitHub releases |
 
 ## 5. Examples

@@ -25,22 +25,22 @@ docker compose up
 ```
 
 This starts:
-- **control-plane**: API server with health endpoint
-- **host-agent**: Connects to control-plane automatically
+- **nexus**: Control plane API server with health endpoint
+- **sentry**: Host agent, connects to nexus automatically
 
 Wait for health checks to pass:
 
 ```
-secureinfra-control-plane  | level=info msg="Server started" http_port=18080
-secureinfra-host-agent     | level=info msg="Connected to control plane" address=control-plane:18080
+nexus   | level=info msg="Server started" http_port=18080
+sentry  | level=info msg="Connected to control plane" address=nexus:18080
 ```
 
 ## 3. Services
 
 | Service | Container | Ports |
 |---------|-----------|-------|
-| control-plane | `secureinfra-control-plane` | 18080 (HTTP API) |
-| host-agent | `secureinfra-host-agent` | Internal only |
+| nexus | `nexus` | 18080 (HTTP API) |
+| sentry | `sentry` | Internal only |
 
 ### Verify Services
 
@@ -59,9 +59,9 @@ curl http://localhost:18080/health
 | `SECUREINFRA_LOG_LEVEL` | `debug` | Log verbosity (debug, info, warn, error) |
 | `SECUREINFRA_LOG_FORMAT` | `text` | Log format (text, json) |
 
-### Host Agent
+### Sentry (Host Agent)
 
-The host agent connects to the control plane via the `--dpu-agent` flag specified in docker-compose.yml.
+Sentry connects to the control plane via the `--dpu-agent` flag specified in docker-compose.yml.
 
 ### Override Environment Variables
 
@@ -91,8 +91,8 @@ docker compose up -d
 docker compose logs -f
 
 # Specific service
-docker compose logs -f control-plane
-docker compose logs -f host-agent
+docker compose logs -f nexus
+docker compose logs -f sentry
 ```
 
 ### Stop Services
@@ -132,17 +132,17 @@ bluectl --server http://localhost:18080 tenant list
 
 ## 7. Health Checks
 
-The control-plane has a built-in health check:
+Nexus has a built-in health check:
 
 | Endpoint | Purpose |
 |----------|---------|
 | `/health` | Liveness and readiness probe |
 
-Docker Compose waits for control-plane to be healthy before starting host-agent:
+Docker Compose waits for nexus to be healthy before starting sentry:
 
 ```yaml
 depends_on:
-  control-plane:
+  nexus:
     condition: service_healthy
 ```
 
@@ -176,7 +176,7 @@ Error: connection refused localhost:18080
 docker compose ps
 
 # Check logs for errors
-docker compose logs control-plane
+docker compose logs nexus
 ```
 
 ### Port Already in Use
@@ -192,17 +192,17 @@ ports:
   - "28080:18080"  # Use different host port
 ```
 
-### Host Agent Can't Connect
+### Sentry Can't Connect
 
 ```
 level=error msg="Failed to connect to control plane"
 ```
 
-**Cause:** Control plane not healthy yet
+**Cause:** Nexus not healthy yet
 
-**Fix:** The host-agent should wait automatically. If persistent, check:
+**Fix:** Sentry should wait automatically. If persistent, check:
 ```bash
-docker compose logs control-plane | grep -i error
+docker compose logs nexus | grep -i error
 ```
 
 ### Reset Everything

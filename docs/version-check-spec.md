@@ -111,7 +111,7 @@ func DetectInstallMethod() InstallMethod {
 | Homebrew | `brew upgrade nmelo/tap/bluectl` | `brew upgrade nmelo/tap/km` |
 | Apt | `sudo apt update && sudo apt upgrade bluectl` | `sudo apt update && sudo apt upgrade km` |
 | RPM | `sudo dnf upgrade bluectl` | `sudo dnf upgrade km` |
-| Docker | `docker pull ghcr.io/gobeyondidentity/secureinfra-host-agent:VERSION` | N/A |
+| Docker | `docker pull ghcr.io/gobeyondidentity/sentry:VERSION` | N/A |
 | Direct | `Download from https://github.com/gobeyondidentity/secure-infra/releases` | Same |
 
 For Docker, replace VERSION with the actual new version number.

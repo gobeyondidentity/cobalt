@@ -55,11 +55,11 @@ cd secure-infra
 make
 # Expected:
 # Building all binaries...
-#   bin/agent
+#   bin/aegis
 #   bin/bluectl
 #   bin/km
-#   bin/server
-#   bin/host-agent
+#   bin/nexus
+#   bin/sentry
 #   bin/dpuemu
 # Done.
 ```
@@ -286,7 +286,7 @@ With the emulator, sentry connects via HTTP instead of hardware channels.
 
 ```bash
 sentry --dpu-agent http://localhost:9443 --oneshot
-# or: bin/host-agent --dpu-agent http://localhost:9443 --oneshot   # if built from source
+# or: bin/sentry --dpu-agent http://localhost:9443 --oneshot   # if built from source
 
 # Expected:
 # Sentry v0.6.3 starting...

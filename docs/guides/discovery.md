@@ -20,7 +20,7 @@ Discovery answers:
 
 ## Bootstrap Mode (No Agent)
 
-Scan hosts directly via SSH without deploying host-agent first. Useful for initial audits and migration planning.
+Scan hosts directly via SSH without deploying sentry first. Useful for initial audits and migration planning.
 
 ```bash
 bin/km discover scan <HOST> --ssh --ssh-user <USER> --ssh-key <KEY_PATH>
@@ -31,7 +31,7 @@ bin/km discover scan <HOST> --ssh --ssh-user <USER> --ssh-key <KEY_PATH>
 # ...
 #
 # Found 12 keys on 1 host (ssh)
-# Warning: Bootstrap mode. Install host-agent for production use.
+# Warning: Bootstrap mode. Install sentry for production use.
 ```
 
 Options:
@@ -42,7 +42,7 @@ Options:
 
 ## Agent Mode (Production)
 
-Once host-agents are deployed, scan through the agent channel instead of SSH. This is faster and doesn't require SSH credentials.
+Once sentrys are deployed, scan through the agent channel instead of SSH. This is faster and doesn't require SSH credentials.
 
 ### Scan a single host
 
@@ -157,14 +157,14 @@ done
 |-------|-------|-----|
 | `SSH authentication failed` | Wrong key or user | Verify `--ssh-user` and `--ssh-key` |
 | `connection refused` | SSH not running or firewall | Check SSH service and network |
-| `no hosts registered` | No host-agents connected | Use `--ssh` bootstrap mode |
+| `no hosts registered` | No sentrys connected | Use `--ssh` bootstrap mode |
 | `timeout` | Host unreachable or slow | Increase `--timeout` value |
 
 ## What's Next?
 
 After auditing existing keys:
 
-1. **Deploy host-agents** - Switch from SSH bootstrap to agent-based scanning
+1. **Deploy sentrys** - Switch from SSH bootstrap to agent-based scanning
 2. **Create SSH CA** - Set up certificate authority (`km ssh-ca create`)
 3. **Migrate users** - Issue certificates to replace static keys
 4. **Remove static keys** - Clean up authorized_keys after migration

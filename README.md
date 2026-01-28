@@ -98,7 +98,6 @@ Check for updates anytime: `bluectl version --check`
 
 | Reference | Description |
 |-----------|-------------|
-| [Attestation Architecture](docs/reference/attestation-architecture.md) | DICE/SPDM via PSC and BMC |
 | [CLI Version](docs/reference/cli-version.md) | Version check and upgrade commands |
 | [Discovery Schema](docs/reference/discovery.md) | JSON output format and jq recipes |
 | [Encryption Keys](docs/reference/encryption-keys.md) | Key management internals |
@@ -109,17 +108,15 @@ Check for updates anytime: `bluectl version --check`
 |-----------|---------|-------------|
 | `bluectl` | bluectl | Admin CLI: DPU management, tenants, operators, health checks |
 | `km` | km | Operator CLI: SSH CA lifecycle, credential push |
-| `agent` | aegis | DPU agent running on BlueField ARM cores |
-| `host-agent` | sentry | Host agent for credential receipt via ComCh/tmfifo and posture reporting |
-| `server` | nexus | Control plane server |
+| `aegis` | aegis | DPU agent running on BlueField ARM cores |
+| `sentry` | sentry | Host agent for credential receipt via ComCh/tmfifo and posture reporting |
+| `nexus` | nexus | Control plane server |
 | `dpuemu` | - | DPU emulator for local development |
-| `web/` | - | Next.js dashboard (in development) |
 
 ## Tech Stack
 
 - **API/Agent**: Go 1.22+
 - **Policy**: Cedar (AWS policy language)
-- **Dashboard**: Next.js 14, Tailwind, shadcn/ui
 - **Communication**: gRPC/protobuf
 - **Storage**: SQLite (encrypted)
 
@@ -134,9 +131,6 @@ make test
 
 # Build release binaries for all platforms
 make release
-
-# Dashboard
-cd web && npm install && npm run dev
 ```
 
 ## Project Structure
@@ -149,7 +143,6 @@ secure-infra/
 ├── proto/         # Protobuf definitions
 ├── gen/           # Generated gRPC code
 ├── dpuemu/        # DPU emulator
-├── web/           # Dashboard (Next.js)
 ├── deploy/        # Install scripts
 └── docs/          # Setup guides
 ```

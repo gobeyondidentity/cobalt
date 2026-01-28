@@ -48,38 +48,38 @@ Requires Go 1.22+ and Make. See [Clone and Build](#clone-and-build).
 ```bash
 git clone git@github.com:gobeyondidentity/secure-infra.git
 cd secure-infra
-make agent
+make aegis
 # Expected:
-# Building agent...
-#   bin/agent
-# Cross-compiling agent for BlueField (linux/arm64)...
-#   bin/agent-arm64
+# Building aegis...
+#   bin/aegis
+# Cross-compiling aegis for BlueField (linux/arm64)...
+#   bin/aegis-arm64
 
-make host-agent
+make sentry
 # Expected:
-# Building host-agent...
-#   bin/host-agent
-# Cross-compiling host-agent for Linux (amd64)...
-#   bin/host-agent-amd64
-# Cross-compiling host-agent for Linux (arm64)...
-#   bin/host-agent-arm64
+# Building sentry...
+#   bin/sentry
+# Cross-compiling sentry for Linux (amd64)...
+#   bin/sentry-amd64
+# Cross-compiling sentry for Linux (arm64)...
+#   bin/sentry-arm64
 
 make
 # Expected:
 # Building all binaries...
-#   bin/agent
+#   bin/aegis
 #   bin/bluectl
 #   bin/km
-#   bin/server
-#   bin/host-agent
+#   bin/nexus
+#   bin/sentry
 #   bin/dpuemu
 # Done.
 ```
 
 This builds:
-- `bin/agent-arm64` for the BlueField DPU (package name: aegis)
-- `bin/host-agent-amd64` for x86_64 hosts (package name: sentry)
-- Control plane tools (`bluectl`, `km`, `server`/nexus)
+- `bin/aegis-arm64` for the BlueField DPU
+- `bin/sentry-amd64` for x86_64 hosts
+- Control plane tools (`bluectl`, `km`, `nexus`)
 
 **Note:** When building from source, use `bin/` prefix for all commands (e.g., `bin/bluectl` instead of `bluectl`).
 
@@ -141,7 +141,7 @@ sudo apt update && sudo apt install aegis
 
 From your build machine:
 ```bash
-scp bin/agent-arm64 ubuntu@<DPU_IP>:~/aegis
+scp bin/aegis-arm64 ubuntu@<DPU_IP>:~/aegis
 ```
 
 On the DPU:
@@ -542,7 +542,7 @@ sudo yum install sentry
 
 From your build machine:
 ```bash
-scp bin/host-agent-amd64 <user>@<HOST_IP>:~/sentry
+scp bin/sentry-amd64 <user>@<HOST_IP>:~/sentry
 ```
 
 On the host:
@@ -728,7 +728,7 @@ Trust relationships let hosts authenticate each other for SSH or mTLS connection
 ### Prerequisites
 
 You need two hosts, each with:
-- A running host-agent (Steps 12-14)
+- A running sentry (Steps 12-14)
 - A paired DPU with health verification complete (Step 11)
 
 Check your registered hosts:
@@ -876,7 +876,7 @@ cat /sys/class/infiniband/mlx5_0/sys_image_guid
 The host agent automatically discovers all DPUs:
 
 ```yaml
-# /etc/secure-infra/host-agent.yaml
+# /etc/secureinfra/sentry.yaml
 transport:
   doca_comch:
     auto_discover: true    # Find all ComCh-capable devices
@@ -889,7 +889,7 @@ transport:
 For controlled environments, specify DPUs by GUID:
 
 ```yaml
-# /etc/secure-infra/host-agent.yaml
+# /etc/secureinfra/sentry.yaml
 transport:
   doca_comch:
     auto_discover: false
@@ -947,7 +947,7 @@ When replacing a failed DPU:
 # Host agent detects new DPU automatically
 
 # With explicit config
-# Update config with new GUID, restart host-agent
+# Update config with new GUID, restart sentry
 ```
 
 #### Scenario 3: Mixed BlueField + ConnectX
@@ -969,7 +969,7 @@ Check discovered DPUs:
 
 ```bash
 # On host
-~/host-agent --discover-only
+sentry --discover-only
 # Output:
 # Discovered 2 DPUs:
 #   guid: 8c91:3a03:00f4:7cca  pci: 01:00.0  status: available
