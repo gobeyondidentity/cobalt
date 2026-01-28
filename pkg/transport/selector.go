@@ -143,8 +143,12 @@ func NewHostTransport(cfg *Config) (Transport, error) {
 		}
 		// Check for real interface
 		if hasTmfifoInterface() {
-			log.Printf("transport: using tmfifo TCP to %s (forced)", cfg.TmfifoDPUAddr)
-			return NewTmfifoNetTransport(cfg.TmfifoDPUAddr)
+			dpuAddr := cfg.TmfifoDPUAddr
+			if dpuAddr == "" {
+				dpuAddr = TmfifoDefaultDPUAddr
+			}
+			log.Printf("transport: using tmfifo TCP to %s (forced)", dpuAddr)
+			return NewTmfifoNetTransport(dpuAddr)
 		}
 		return nil, fmt.Errorf("tmfifo not available: no Unix socket at %s and no %s interface (required by ForceTmfifo)",
 			cfg.TmfifoSocketPath, TmfifoInterfaceName)
