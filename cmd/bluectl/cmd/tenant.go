@@ -237,10 +237,29 @@ Examples:
 
 func removeTenantRemote(ctx context.Context, serverURL, nameOrID string) error {
 	client := NewNexusClient(serverURL)
-	if err := client.DeleteTenant(ctx, nameOrID); err != nil {
+
+	// Resolve tenant name to ID
+	tenants, err := client.ListTenants(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list tenants: %w", err)
+	}
+
+	var tenantID, tenantName string
+	for _, t := range tenants {
+		if t.Name == nameOrID || t.ID == nameOrID {
+			tenantID = t.ID
+			tenantName = t.Name
+			break
+		}
+	}
+	if tenantID == "" {
+		return fmt.Errorf("tenant not found: %s", nameOrID)
+	}
+
+	if err := client.DeleteTenant(ctx, tenantID); err != nil {
 		return fmt.Errorf("failed to remove tenant from server: %w", err)
 	}
-	fmt.Printf("Removed tenant '%s'\n", nameOrID)
+	fmt.Printf("Removed tenant '%s'\n", tenantName)
 	return nil
 }
 
