@@ -72,8 +72,9 @@ type Server struct {
 
 	// activeTransport is the current transport connection to the host.
 	// Set when a host connects via the transport listener.
-	activeTransport transport.Transport
-	transportMu     sync.RWMutex
+	activeTransport          transport.Transport
+	transportAuthenticated   bool
+	transportMu              sync.RWMutex
 
 	// credentialQueue holds credentials waiting to be retrieved by the Host Agent
 	credentialQueue []*QueuedCredential
@@ -323,11 +324,30 @@ func (s *Server) GetHostListener() transport.TransportListener {
 }
 
 // SetActiveTransport sets the active transport connection to the host.
-// This is typically called by the message handling loop after Accept().
+// This is called after authentication completes successfully.
+// The transport is marked as authenticated, enabling credential push.
 func (s *Server) SetActiveTransport(t transport.Transport) {
 	s.transportMu.Lock()
 	defer s.transportMu.Unlock()
 	s.activeTransport = t
+	s.transportAuthenticated = true
+}
+
+// ClearActiveTransport clears the active transport and resets authentication state.
+// This must be called when a connection closes or errors to prevent sending
+// credentials on an unauthenticated or dead connection.
+func (s *Server) ClearActiveTransport() {
+	s.transportMu.Lock()
+	defer s.transportMu.Unlock()
+	s.activeTransport = nil
+	s.transportAuthenticated = false
+}
+
+// IsTransportAuthenticated returns whether the active transport has completed authentication.
+func (s *Server) IsTransportAuthenticated() bool {
+	s.transportMu.RLock()
+	defer s.transportMu.RUnlock()
+	return s.transportAuthenticated
 }
 
 // GetActiveTransport returns the active transport connection, if any.
@@ -352,12 +372,15 @@ func (s *Server) PushCredential(ctx context.Context, credType, credName string, 
 		return nil, fmt.Errorf("localapi: no host paired with this DPU")
 	}
 
-	// If we have an active transport connection, use it for direct push
+	// If we have an active AND authenticated transport connection, use it for direct push.
+	// Both conditions must be true to prevent sending on an unauthenticated connection
+	// (e.g., during the window between Accept() and auth completion).
 	s.transportMu.RLock()
 	activeTransport := s.activeTransport
+	isAuthenticated := s.transportAuthenticated
 	s.transportMu.RUnlock()
 
-	if activeTransport != nil {
+	if activeTransport != nil && isAuthenticated {
 		log.Printf("[CRED-DELIVERY] localapi: using active transport (%s) for push", activeTransport.Type())
 		err := s.pushCredentialViaTransport(activeTransport, credType, credName, data)
 		if err == nil {
@@ -369,6 +392,8 @@ func (s *Server) PushCredential(ctx context.Context, credType, credName string, 
 		}
 		// Transport push failed, fall through to queue
 		log.Printf("[CRED-DELIVERY] localapi: transport push failed, queueing for retrieval: %v", err)
+	} else if activeTransport != nil && !isAuthenticated {
+		log.Printf("[CRED-DELIVERY] localapi: transport exists but not authenticated yet, queueing credential")
 	}
 
 	// Queue the credential for Host Agent retrieval on next poll

@@ -293,7 +293,7 @@ func runTransportLoop(ctx context.Context, listener transport.TransportListener,
 func handleTransportConnection(ctx context.Context, t transport.Transport, localServer *localapi.Server) {
 	defer func() {
 		t.Close()
-		localServer.SetActiveTransport(nil)
+		localServer.ClearActiveTransport()
 	}()
 
 	for {
