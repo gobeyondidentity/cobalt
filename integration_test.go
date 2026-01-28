@@ -1969,7 +1969,15 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 		logInfo(t, "Aegis log (recent):\n%s", aegisLog)
 
 		// If it fails, that's OK for this test as long as it's not a pairing rejection
-		if strings.Contains(aegisLog, "already paired") && strings.Contains(aegisLog, "qa-host") {
+		// Check each log line for a rejection of qa-host specifically (not the intruder)
+		qaHostRejected := false
+		for _, line := range strings.Split(aegisLog, "\n") {
+			if strings.Contains(line, "already paired") && strings.Contains(line, "qa-host") {
+				qaHostRejected = true
+				break
+			}
+		}
+		if qaHostRejected {
 			t.Errorf("%s Original host rejected after intruder attempt", errFmt("x"))
 		} else {
 			logOK(t, "Original host not rejected (transport state issue is acceptable)")
