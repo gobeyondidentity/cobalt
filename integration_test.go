@@ -202,9 +202,7 @@ func TestTMFIFOTransportIntegration(t *testing.T) {
 		fmt.Printf("\n%s\n", dimFmt("Cleaning up processes..."))
 		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
-		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
 		cfg.killProcess(cleanupCtx, cfg.HostVM, "sentry")
-		cfg.killProcess(cleanupCtx, cfg.HostVM, "socat")
 	})
 
 	// Get VM IPs
@@ -241,25 +239,8 @@ func TestTMFIFOTransportIntegration(t *testing.T) {
 	}
 	logOK(t, "Nexus started")
 
-	// Step 2: Start socat on DPU (creates /dev/tmfifo_net0)
-	logStep(t, 2, "Starting TMFIFO socat on DPU...")
-	cfg.killProcess(ctx, cfg.DPUVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on DPU: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	// Verify device exists
-	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on DPU: %v", err)
-	}
-	logOK(t, fmt.Sprintf("TMFIFO device: %s", strings.TrimSpace(output)))
-
-	// Step 3: Start aegis
-	logStep(t, 3, "Starting aegis...")
+	// Step 2: Start aegis (listens on TCP port 9444 for tmfifo transport)
+	logStep(t, 2, "Starting aegis...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
@@ -276,10 +257,10 @@ func TestTMFIFOTransportIntegration(t *testing.T) {
 	if !strings.Contains(output, "tmfifo listener created") {
 		t.Fatalf("Aegis not listening on TMFIFO. Log:\n%s", output)
 	}
-	logOK(t, "Aegis started with TMFIFO listener")
+	logOK(t, "Aegis started with TMFIFO listener on TCP port 9444")
 
-	// Step 4: Register DPU with control plane
-	logStep(t, 4, "Registering DPU...")
+	// Step 3: Register DPU with control plane
+	logStep(t, 3, "Registering DPU...")
 
 	// Create tenant (ignore error if already exists)
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", "qa-tenant", "--insecure")
@@ -302,29 +283,12 @@ func TestTMFIFOTransportIntegration(t *testing.T) {
 	}
 	logOK(t, "DPU registered and assigned to tenant")
 
-	// Step 5: Start socat on host
-	logStep(t, 5, "Starting TMFIFO socat on host...")
-	cfg.killProcess(ctx, cfg.HostVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:%s:%s > /tmp/socat.log 2>&1 < /dev/null &", dpuIP, cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on host: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	// Verify device exists
-	output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on host: %v", err)
-	}
-	logOK(t, "TMFIFO tunnel established")
-
-	// Step 6: Run sentry enrollment
-	logStep(t, 6, "Running sentry enrollment...")
+	// Step 4: Run sentry enrollment (connects directly to aegis via TCP)
+	logStep(t, 4, "Running sentry enrollment...")
 	sentryCtx, sentryCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer sentryCancel()
 
-	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", "--oneshot")
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
 
 	// Check results
 	if err != nil {
@@ -376,9 +340,7 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 		fmt.Printf("\n%s\n", dimFmt("Cleaning up processes and test artifacts..."))
 		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
-		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
 		cfg.killProcess(cleanupCtx, cfg.HostVM, "sentry")
-		cfg.killProcess(cleanupCtx, cfg.HostVM, "socat")
 
 		// Clean up test CA file
 		cfg.multipassExec(cleanupCtx, cfg.HostVM, "sudo", "rm", "-f", caPath)
@@ -414,24 +376,8 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	}
 	logOK(t, "Nexus started")
 
-	// Step 2: Start TMFIFO socat on DPU
-	logStep(t, 2, "Starting TMFIFO socat on DPU...")
-	cfg.killProcess(ctx, cfg.DPUVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on DPU: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on DPU: %v", err)
-	}
-	logOK(t, fmt.Sprintf("TMFIFO device: %s", strings.TrimSpace(output)))
-
-	// Step 3: Start aegis with local API
-	logStep(t, 3, "Starting aegis with local API...")
+	// Step 2: Start aegis with local API (listens on TCP port 9444 for tmfifo transport)
+	logStep(t, 2, "Starting aegis with local API...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
@@ -447,10 +393,10 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	if !strings.Contains(output, "tmfifo listener created") {
 		t.Fatalf("Aegis not listening on TMFIFO. Log:\n%s", output)
 	}
-	logOK(t, "Aegis started with TMFIFO listener")
+	logOK(t, "Aegis started with TMFIFO listener on TCP port 9444")
 
-	// Step 4: Register DPU with control plane
-	logStep(t, 4, "Registering DPU...")
+	// Step 3: Register DPU with control plane
+	logStep(t, 3, "Registering DPU...")
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", "qa-tenant", "--insecure")
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "remove", "qa-dpu", "--insecure")
 
@@ -467,30 +413,14 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	}
 	logOK(t, "DPU registered and assigned to tenant")
 
-	// Step 5: Start TMFIFO socat on host
-	logStep(t, 5, "Starting TMFIFO socat on host...")
-	cfg.killProcess(ctx, cfg.HostVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:%s:%s > /tmp/socat.log 2>&1 < /dev/null &", dpuIP, cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on host: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on host: %v", err)
-	}
-	logOK(t, "TMFIFO tunnel established")
-
-	// Step 6: Start sentry daemon (will enroll on first connect)
+	// Step 4: Start sentry daemon (connects directly to aegis via TCP)
 	// Note: We start daemon directly instead of --oneshot + daemon because
 	// tmfifo char devices don't have connection close semantics. The --oneshot
 	// exit doesn't signal disconnect to aegis, causing auth state mismatch.
-	logStep(t, 6, "Starting sentry daemon (will enroll on connect)...")
+	logStep(t, 4, "Starting sentry daemon (will enroll on connect)...")
 	cfg.killProcess(ctx, cfg.HostVM, "sentry")
 	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		"sudo setsid /home/ubuntu/sentry --force-tmfifo > /tmp/sentry.log 2>&1 < /dev/null &")
+		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", dpuIP))
 	if err != nil {
 		t.Fatalf("Failed to start sentry daemon: %v", err)
 	}
@@ -515,9 +445,9 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	}
 	logOK(t, "Sentry daemon started and enrolled")
 
-	// Step 7: Push credential directly to aegis localapi
+	// Step 5: Push credential directly to aegis localapi
 	// Note: bluectl ssh-ca commands don't exist yet, so we push directly to localapi
-	logStep(t, 7, "Pushing SSH CA credential via aegis localapi...")
+	logStep(t, 5, "Pushing SSH CA credential via aegis localapi...")
 
 	// Clear logs before push to capture fresh markers
 	_, _ = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", "sudo truncate -s 0 /tmp/aegis.log")
@@ -545,8 +475,8 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	// Allow time for credential to propagate through the system
 	time.Sleep(3 * time.Second)
 
-	// Step 8: Verify logging markers in aegis
-	logStep(t, 8, "Verifying credential delivery logging markers...")
+	// Step 6: Verify logging markers in aegis
+	logStep(t, 6, "Verifying credential delivery logging markers...")
 
 	aegisLog, err := cfg.multipassExec(ctx, cfg.DPUVM, "cat", "/tmp/aegis.log")
 	if err != nil {
@@ -589,8 +519,8 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 		}
 	}
 
-	// Step 9: Verify credential file exists with correct permissions
-	logStep(t, 9, "Verifying credential installation on host...")
+	// Step 7: Verify credential file exists with correct permissions
+	logStep(t, 7, "Verifying credential installation on host...")
 
 	output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", caPath)
 	if err != nil {
@@ -670,9 +600,7 @@ func TestNexusRestartPersistence(t *testing.T) {
 		fmt.Printf("\n%s\n", dimFmt("Cleaning up processes..."))
 		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
-		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
 		cfg.killProcess(cleanupCtx, cfg.HostVM, "sentry")
-		cfg.killProcess(cleanupCtx, cfg.HostVM, "socat")
 	})
 
 	// Get VM IPs
@@ -735,19 +663,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 	}
 	logOK(t, fmt.Sprintf("Created invite code: %s", inviteCode))
 
-	// Step 4: Start TMFIFO socat on DPU (for aegis)
-	logStep(t, 4, "Starting TMFIFO socat on DPU...")
-	cfg.killProcess(ctx, cfg.DPUVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on DPU: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-	logOK(t, "TMFIFO socat started on DPU")
-
-	// Step 5: Start aegis
-	logStep(t, 5, "Starting aegis...")
+	// Step 4: Start aegis (listens on TCP port 9444 for tmfifo transport)
+	logStep(t, 4, "Starting aegis...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
@@ -761,10 +678,10 @@ func TestNexusRestartPersistence(t *testing.T) {
 		logs, _ := cfg.multipassExec(ctx, cfg.DPUVM, "cat", "/tmp/aegis.log")
 		t.Fatalf("Aegis not running. Logs:\n%s", logs)
 	}
-	logOK(t, "Aegis started")
+	logOK(t, "Aegis started with TMFIFO listener on TCP port 9444")
 
-	// Step 6: Register DPU
-	logStep(t, 6, "Registering DPU...")
+	// Step 5: Register DPU
+	logStep(t, 5, "Registering DPU...")
 	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
 		"dpu", "add", fmt.Sprintf("%s:18051", dpuIP), "--name", dpuName, "--insecure")
 	if err != nil {
@@ -772,8 +689,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 	}
 	logOK(t, fmt.Sprintf("Registered DPU '%s'", dpuName))
 
-	// Step 7: Assign DPU to tenant
-	logStep(t, 7, "Assigning DPU to tenant...")
+	// Step 6: Assign DPU to tenant
+	logStep(t, 6, "Assigning DPU to tenant...")
 	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
 		"tenant", "assign", tenantName, dpuName, "--insecure")
 	if err != nil {
@@ -781,8 +698,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 	}
 	logOK(t, fmt.Sprintf("Assigned DPU '%s' to tenant '%s'", dpuName, tenantName))
 
-	// Step 8: Capture state BEFORE restart
-	logStep(t, 8, "Capturing state before restart...")
+	// Step 7: Capture state BEFORE restart
+	logStep(t, 7, "Capturing state before restart...")
 
 	tenantListBefore, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "list", "--insecure", "-o", "json")
 	if err != nil {
@@ -804,8 +721,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 
 	logOK(t, "State captured before restart")
 
-	// Step 9: Restart nexus
-	logStep(t, 9, "Restarting nexus...")
+	// Step 8: Restart nexus
+	logStep(t, 8, "Restarting nexus...")
 	cfg.killProcess(ctx, cfg.ServerVM, "nexus")
 	time.Sleep(1 * time.Second)
 
@@ -832,8 +749,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 	}
 	logOK(t, "Nexus restarted")
 
-	// Step 10: Verify tenant list persists
-	logStep(t, 10, "Verifying tenant persistence...")
+	// Step 9: Verify tenant list persists
+	logStep(t, 9, "Verifying tenant persistence...")
 	tenantListAfter, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "list", "--insecure", "-o", "json")
 	if err != nil {
 		t.Fatalf("Failed to list tenants after restart: %v", err)
@@ -845,8 +762,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 		logOK(t, fmt.Sprintf("Tenant '%s' persisted", tenantName))
 	}
 
-	// Step 11: Verify DPU list persists
-	logStep(t, 11, "Verifying DPU persistence...")
+	// Step 10: Verify DPU list persists
+	logStep(t, 10, "Verifying DPU persistence...")
 	dpuListAfter, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "list", "--insecure", "-o", "json")
 	if err != nil {
 		t.Fatalf("Failed to list DPUs after restart: %v", err)
@@ -858,8 +775,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 		logOK(t, fmt.Sprintf("DPU '%s' persisted", dpuName))
 	}
 
-	// Step 12: Verify operator/invite persists
-	logStep(t, 12, "Verifying operator persistence...")
+	// Step 11: Verify operator/invite persists
+	logStep(t, 11, "Verifying operator persistence...")
 	operatorListAfter, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "operator", "list", "--insecure", "-o", "json")
 	if err != nil {
 		t.Fatalf("Failed to list operators after restart: %v", err)
@@ -871,8 +788,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 		logOK(t, fmt.Sprintf("Operator '%s' persisted", operatorEmail))
 	}
 
-	// Step 13: Verify invite code can be redeemed after restart
-	logStep(t, 13, "Verifying invite code redemption after restart...")
+	// Step 12: Verify invite code can be redeemed after restart
+	logStep(t, 12, "Verifying invite code redemption after restart...")
 
 	// Set up km on host VM to redeem the invite
 	// First, clear any existing km config
@@ -912,8 +829,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 	// Suppress unused variable warning
 	_ = kmInitOutput
 
-	// Step 14: Verify tenant assignment persists
-	logStep(t, 14, "Verifying tenant assignment persistence...")
+	// Step 13: Verify tenant assignment persists
+	logStep(t, 13, "Verifying tenant assignment persistence...")
 
 	// Get tenant details to check DPU assignment
 	tenantShowOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
@@ -928,8 +845,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 		logOK(t, fmt.Sprintf("DPU '%s' still assigned to tenant '%s'", dpuName, tenantName))
 	}
 
-	// Step 15: Compare full state
-	logStep(t, 15, "Comparing full state before and after restart...")
+	// Step 14: Compare full state
+	logStep(t, 14, "Comparing full state before and after restart...")
 
 	// Compare counts
 	beforeCount := countJSONArrayEntries(tenantListBefore)
@@ -1028,9 +945,7 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 		fmt.Printf("\n%s\n", dimFmt("Cleaning up processes and test artifacts..."))
 		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
-		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
 		cfg.killProcess(cleanupCtx, cfg.HostVM, "sentry")
-		cfg.killProcess(cleanupCtx, cfg.HostVM, "socat")
 
 		// Clean up test CA files
 		cfg.multipassExec(cleanupCtx, cfg.HostVM, "sudo", "rm", "-f", caPath1)
@@ -1068,24 +983,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 	logOK(t, "Nexus started")
 
-	// Step 2: Start TMFIFO socat on DPU
-	logStep(t, 2, "Starting TMFIFO socat on DPU...")
-	cfg.killProcess(ctx, cfg.DPUVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on DPU: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on DPU: %v", err)
-	}
-	logOK(t, fmt.Sprintf("TMFIFO device: %s", strings.TrimSpace(output)))
-
-	// Step 3: Start aegis with local API (first time)
-	logStep(t, 3, "Starting aegis (initial)...")
+	// Step 2: Start aegis with local API (listens on TCP port 9444 for tmfifo transport)
+	logStep(t, 2, "Starting aegis (initial)...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
@@ -1101,10 +1000,10 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	if !strings.Contains(output, "tmfifo listener created") {
 		t.Fatalf("Aegis not listening on TMFIFO. Log:\n%s", output)
 	}
-	logOK(t, "Aegis started with TMFIFO listener")
+	logOK(t, "Aegis started with TMFIFO listener on TCP port 9444")
 
-	// Step 4: Register DPU with control plane
-	logStep(t, 4, "Registering DPU...")
+	// Step 3: Register DPU with control plane
+	logStep(t, 3, "Registering DPU...")
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", "qa-tenant", "--insecure")
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "remove", "qa-dpu", "--insecure")
 
@@ -1121,30 +1020,14 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 	logOK(t, "DPU registered and assigned to tenant")
 
-	// Step 5: Start TMFIFO socat on host
-	logStep(t, 5, "Starting TMFIFO socat on host...")
-	cfg.killProcess(ctx, cfg.HostVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:%s:%s > /tmp/socat.log 2>&1 < /dev/null &", dpuIP, cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on host: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on host: %v", err)
-	}
-	logOK(t, "TMFIFO tunnel established")
-
-	// Step 6: Start sentry daemon (will enroll on first connect)
+	// Step 4: Start sentry daemon (connects directly to aegis via TCP)
 	// Note: We start daemon directly instead of --oneshot + daemon because
 	// tmfifo char devices don't have connection close semantics. The --oneshot
 	// exit doesn't signal disconnect to aegis, causing auth state mismatch.
-	logStep(t, 6, "Starting sentry daemon (will enroll on connect)...")
+	logStep(t, 4, "Starting sentry daemon (will enroll on connect)...")
 	cfg.killProcess(ctx, cfg.HostVM, "sentry")
 	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		"sudo setsid /home/ubuntu/sentry --force-tmfifo > /tmp/sentry.log 2>&1 < /dev/null &")
+		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", dpuIP))
 	if err != nil {
 		t.Fatalf("Failed to start sentry daemon: %v", err)
 	}
@@ -1169,8 +1052,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 	logOK(t, "Sentry daemon started and enrolled")
 
-	// Step 7: Push first credential (before any restart) to verify baseline
-	logStep(t, 7, "Pushing first credential (baseline)...")
+	// Step 5: Push first credential (before any restart) to verify baseline
+	logStep(t, 5, "Pushing first credential (baseline)...")
 	_, _ = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", "sudo truncate -s 0 /tmp/aegis.log")
 	_, _ = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c", "sudo truncate -s 0 /tmp/sentry.log")
 
@@ -1192,8 +1075,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 	logOK(t, "First credential delivered successfully (baseline)")
 
-	// Step 8: Kill aegis (simulate restart)
-	logStep(t, 8, "Killing aegis (simulating restart)...")
+	// Step 6: Kill aegis (simulate restart)
+	logStep(t, 6, "Killing aegis (simulating restart)...")
 	killTime := time.Now()
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	time.Sleep(1 * time.Second)
@@ -1205,8 +1088,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 	logOK(t, "Aegis stopped")
 
-	// Step 9: Verify sentry detects disconnect within 10s
-	logStep(t, 9, "Verifying sentry detects disconnect within 10s...")
+	// Step 7: Verify sentry detects disconnect within 10s
+	logStep(t, 7, "Verifying sentry detects disconnect within 10s...")
 	disconnectDetected := false
 	for i := 0; i < 10; i++ {
 		time.Sleep(time.Second)
@@ -1224,8 +1107,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 		t.Errorf("%s Sentry did not detect disconnect within 10s", errFmt("x"))
 	}
 
-	// Step 10: Restart aegis
-	logStep(t, 10, "Restarting aegis...")
+	// Step 8: Restart aegis
+	logStep(t, 8, "Restarting aegis...")
 	restartTime := time.Now()
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
@@ -1241,8 +1124,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 	logOK(t, "Aegis restarted")
 
-	// Step 11: Verify sentry reconnects within 30s
-	logStep(t, 11, "Verifying sentry reconnects within 30s...")
+	// Step 9: Verify sentry reconnects within 30s
+	logStep(t, 9, "Verifying sentry reconnects within 30s...")
 	reconnected := false
 	for i := 0; i < 30; i++ {
 		time.Sleep(time.Second)
@@ -1260,8 +1143,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 		t.Fatalf("%s Sentry did not reconnect within 30s", errFmt("x"))
 	}
 
-	// Step 12: Verify sentry did NOT re-enroll (session resumed)
-	logStep(t, 12, "Verifying session resumed (no re-enrollment)...")
+	// Step 10: Verify sentry did NOT re-enroll (session resumed)
+	logStep(t, 10, "Verifying session resumed (no re-enrollment)...")
 	sentryLog, _ = cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
 
 	// After initial enrollment, there should be no new "Enrolling" or "Enrolled" messages
@@ -1273,8 +1156,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 		logOK(t, "Session resumed without re-enrollment")
 	}
 
-	// Step 13: Push second credential (after first reconnection)
-	logStep(t, 13, "Pushing second credential (after reconnection)...")
+	// Step 11: Push second credential (after first reconnection)
+	logStep(t, 11, "Pushing second credential (after reconnection)...")
 	curlCmd = fmt.Sprintf(`curl -s -X POST http://localhost:9443/local/v1/credential -H "Content-Type: application/json" -d '{"credential_type":"ssh-ca","credential_name":"%s","data":"%s"}'`, caName2, testCAKeyB64)
 	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", curlCmd)
 	if err != nil || !strings.Contains(output, `"success":true`) {
@@ -1290,13 +1173,13 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 	logOK(t, "Second credential delivered after reconnection")
 
-	// Step 14-15: Second restart cycle (test sequential reconnections)
-	logStep(t, 14, "Second restart cycle: killing aegis...")
+	// Step 12-13: Second restart cycle (test sequential reconnections)
+	logStep(t, 12, "Second restart cycle: killing aegis...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	time.Sleep(1 * time.Second)
 	logOK(t, "Aegis stopped (second time)")
 
-	logStep(t, 15, "Second restart cycle: restarting aegis...")
+	logStep(t, 13, "Second restart cycle: restarting aegis...")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
@@ -1322,13 +1205,13 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 		t.Fatalf("%s Second reconnection failed", errFmt("x"))
 	}
 
-	// Step 16-17: Third restart cycle
-	logStep(t, 16, "Third restart cycle: killing aegis...")
+	// Step 14-15: Third restart cycle
+	logStep(t, 14, "Third restart cycle: killing aegis...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	time.Sleep(1 * time.Second)
 	logOK(t, "Aegis stopped (third time)")
 
-	logStep(t, 17, "Third restart cycle: restarting aegis...")
+	logStep(t, 15, "Third restart cycle: restarting aegis...")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
@@ -1354,8 +1237,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 		t.Fatalf("%s Third reconnection failed", errFmt("x"))
 	}
 
-	// Step 18: Push third credential (after multiple reconnections)
-	logStep(t, 18, "Pushing third credential (after multiple reconnections)...")
+	// Step 16: Push third credential (after multiple reconnections)
+	logStep(t, 16, "Pushing third credential (after multiple reconnections)...")
 	curlCmd = fmt.Sprintf(`curl -s -X POST http://localhost:9443/local/v1/credential -H "Content-Type: application/json" -d '{"credential_type":"ssh-ca","credential_name":"%s","data":"%s"}'`, caName3, testCAKeyB64)
 	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", curlCmd)
 	if err != nil || !strings.Contains(output, `"success":true`) {
@@ -1371,8 +1254,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 	logOK(t, "Third credential delivered after multiple reconnections")
 
-	// Step 19: Verify all reconnection events are logged
-	logStep(t, 19, "Verifying reconnection logging for observability...")
+	// Step 17: Verify all reconnection events are logged
+	logStep(t, 17, "Verifying reconnection logging for observability...")
 	sentryLog, _ = cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
 
 	expectedMarkers := []string{
@@ -1436,9 +1319,7 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 		fmt.Printf("\n%s\n", dimFmt("Cleaning up processes and test artifacts..."))
 		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
-		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
 		cfg.killProcess(cleanupCtx, cfg.HostVM, "sentry")
-		cfg.killProcess(cleanupCtx, cfg.HostVM, "socat")
 
 		// Clean up test CA file
 		cfg.multipassExec(cleanupCtx, cfg.HostVM, "sudo", "rm", "-f", caPath)
@@ -1474,24 +1355,8 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	}
 	logOK(t, "Nexus started")
 
-	// Step 2: Start TMFIFO socat on DPU
-	logStep(t, 2, "Starting TMFIFO socat on DPU...")
-	cfg.killProcess(ctx, cfg.DPUVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on DPU: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on DPU: %v", err)
-	}
-	logOK(t, fmt.Sprintf("TMFIFO device: %s", strings.TrimSpace(output)))
-
-	// Step 3: Start aegis with local API
-	logStep(t, 3, "Starting aegis with local API...")
+	// Step 2: Start aegis with local API (listens on TCP port 9444 for tmfifo transport)
+	logStep(t, 2, "Starting aegis with local API...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
@@ -1507,10 +1372,10 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	if !strings.Contains(output, "tmfifo listener created") {
 		t.Fatalf("Aegis not listening on TMFIFO. Log:\n%s", output)
 	}
-	logOK(t, "Aegis started with TMFIFO listener")
+	logOK(t, "Aegis started with TMFIFO listener on TCP port 9444")
 
-	// Step 4: Register DPU with control plane
-	logStep(t, 4, "Registering DPU...")
+	// Step 3: Register DPU with control plane
+	logStep(t, 3, "Registering DPU...")
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", "qa-tenant", "--insecure")
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "remove", "qa-dpu", "--insecure")
 
@@ -1527,27 +1392,11 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	}
 	logOK(t, "DPU registered and assigned to tenant")
 
-	// Step 5: Start TMFIFO socat on host
-	logStep(t, 5, "Starting TMFIFO socat on host...")
-	cfg.killProcess(ctx, cfg.HostVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:%s:%s > /tmp/socat.log 2>&1 < /dev/null &", dpuIP, cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on host: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on host: %v", err)
-	}
-	logOK(t, "TMFIFO tunnel established")
-
-	// Step 6: Start sentry daemon (first enrollment)
-	logStep(t, 6, "Starting sentry daemon (first enrollment)...")
+	// Step 4: Start sentry daemon (connects directly to aegis via TCP)
+	logStep(t, 4, "Starting sentry daemon (first enrollment)...")
 	cfg.killProcess(ctx, cfg.HostVM, "sentry")
 	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		"sudo setsid /home/ubuntu/sentry --force-tmfifo > /tmp/sentry.log 2>&1 < /dev/null &")
+		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", dpuIP))
 	if err != nil {
 		t.Fatalf("Failed to start sentry daemon: %v", err)
 	}
@@ -1575,8 +1424,8 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	// Record enrollment timestamp for later comparison
 	firstEnrollmentLog := sentryLog
 
-	// Step 7: Kill sentry (simulating crash or restart)
-	logStep(t, 7, "Killing sentry (simulating restart)...")
+	// Step 5: Kill sentry (simulating crash or restart)
+	logStep(t, 5, "Killing sentry (simulating restart)...")
 	cfg.killProcess(ctx, cfg.HostVM, "sentry")
 	time.Sleep(1 * time.Second)
 
@@ -1587,15 +1436,15 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	}
 	logOK(t, "Sentry stopped")
 
-	// Step 8: Restart sentry (should re-enroll automatically)
-	logStep(t, 8, "Restarting sentry (should re-enroll)...")
+	// Step 6: Restart sentry (should re-enroll automatically)
+	logStep(t, 6, "Restarting sentry (should re-enroll)...")
 	restartTime := time.Now()
 
 	// Clear sentry log before restart to cleanly capture re-enrollment
 	_, _ = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c", "sudo truncate -s 0 /tmp/sentry.log")
 
 	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		"sudo setsid /home/ubuntu/sentry --force-tmfifo > /tmp/sentry.log 2>&1 < /dev/null &")
+		fmt.Sprintf("sudo setsid /home/ubuntu/sentry --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", dpuIP))
 	if err != nil {
 		t.Fatalf("Failed to restart sentry: %v", err)
 	}
@@ -1609,8 +1458,8 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	}
 	logOK(t, "Sentry restarted")
 
-	// Step 9: Verify re-enrollment within 30s
-	logStep(t, 9, "Verifying re-enrollment within 30s...")
+	// Step 7: Verify re-enrollment within 30s
+	logStep(t, 7, "Verifying re-enrollment within 30s...")
 	reEnrolled := false
 	for i := 0; i < 30; i++ {
 		time.Sleep(time.Second)
@@ -1630,8 +1479,8 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 		t.Fatalf("%s Sentry did not re-enroll within 30s", errFmt("x"))
 	}
 
-	// Step 10: Verify aegis accepted re-enrollment
-	logStep(t, 10, "Verifying aegis accepted re-enrollment...")
+	// Step 8: Verify aegis accepted re-enrollment
+	logStep(t, 8, "Verifying aegis accepted re-enrollment...")
 	aegisLog, err := cfg.multipassExec(ctx, cfg.DPUVM, "cat", "/tmp/aegis.log")
 	if err != nil {
 		t.Fatalf("Failed to read aegis log: %v", err)
@@ -1647,8 +1496,8 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	}
 	logOK(t, "Aegis accepted re-enrollment")
 
-	// Step 11: Push credential after re-enrollment
-	logStep(t, 11, "Pushing credential after re-enrollment...")
+	// Step 9: Push credential after re-enrollment
+	logStep(t, 9, "Pushing credential after re-enrollment...")
 
 	// Clear logs before push to capture fresh markers
 	_, _ = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", "sudo truncate -s 0 /tmp/aegis.log")
@@ -1681,8 +1530,8 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	}
 	logOK(t, fmt.Sprintf("Credential delivered to %s", caPath))
 
-	// Step 12: Verify no duplicate hosts
-	logStep(t, 12, "Verifying no duplicate host entries...")
+	// Step 10: Verify no duplicate hosts
+	logStep(t, 10, "Verifying no duplicate host entries...")
 
 	// Check aegis log for signs of duplicate host handling
 	// The absence of "duplicate" errors is a good sign, but we also look for
@@ -1707,8 +1556,8 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	// Suppress unused variable warning
 	_ = firstEnrollmentLog
 
-	// Step 13: Verify audit logging
-	logStep(t, 13, "Verifying audit logging for re-enrollment...")
+	// Step 11: Verify audit logging
+	logStep(t, 11, "Verifying audit logging for re-enrollment...")
 	sentryLog, _ = cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
 
 	// Check for enrollment-related log messages
@@ -1767,9 +1616,7 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 		fmt.Printf("\n%s\n", dimFmt("Cleaning up processes..."))
 		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
-		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
 		cfg.killProcess(cleanupCtx, cfg.HostVM, "sentry")
-		cfg.killProcess(cleanupCtx, cfg.HostVM, "socat")
 	})
 
 	// Get VM IPs
@@ -1802,24 +1649,8 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	}
 	logOK(t, "Nexus started")
 
-	// Step 2: Start TMFIFO socat on DPU
-	logStep(t, 2, "Starting TMFIFO socat on DPU...")
-	cfg.killProcess(ctx, cfg.DPUVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on DPU: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on DPU: %v", err)
-	}
-	logOK(t, fmt.Sprintf("TMFIFO device: %s", strings.TrimSpace(output)))
-
-	// Step 3: Start aegis with local API
-	logStep(t, 3, "Starting aegis with local API...")
+	// Step 2: Start aegis with local API (listens on TCP port 9444 for tmfifo transport)
+	logStep(t, 2, "Starting aegis with local API...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
@@ -1835,10 +1666,10 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	if !strings.Contains(output, "tmfifo listener created") {
 		t.Fatalf("Aegis not listening on TMFIFO. Log:\n%s", output)
 	}
-	logOK(t, "Aegis started with TMFIFO listener")
+	logOK(t, "Aegis started with TMFIFO listener on TCP port 9444")
 
-	// Step 4: Register DPU with control plane
-	logStep(t, 4, "Registering DPU...")
+	// Step 3: Register DPU with control plane
+	logStep(t, 3, "Registering DPU...")
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", "qa-tenant", "--insecure")
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "remove", "qa-dpu", "--insecure")
 
@@ -1855,29 +1686,13 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	}
 	logOK(t, "DPU registered and assigned to tenant")
 
-	// Step 5: Start TMFIFO socat on host
-	logStep(t, 5, "Starting TMFIFO socat on host...")
-	cfg.killProcess(ctx, cfg.HostVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:%s:%s > /tmp/socat.log 2>&1 < /dev/null &", dpuIP, cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on host: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on host: %v", err)
-	}
-	logOK(t, "TMFIFO tunnel established")
-
-	// Step 6: First host enrolls successfully via sentry
-	logStep(t, 6, "First host (qa-host) enrolling...")
+	// Step 4: First host enrolls successfully via sentry (connects directly to aegis via TCP)
+	logStep(t, 4, "First host (qa-host) enrolling...")
 	cfg.killProcess(ctx, cfg.HostVM, "sentry")
 	sentryCtx, sentryCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer sentryCancel()
 
-	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", "--oneshot")
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
 	if err != nil {
 		aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-30", "/tmp/aegis.log")
 		fmt.Printf("    Aegis log:\n%s\n", aegisLog)
@@ -1889,15 +1704,15 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	}
 	logOK(t, "First host (qa-host) enrolled successfully")
 
-	// Step 7: Clear aegis log to capture rejection event clearly
-	logStep(t, 7, "Clearing logs before second enrollment attempt...")
+	// Step 5: Clear aegis log to capture rejection event clearly
+	logStep(t, 5, "Clearing logs before second enrollment attempt...")
 	_, _ = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", "sudo truncate -s 0 /tmp/aegis.log")
 	time.Sleep(1 * time.Second)
 	logOK(t, "Logs cleared")
 
-	// Step 8: Attempt enrollment from a DIFFERENT hostname via localapi
+	// Step 6: Attempt enrollment from a DIFFERENT hostname via localapi
 	// This simulates a malicious or misconfigured second host trying to enroll
-	logStep(t, 8, "Attempting enrollment from second hostname (should fail)...")
+	logStep(t, 6, "Attempting enrollment from second hostname (should fail)...")
 
 	// Send registration request with a different hostname directly to localapi
 	// The localapi listens on localhost:9443 on the DPU
@@ -1920,8 +1735,8 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	logInfo(t, "Response body: %s", strings.TrimSpace(responseBody))
 	logInfo(t, "HTTP status code: %s", httpCode)
 
-	// Step 9: Verify the rejection
-	logStep(t, 9, "Verifying enrollment rejection...")
+	// Step 7: Verify the rejection
+	logStep(t, 7, "Verifying enrollment rejection...")
 
 	// Check HTTP status code (should be 409 Conflict)
 	if httpCode != "409" {
@@ -1937,8 +1752,8 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 		logOK(t, "Error message contains 'already paired'")
 	}
 
-	// Step 10: Verify security logging shows the rejection
-	logStep(t, 10, "Verifying security logging...")
+	// Step 8: Verify security logging shows the rejection
+	logStep(t, 8, "Verifying security logging...")
 
 	aegisLog, err := cfg.multipassExec(ctx, cfg.DPUVM, "cat", "/tmp/aegis.log")
 	if err != nil {
@@ -1954,14 +1769,14 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 		logOK(t, "Security rejection logged correctly")
 	}
 
-	// Step 11: Verify original host is still functional (can re-enroll)
-	logStep(t, 11, "Verifying original host remains functional...")
+	// Step 9: Verify original host is still functional (can re-enroll)
+	logStep(t, 9, "Verifying original host remains functional...")
 
 	// The original host should be able to continue operations
 	// We'll verify by checking that a posture update from the original host works
 	// For simplicity, we re-run sentry oneshot which should succeed because
 	// the hostname matches the paired host
-	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", "--oneshot")
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
 	if err != nil {
 		// This might fail if the transport is in a bad state, but the pairing should still work
 		// Check the aegis log to see if registration was attempted
@@ -2036,7 +1851,6 @@ func TestStateSyncConsistency(t *testing.T) {
 		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
 		// Also cleanup DPU processes in case DPU registration test ran aegis
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
-		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
 	})
 
 	// Get server VM IP
@@ -2120,7 +1934,7 @@ func TestStateSyncConsistency(t *testing.T) {
 	}
 	logOK(t, fmt.Sprintf("Operator '%s' visible in list immediately after invite", operatorEmail))
 
-	// Step 5: Start aegis and socat for DPU registration test
+	// Step 5: Start aegis for DPU registration test (listens on TCP port 9444 for tmfifo transport)
 	// DPU registration requires aegis to be running
 	logStep(t, 5, "Setting up DPU for registration test...")
 
@@ -2129,15 +1943,6 @@ func TestStateSyncConsistency(t *testing.T) {
 		t.Fatalf("Failed to get DPU IP: %v", err)
 	}
 	logInfo(t, "DPU IP: %s", dpuIP)
-
-	// Start socat on DPU
-	cfg.killProcess(ctx, cfg.DPUVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on DPU: %v", err)
-	}
-	time.Sleep(1 * time.Second)
 
 	// Start aegis
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
@@ -2286,9 +2091,7 @@ func TestDPURegistrationFlows(t *testing.T) {
 		fmt.Printf("\n%s\n", dimFmt("Cleaning up processes..."))
 		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
-		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
 		cfg.killProcess(cleanupCtx, cfg.HostVM, "sentry")
-		cfg.killProcess(cleanupCtx, cfg.HostVM, "socat")
 	})
 
 	// Get VM IPs
@@ -2339,23 +2142,22 @@ func TestDPURegistrationFlows(t *testing.T) {
 	}
 	logOK(t, fmt.Sprintf("Created tenants: %s, %s", tenantA, tenantB))
 
-	// Step 3: Start TMFIFO socat on DPU
-	logStep(t, 3, "Starting TMFIFO socat on DPU...")
-	cfg.killProcess(ctx, cfg.DPUVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on DPU: %v", err)
-	}
-	time.Sleep(2 * time.Second)
+	// Step 3: Test DPU add with invalid/unreachable address
+	logStep(t, 3, "Testing DPU add with unreachable address (should fail gracefully)...")
+	badOutput, badErr := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+		"dpu", "add", "10.255.255.255:18051", "--name", "bad-dpu", "--insecure")
 
-	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "ls", "-la", "/dev/tmfifo_net0")
-	if err != nil {
-		t.Fatalf("TMFIFO device not created on DPU: %v", err)
+	if badErr == nil {
+		t.Fatalf("Expected error when adding unreachable DPU, but got success. Output:\n%s", badOutput)
 	}
-	logOK(t, "TMFIFO socat started on DPU")
+	// Verify error message is clear (should mention connection failure)
+	if !strings.Contains(badOutput, "cannot connect") && !strings.Contains(badOutput, "connection") &&
+		!strings.Contains(strings.ToLower(badOutput), "timeout") && !strings.Contains(badOutput, "failed") {
+		t.Logf("Warning: Error message may not be clear enough for users. Output:\n%s", badOutput)
+	}
+	logOK(t, "Unreachable DPU rejected with error (expected)")
 
-	// Step 4: Start aegis on DPU
+	// Step 4: Start aegis on DPU (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 4, "Starting aegis on DPU...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
@@ -2370,7 +2172,7 @@ func TestDPURegistrationFlows(t *testing.T) {
 		logs, _ := cfg.multipassExec(ctx, cfg.DPUVM, "cat", "/tmp/aegis.log")
 		t.Fatalf("Aegis not running. Logs:\n%s", logs)
 	}
-	logOK(t, "Aegis started")
+	logOK(t, "Aegis started with TMFIFO listener on TCP port 9444")
 
 	// Step 5: Test DPU add with valid attestation
 	logStep(t, 5, "Testing DPU add with valid attestation...")
@@ -2409,21 +2211,14 @@ func TestDPURegistrationFlows(t *testing.T) {
 	}
 	logOK(t, fmt.Sprintf("DPU '%s' assigned to tenant '%s'", dpuName, tenantA))
 
-	// Step 7: Start TMFIFO socat on host and enroll host
-	logStep(t, 7, "Starting TMFIFO on host and enrolling...")
-	cfg.killProcess(ctx, cfg.HostVM, "socat")
-	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:%s:%s > /tmp/socat.log 2>&1 < /dev/null &", dpuIP, cfg.TMFIFOPort))
-	if err != nil {
-		t.Fatalf("Failed to start socat on host: %v", err)
-	}
-	time.Sleep(2 * time.Second)
+	// Step 7: Enroll host via sentry (connects directly to aegis via TCP)
+	logStep(t, 7, "Enrolling host...")
 
 	// Enroll host via sentry
 	sentryCtx, sentryCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer sentryCancel()
 
-	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", "--oneshot")
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", fmt.Sprintf("--tmfifo-addr=%s:9444", dpuIP), "--oneshot")
 	if err != nil {
 		aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-30", "/tmp/aegis.log")
 		logInfo(t, "Aegis log:\n%s", aegisLog)
