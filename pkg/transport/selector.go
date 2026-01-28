@@ -150,7 +150,12 @@ func NewHostTransport(cfg *Config) (Transport, error) {
 			log.Printf("transport: using tmfifo TCP to %s (forced)", dpuAddr)
 			return NewTmfifoNetTransport(dpuAddr)
 		}
-		return nil, fmt.Errorf("tmfifo not available: no Unix socket at %s and no %s interface (required by ForceTmfifo)",
+		// Check for explicit address (test mode without local interface)
+		if cfg.TmfifoDPUAddr != "" {
+			log.Printf("transport: using tmfifo TCP to %s (forced, explicit addr)", cfg.TmfifoDPUAddr)
+			return NewTmfifoNetTransport(cfg.TmfifoDPUAddr)
+		}
+		return nil, fmt.Errorf("tmfifo not available: no Unix socket at %s, no %s interface, and no explicit --tmfifo-addr (required by ForceTmfifo)",
 			cfg.TmfifoSocketPath, TmfifoInterfaceName)
 	}
 
