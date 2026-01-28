@@ -5,14 +5,14 @@
 BIN_DIR := bin
 
 # Binary names
-AGENT := $(BIN_DIR)/agent
-AGENT_ARM64 := $(BIN_DIR)/agent-arm64
+AEGIS := $(BIN_DIR)/aegis
+AEGIS_ARM64 := $(BIN_DIR)/aegis-arm64
 BLUECTL := $(BIN_DIR)/bluectl
-SERVER := $(BIN_DIR)/server
+NEXUS := $(BIN_DIR)/nexus
 KM := $(BIN_DIR)/km
-HOST_AGENT := $(BIN_DIR)/host-agent
-HOST_AGENT_AMD64 := $(BIN_DIR)/host-agent-amd64
-HOST_AGENT_ARM64 := $(BIN_DIR)/host-agent-arm64
+SENTRY := $(BIN_DIR)/sentry
+SENTRY_AMD64 := $(BIN_DIR)/sentry-amd64
+SENTRY_ARM64 := $(BIN_DIR)/sentry-arm64
 DPUEMU := $(BIN_DIR)/dpuemu
 
 # Version from git tag or "dev"
@@ -21,21 +21,21 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 # ldflags for embedding version
 LDFLAGS := -X github.com/nmelo/secure-infra/internal/version.Version=$(VERSION)
 
-.PHONY: all agent bluectl server km host-agent dpuemu test clean release help
+.PHONY: all aegis bluectl nexus km sentry dpuemu test clean release help
 
 # Default target: build all binaries
 all: $(BIN_DIR)
 	@echo "Building all binaries..."
-	@go build -ldflags "$(LDFLAGS)" -o $(AGENT) ./cmd/aegis
-	@echo "  $(AGENT)"
+	@go build -ldflags "$(LDFLAGS)" -o $(AEGIS) ./cmd/aegis
+	@echo "  $(AEGIS)"
 	@go build -ldflags "$(LDFLAGS)" -o $(BLUECTL) ./cmd/bluectl
 	@echo "  $(BLUECTL)"
 	@go build -ldflags "$(LDFLAGS)" -o $(KM) ./cmd/keymaker
 	@echo "  $(KM)"
-	@go build -ldflags "$(LDFLAGS)" -o $(SERVER) ./cmd/nexus
-	@echo "  $(SERVER)"
-	@go build -ldflags "$(LDFLAGS)" -o $(HOST_AGENT) ./cmd/sentry
-	@echo "  $(HOST_AGENT)"
+	@go build -ldflags "$(LDFLAGS)" -o $(NEXUS) ./cmd/nexus
+	@echo "  $(NEXUS)"
+	@go build -ldflags "$(LDFLAGS)" -o $(SENTRY) ./cmd/sentry
+	@echo "  $(SENTRY)"
 	@go build -ldflags "$(LDFLAGS)" -o $(DPUEMU) ./dpuemu/cmd/dpuemu
 	@echo "  $(DPUEMU)"
 	@echo "Done."
@@ -44,14 +44,14 @@ all: $(BIN_DIR)
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 
-# Build agent for local platform and cross-compile for BlueField (ARM64)
-agent: $(BIN_DIR)
-	@echo "Building agent..."
-	@go build -ldflags "$(LDFLAGS)" -o $(AGENT) ./cmd/aegis
-	@echo "  $(AGENT)"
-	@echo "Cross-compiling agent for BlueField (linux/arm64)..."
-	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(AGENT_ARM64) ./cmd/aegis
-	@echo "  $(AGENT_ARM64)"
+# Build aegis for local platform and cross-compile for BlueField (ARM64)
+aegis: $(BIN_DIR)
+	@echo "Building aegis..."
+	@go build -ldflags "$(LDFLAGS)" -o $(AEGIS) ./cmd/aegis
+	@echo "  $(AEGIS)"
+	@echo "Cross-compiling aegis for BlueField (linux/arm64)..."
+	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(AEGIS_ARM64) ./cmd/aegis
+	@echo "  $(AEGIS_ARM64)"
 
 # Build bluectl CLI
 bluectl: $(BIN_DIR)
@@ -59,11 +59,11 @@ bluectl: $(BIN_DIR)
 	@go build -ldflags "$(LDFLAGS)" -o $(BLUECTL) ./cmd/bluectl
 	@echo "  $(BLUECTL)"
 
-# Build server
-server: $(BIN_DIR)
-	@echo "Building server..."
-	@go build -ldflags "$(LDFLAGS)" -o $(SERVER) ./cmd/nexus
-	@echo "  $(SERVER)"
+# Build nexus
+nexus: $(BIN_DIR)
+	@echo "Building nexus..."
+	@go build -ldflags "$(LDFLAGS)" -o $(NEXUS) ./cmd/nexus
+	@echo "  $(NEXUS)"
 
 # Build keymaker CLI
 km: $(BIN_DIR)
@@ -71,17 +71,17 @@ km: $(BIN_DIR)
 	@go build -ldflags "$(LDFLAGS)" -o $(KM) ./cmd/keymaker
 	@echo "  $(KM)"
 
-# Build host-agent for local platform and cross-compile for Linux hosts
-host-agent: $(BIN_DIR)
-	@echo "Building host-agent..."
-	@go build -ldflags "$(LDFLAGS)" -o $(HOST_AGENT) ./cmd/sentry
-	@echo "  $(HOST_AGENT)"
-	@echo "Cross-compiling host-agent for Linux (amd64)..."
-	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(HOST_AGENT_AMD64) ./cmd/sentry
-	@echo "  $(HOST_AGENT_AMD64)"
-	@echo "Cross-compiling host-agent for Linux (arm64)..."
-	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(HOST_AGENT_ARM64) ./cmd/sentry
-	@echo "  $(HOST_AGENT_ARM64)"
+# Build sentry for local platform and cross-compile for Linux hosts
+sentry: $(BIN_DIR)
+	@echo "Building sentry..."
+	@go build -ldflags "$(LDFLAGS)" -o $(SENTRY) ./cmd/sentry
+	@echo "  $(SENTRY)"
+	@echo "Cross-compiling sentry for Linux (amd64)..."
+	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(SENTRY_AMD64) ./cmd/sentry
+	@echo "  $(SENTRY_AMD64)"
+	@echo "Cross-compiling sentry for Linux (arm64)..."
+	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(SENTRY_ARM64) ./cmd/sentry
+	@echo "  $(SENTRY_ARM64)"
 
 # Build DPU emulator
 dpuemu: $(BIN_DIR)
@@ -105,26 +105,26 @@ release: $(BIN_DIR)
 	@echo "Building release binaries..."
 	@echo ""
 	@echo "darwin/arm64:"
-	@GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/agent-darwin-arm64 ./cmd/aegis
-	@echo "  $(BIN_DIR)/agent-darwin-arm64"
+	@GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/aegis-darwin-arm64 ./cmd/aegis
+	@echo "  $(BIN_DIR)/aegis-darwin-arm64"
 	@GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/bluectl-darwin-arm64 ./cmd/bluectl
 	@echo "  $(BIN_DIR)/bluectl-darwin-arm64"
 	@GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/km-darwin-arm64 ./cmd/keymaker
 	@echo "  $(BIN_DIR)/km-darwin-arm64"
 	@echo ""
 	@echo "linux/amd64:"
-	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/agent-linux-amd64 ./cmd/aegis
-	@echo "  $(BIN_DIR)/agent-linux-amd64"
+	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/aegis-linux-amd64 ./cmd/aegis
+	@echo "  $(BIN_DIR)/aegis-linux-amd64"
 	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/bluectl-linux-amd64 ./cmd/bluectl
 	@echo "  $(BIN_DIR)/bluectl-linux-amd64"
 	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/km-linux-amd64 ./cmd/keymaker
 	@echo "  $(BIN_DIR)/km-linux-amd64"
-	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/host-agent-linux-amd64 ./cmd/sentry
-	@echo "  $(BIN_DIR)/host-agent-linux-amd64"
+	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/sentry-linux-amd64 ./cmd/sentry
+	@echo "  $(BIN_DIR)/sentry-linux-amd64"
 	@echo ""
 	@echo "linux/arm64 (BlueField DPU):"
-	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/agent-linux-arm64 ./cmd/aegis
-	@echo "  $(BIN_DIR)/agent-linux-arm64"
+	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/aegis-linux-arm64 ./cmd/aegis
+	@echo "  $(BIN_DIR)/aegis-linux-arm64"
 	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/bluectl-linux-arm64 ./cmd/bluectl
 	@echo "  $(BIN_DIR)/bluectl-linux-arm64"
 	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/km-linux-arm64 ./cmd/keymaker
@@ -152,7 +152,7 @@ demo-step1:
 	@echo "=== Step 1: Start Server ==="
 	@echo "Starting server on :18080..."
 	@echo "Press Ctrl+C to stop"
-	$(BIN_DIR)/server
+	$(BIN_DIR)/nexus
 
 # Step 2: Create tenant
 demo-step2:
@@ -216,7 +216,7 @@ demo-step11:
 # Step 12: Test host agent (optional)
 demo-step12:
 	@echo "=== Step 12: Test Host Agent ==="
-	$(BIN_DIR)/host-agent --dpu-agent http://localhost:9443 --oneshot
+	$(BIN_DIR)/sentry --dpu-agent http://localhost:9443 --oneshot
 
 # Step 13: Sign a user certificate
 demo-step13:
@@ -260,7 +260,7 @@ hw-step1:
 	@echo "=== HW Step 1: Start Server ==="
 	@echo "Starting server on :18080..."
 	@echo "Press Ctrl+C to stop"
-	$(BIN_DIR)/server
+	$(BIN_DIR)/nexus
 
 # Step 2: Create tenant
 hw-step2:
@@ -271,11 +271,11 @@ hw-step2:
 hw-step3-deploy:
 	@echo "=== HW Step 3: Deploy Agent to DPU ==="
 	@echo "Copying agent to $(DPU_USER)@$(DPU_IP)..."
-	scp $(BIN_DIR)/agent-linux-arm64 $(DPU_USER)@$(DPU_IP):~/agent
+	scp $(BIN_DIR)/aegis-linux-arm64 $(DPU_USER)@$(DPU_IP):~/aegis
 	@echo ""
 	@echo "Agent copied. SSH to DPU and run:"
-	@echo "  chmod +x ~/agent"
-	@echo "  ~/agent --listen :18051 -local-api -control-plane http://$(CONTROL_PLANE_IP):18080 -dpu-name $(DPU_NAME)"
+	@echo "  chmod +x ~/aegis"
+	@echo "  ~/aegis --listen :18051 -local-api -control-plane http://$(CONTROL_PLANE_IP):18080 -dpu-name $(DPU_NAME)"
 
 # Step 4: Register DPU
 hw-step4:
@@ -317,11 +317,11 @@ hw-step7:
 # Step 8: Deploy host agent
 hw-step8-deploy:
 	@echo "=== HW Step 8: Deploy Host Agent ==="
-	@echo "Copy host-agent to your host server and run:"
-	@echo "  ~/host-agent --dpu-agent http://localhost:9443"
+	@echo "Copy sentry to your host server and run:"
+	@echo "  ~/sentry --dpu-agent http://localhost:9443"
 	@echo ""
 	@echo "Or for x86_64 hosts:"
-	@echo "  scp $(BIN_DIR)/host-agent-linux-amd64 user@HOST_IP:~/host-agent"
+	@echo "  scp $(BIN_DIR)/sentry-linux-amd64 user@HOST_IP:~/sentry"
 
 # Step 9: Push credentials
 hw-step9:
@@ -380,7 +380,7 @@ qa-help:
 	@echo "  make qa-test-transport      Run all transport unit tests"
 	@echo "  make qa-test-transport-mock Run MockTransport tests only"
 	@echo "  make qa-test-transport-tmfifo  Test TmfifoNetTransport via emulator"
-	@echo "  make qa-test-transport-integration  Full stack: host-agent enrollment"
+	@echo "  make qa-test-transport-integration  Full stack: sentry enrollment"
 	@echo ""
 	@echo "DOCA Comch Testing (BlueField hardware at 192.168.1.204):"
 	@echo "  make qa-doca-build          Build with -tags doca on BlueField"
@@ -390,7 +390,7 @@ qa-help:
 	@echo "Architecture:"
 	@echo "  qa-server  Control plane server (:18080)"
 	@echo "  qa-emu     DPU emulator (:50051 gRPC, :9443 local API)"
-	@echo "  qa-host    GPU host with host-agent (connects via TMFIFO)"
+	@echo "  qa-host    GPU host with sentry (connects via TMFIFO)"
 	@echo ""
 	@echo "TMFIFO emulation:"
 	@echo "  qa-emu:/dev/tmfifo_net0  <--TCP:$(QA_TMFIFO_PORT)-->  qa-host:/dev/tmfifo_net0"
@@ -451,7 +451,7 @@ qa-vm-recover:
 qa-vm-status:
 	@echo "=== Server VM ==="
 	@multipass info $(QA_VM_SERVER) 2>/dev/null | grep -E "^(Name|State|IPv4)" || echo "Not running"
-	@multipass exec $(QA_VM_SERVER) -- pgrep -a server 2>/dev/null || echo "  server: not running"
+	@multipass exec $(QA_VM_SERVER) -- pgrep -a nexus 2>/dev/null || echo "  server: not running"
 	@echo ""
 	@echo "=== Emulator VM (DPU) ==="
 	@multipass info $(QA_VM_EMU) 2>/dev/null | grep -E "^(Name|State|IPv4)" || echo "Not running"
@@ -460,7 +460,7 @@ qa-vm-status:
 	@echo ""
 	@echo "=== Host VM ==="
 	@multipass info $(QA_VM_HOST) 2>/dev/null | grep -E "^(Name|State|IPv4)" || echo "Not running"
-	@multipass exec $(QA_VM_HOST) -- pgrep -a host-agent 2>/dev/null || echo "  host-agent: not running"
+	@multipass exec $(QA_VM_HOST) -- pgrep -a sentry 2>/dev/null || echo "  host-agent: not running"
 	@multipass exec $(QA_VM_HOST) -- pgrep -a "socat.*tmfifo_net0" 2>/dev/null || echo "  tmfifo: not running"
 
 # Build and push binaries to QA VMs (uses local repo)
@@ -469,22 +469,22 @@ qa-build:
 	@$(MAKE) all
 	@echo "=== Cross-compiling Linux binaries ==="
 	@mkdir -p $(QA_WORKSPACE)
-	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(QA_WORKSPACE)/server ./cmd/nexus
+	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(QA_WORKSPACE)/nexus ./cmd/nexus
 	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(QA_WORKSPACE)/dpuemu ./dpuemu/cmd/dpuemu
-	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(QA_WORKSPACE)/host-agent ./cmd/sentry
-	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(QA_WORKSPACE)/agent ./cmd/aegis
+	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(QA_WORKSPACE)/sentry ./cmd/sentry
+	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(QA_WORKSPACE)/aegis ./cmd/aegis
 	@$(MAKE) qa-push-binaries
 
 # Push pre-built binaries to QA VMs
 qa-push-binaries:
 	@echo "=== Pushing binaries to VMs ==="
-	@multipass transfer $(QA_WORKSPACE)/server $(QA_VM_SERVER):/home/ubuntu/
-	@multipass exec $(QA_VM_SERVER) -- chmod +x /home/ubuntu/server
+	@multipass transfer $(QA_WORKSPACE)/nexus $(QA_VM_SERVER):/home/ubuntu/
+	@multipass exec $(QA_VM_SERVER) -- chmod +x /home/ubuntu/nexus
 	@multipass transfer $(QA_WORKSPACE)/dpuemu $(QA_VM_EMU):/home/ubuntu/
-	@multipass transfer $(QA_WORKSPACE)/agent $(QA_VM_EMU):/home/ubuntu/
-	@multipass exec $(QA_VM_EMU) -- chmod +x /home/ubuntu/dpuemu /home/ubuntu/agent
-	@multipass transfer $(QA_WORKSPACE)/host-agent $(QA_VM_HOST):/home/ubuntu/
-	@multipass exec $(QA_VM_HOST) -- chmod +x /home/ubuntu/host-agent
+	@multipass transfer $(QA_WORKSPACE)/aegis $(QA_VM_EMU):/home/ubuntu/
+	@multipass exec $(QA_VM_EMU) -- chmod +x /home/ubuntu/dpuemu /home/ubuntu/aegis
+	@multipass transfer $(QA_WORKSPACE)/sentry $(QA_VM_HOST):/home/ubuntu/
+	@multipass exec $(QA_VM_HOST) -- chmod +x /home/ubuntu/sentry
 	@echo "=== Done ==="
 
 # Start TMFIFO emulation using socat
@@ -520,7 +520,7 @@ qa-test-tmfifo:
 # Start QA services
 qa-up: qa-tmfifo-up
 	@echo "=== Starting server ==="
-	@multipass exec $(QA_VM_SERVER) -- pgrep -x server || multipass exec $(QA_VM_SERVER) -- bash -c "nohup /home/ubuntu/server > /home/ubuntu/server.log 2>&1 &"
+	@multipass exec $(QA_VM_SERVER) -- pgrep -x server || multipass exec $(QA_VM_SERVER) -- bash -c "nohup /home/ubuntu/nexus > /home/ubuntu/nexus.log 2>&1 &"
 	@sleep 2
 	@echo "=== Starting emulator ==="
 	@multipass exec $(QA_VM_EMU) -- pgrep -x dpuemu || multipass exec $(QA_VM_EMU) -- bash -c "nohup /home/ubuntu/dpuemu serve --listen :50051 > /home/ubuntu/dpuemu.log 2>&1 &"
@@ -532,7 +532,7 @@ qa-down: qa-tmfifo-down
 	@echo "=== Stopping services ==="
 	@multipass exec $(QA_VM_SERVER) -- pkill -f server 2>/dev/null || true
 	@multipass exec $(QA_VM_EMU) -- pkill -f dpuemu 2>/dev/null || true
-	@multipass exec $(QA_VM_HOST) -- pkill -f host-agent 2>/dev/null || true
+	@multipass exec $(QA_VM_HOST) -- pkill -f sentry 2>/dev/null || true
 	@echo "Services stopped"
 
 # Full rebuild: down, clean, build, up
@@ -562,13 +562,13 @@ qa-status:
 # Show QA service logs
 qa-logs:
 	@echo "=== Server log ==="
-	@multipass exec $(QA_VM_SERVER) -- tail -30 /home/ubuntu/server.log 2>/dev/null || echo "No server log"
+	@multipass exec $(QA_VM_SERVER) -- tail -30 /home/ubuntu/nexus.log 2>/dev/null || echo "No server log"
 	@echo ""
 	@echo "=== Emulator log ==="
 	@multipass exec $(QA_VM_EMU) -- tail -30 /home/ubuntu/dpuemu.log 2>/dev/null || echo "No emulator log"
 	@echo ""
 	@echo "=== Host Agent log ==="
-	@multipass exec $(QA_VM_HOST) -- tail -30 /home/ubuntu/host-agent.log 2>/dev/null || echo "No host-agent log"
+	@multipass exec $(QA_VM_HOST) -- tail -30 /home/ubuntu/sentry.log 2>/dev/null || echo "No host-agent log"
 	@echo ""
 	@echo "=== TMFIFO socat logs ==="
 	@echo "-- EMU --"
@@ -580,9 +580,9 @@ qa-logs:
 qa-clean:
 	@$(MAKE) qa-down 2>/dev/null || true
 	@rm -rf $(QA_WORKSPACE)
-	@multipass exec $(QA_VM_SERVER) -- rm -f /home/ubuntu/server /home/ubuntu/*.log 2>/dev/null || true
-	@multipass exec $(QA_VM_EMU) -- rm -f /home/ubuntu/dpuemu /home/ubuntu/agent /home/ubuntu/*.log 2>/dev/null || true
-	@multipass exec $(QA_VM_HOST) -- rm -f /home/ubuntu/host-agent /home/ubuntu/*.log 2>/dev/null || true
+	@multipass exec $(QA_VM_SERVER) -- rm -f /home/ubuntu/nexus /home/ubuntu/*.log 2>/dev/null || true
+	@multipass exec $(QA_VM_EMU) -- rm -f /home/ubuntu/dpuemu /home/ubuntu/aegis /home/ubuntu/*.log 2>/dev/null || true
+	@multipass exec $(QA_VM_HOST) -- rm -f /home/ubuntu/sentry /home/ubuntu/*.log 2>/dev/null || true
 	@echo "Cleaned"
 
 # =============================================================================
@@ -605,10 +605,10 @@ qa-test-transport-tmfifo:
 	@echo "=== TmfifoNetTransport Test ==="
 	@echo "Checking prerequisites..."
 	@multipass exec $(QA_VM_HOST) -- ls /dev/tmfifo_net0 >/dev/null 2>&1 || (echo "ERROR: TMFIFO not available. Run 'make qa-up' first." && exit 1)
-	@echo "Running host-agent with --force-tmfifo --oneshot..."
+	@echo "Running sentry with --force-tmfifo --oneshot..."
 	@HOST_IP=$$(multipass info $(QA_VM_HOST) | grep IPv4 | awk '{print $$2}'); \
 	EMU_IP=$$(multipass info $(QA_VM_EMU) | grep IPv4 | awk '{print $$2}'); \
-	multipass exec $(QA_VM_HOST) -- /home/ubuntu/host-agent --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-transport-test.log; \
+	multipass exec $(QA_VM_HOST) -- /home/ubuntu/sentry --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-transport-test.log; \
 	if grep -q "Transport: tmfifo_net" /tmp/qa-transport-test.log; then \
 		echo ""; \
 		echo "✓ PASS: TmfifoNetTransport used"; \
@@ -626,7 +626,7 @@ qa-test-transport-tmfifo:
 	@echo ""
 	@echo "=== TmfifoNetTransport test complete ==="
 
-# Full integration test: host-agent enrollment through Transport layer
+# Full integration test: sentry enrollment through Transport layer
 # Prerequisites: make qa-rebuild (to push latest binaries)
 qa-test-transport-integration:
 	@echo "=== Transport Integration Test ==="
@@ -644,8 +644,8 @@ qa-test-transport-integration:
 	@multipass exec $(QA_VM_EMU) -- ls /dev/tmfifo_net0 >/dev/null 2>&1 || (echo "ERROR: TMFIFO not available on EMU" && exit 1)
 	@echo "✓ TMFIFO connected"
 	@echo ""
-	@echo "Step 3: Run host-agent enrollment..."
-	@multipass exec $(QA_VM_HOST) -- /home/ubuntu/host-agent --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-integration-test.log
+	@echo "Step 3: Run sentry enrollment..."
+	@multipass exec $(QA_VM_HOST) -- /home/ubuntu/sentry --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-integration-test.log
 	@echo ""
 	@echo "Step 4: Verify results..."
 	@PASS=true; \
@@ -699,9 +699,9 @@ qa-doca-build:
 		. $(BLUEFIELD_USER)@$(BLUEFIELD_IP):$(BLUEFIELD_REMOTE_DIR)/
 	@echo ""
 	@echo "Building with -tags doca..."
-	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR) && go build -tags doca -o bin/agent-doca ./cmd/aegis" 2>&1 || \
+	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR) && go build -tags doca -o bin/aegis-doca ./cmd/aegis" 2>&1 || \
 		(echo ""; echo "NOTE: Build may fail if DOCA SDK not installed or implementation incomplete"; exit 1)
-	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR) && go build -tags doca -o bin/host-agent-doca ./cmd/sentry" 2>&1 || true
+	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR) && go build -tags doca -o bin/sentry-doca ./cmd/sentry" 2>&1 || true
 	@echo ""
 	@echo "=== DOCA build complete ==="
 	@$(BLUEFIELD_SSH) "ls -la $(BLUEFIELD_REMOTE_DIR)/bin/*-doca 2>/dev/null" || echo "No DOCA binaries built"
@@ -709,15 +709,15 @@ qa-doca-build:
 # Deploy DOCA-enabled binaries (after qa-doca-build)
 qa-doca-deploy:
 	@echo "=== Deploying DOCA binaries on BlueField ==="
-	@$(BLUEFIELD_SSH) "test -f $(BLUEFIELD_REMOTE_DIR)/bin/agent-doca" || \
+	@$(BLUEFIELD_SSH) "test -f $(BLUEFIELD_REMOTE_DIR)/bin/aegis-doca" || \
 		(echo "ERROR: No DOCA binaries found. Run 'make qa-doca-build' first." && exit 1)
-	@$(BLUEFIELD_SSH) "sudo cp $(BLUEFIELD_REMOTE_DIR)/bin/agent-doca /usr/local/bin/agent-doca && \
-		sudo chmod +x /usr/local/bin/agent-doca"
-	@echo "✓ Deployed agent-doca to /usr/local/bin/"
-	@$(BLUEFIELD_SSH) "test -f $(BLUEFIELD_REMOTE_DIR)/bin/host-agent-doca" && \
-		$(BLUEFIELD_SSH) "sudo cp $(BLUEFIELD_REMOTE_DIR)/bin/host-agent-doca /usr/local/bin/host-agent-doca && \
-			sudo chmod +x /usr/local/bin/host-agent-doca" && \
-		echo "✓ Deployed host-agent-doca to /usr/local/bin/" || true
+	@$(BLUEFIELD_SSH) "sudo cp $(BLUEFIELD_REMOTE_DIR)/bin/aegis-doca /usr/local/bin/aegis-doca && \
+		sudo chmod +x /usr/local/bin/aegis-doca"
+	@echo "✓ Deployed aegis-doca to /usr/local/bin/"
+	@$(BLUEFIELD_SSH) "test -f $(BLUEFIELD_REMOTE_DIR)/bin/sentry-doca" && \
+		$(BLUEFIELD_SSH) "sudo cp $(BLUEFIELD_REMOTE_DIR)/bin/sentry-doca /usr/local/bin/sentry-doca && \
+			sudo chmod +x /usr/local/bin/sentry-doca" && \
+		echo "✓ Deployed sentry-doca to /usr/local/bin/" || true
 
 # Test DOCAComchTransport on real BlueField hardware
 # Prerequisites: make qa-doca-build
@@ -764,7 +764,7 @@ help:
 	@echo "  make bluectl    Build bluectl CLI"
 	@echo "  make server     Build server"
 	@echo "  make km         Build keymaker CLI"
-	@echo "  make host-agent Build host-agent"
+	@echo "  make sentry Build sentry"
 	@echo "  make dpuemu     Build DPU emulator"
 	@echo "  make test       Run all tests"
 	@echo "  make clean      Remove bin/ contents"
