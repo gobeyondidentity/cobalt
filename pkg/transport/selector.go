@@ -8,7 +8,28 @@ import (
 )
 
 // DefaultTmfifoPath is the standard location for the tmfifo_net device on hosts.
+// This is the socat emulation path used in testing.
 const DefaultTmfifoPath = "/dev/tmfifo_net0"
+
+// TmfifoDevicePaths lists tmfifo device paths to check, in priority order.
+// The first existing path is used.
+var TmfifoDevicePaths = []string{
+	"/dev/tmfifo_net0",  // socat emulation (tests, legacy)
+	"/dev/tmfifo",       // symlink on some BF3 setups
+	"/dev/vport0p0",     // actual BlueField virtio-console device
+}
+
+// DetectTmfifoDevice searches for an available tmfifo device.
+// Returns the path and true if found, empty string and false otherwise.
+// Logs the detected path for debugging.
+func DetectTmfifoDevice() (string, bool) {
+	for _, path := range TmfifoDevicePaths {
+		if _, err := os.Stat(path); err == nil {
+			return path, true
+		}
+	}
+	return "", false
+}
 
 // Config contains options for transport selection and initialization.
 type Config struct {
@@ -111,16 +132,18 @@ func NewHostTransport(cfg *Config) (Transport, error) {
 		return NewDOCAComchClient(clientCfg)
 	}
 
-	// Determine tmfifo path
+	// Determine tmfifo path: use config override or auto-detect
 	tmfifoPath := cfg.TmfifoPath
 	if tmfifoPath == "" {
-		tmfifoPath = DefaultTmfifoPath
+		if detected, ok := DetectTmfifoDevice(); ok {
+			tmfifoPath = detected
+		}
 	}
 
 	// Handle ForceTmfifo: only try tmfifo, fail if unavailable
 	if cfg.ForceTmfifo {
-		if _, err := os.Stat(tmfifoPath); err != nil {
-			return nil, fmt.Errorf("tmfifo not available at %s (required by ForceTmfifo): %w", tmfifoPath, err)
+		if tmfifoPath == "" {
+			return nil, fmt.Errorf("tmfifo not available (checked paths: %v, required by ForceTmfifo)", TmfifoDevicePaths)
 		}
 		return NewTmfifoNetTransport(tmfifoPath)
 	}
@@ -135,8 +158,12 @@ func NewHostTransport(cfg *Config) (Transport, error) {
 	}
 
 	// Priority 3: Tmfifo device (legacy BlueField or emulator)
-	if _, err := os.Stat(tmfifoPath); err == nil {
-		return NewTmfifoNetTransport(tmfifoPath)
+	// Only try if path exists (auto-detected paths are guaranteed to exist,
+	// but explicit config paths may not)
+	if tmfifoPath != "" {
+		if _, err := os.Stat(tmfifoPath); err == nil {
+			return NewTmfifoNetTransport(tmfifoPath)
+		}
 	}
 
 	// Priority 4: Network transport (non-BlueField fallback)
@@ -192,16 +219,18 @@ func NewDPUTransportListener(cfg *Config) (TransportListener, error) {
 		return NewDOCAComchServer(serverCfg)
 	}
 
-	// Determine tmfifo path
+	// Determine tmfifo path: use config override or auto-detect
 	tmfifoPath := cfg.TmfifoPath
 	if tmfifoPath == "" {
-		tmfifoPath = DefaultTmfifoPath
+		if detected, ok := DetectTmfifoDevice(); ok {
+			tmfifoPath = detected
+		}
 	}
 
 	// Handle ForceTmfifo: only try tmfifo, fail if unavailable
 	if cfg.ForceTmfifo {
-		if _, err := os.Stat(tmfifoPath); err != nil {
-			return nil, fmt.Errorf("tmfifo not available at %s (required by ForceTmfifo): %w", tmfifoPath, err)
+		if tmfifoPath == "" {
+			return nil, fmt.Errorf("tmfifo not available (checked paths: %v, required by ForceTmfifo)", TmfifoDevicePaths)
 		}
 		return NewTmfifoNetListener(tmfifoPath)
 	}
@@ -217,8 +246,12 @@ func NewDPUTransportListener(cfg *Config) (TransportListener, error) {
 	}
 
 	// Priority 2: Tmfifo device (legacy BlueField or emulator)
-	if _, err := os.Stat(tmfifoPath); err == nil {
-		return NewTmfifoNetListener(tmfifoPath)
+	// Only try if path exists (auto-detected paths are guaranteed to exist,
+	// but explicit config paths may not)
+	if tmfifoPath != "" {
+		if _, err := os.Stat(tmfifoPath); err == nil {
+			return NewTmfifoNetListener(tmfifoPath)
+		}
 	}
 
 	// Priority 3: Network listener (non-BlueField fallback)

@@ -17,6 +17,7 @@ import (
 
 const (
 	// DefaultDevicePath is the standard tmfifo device path on BlueField.
+	// This is the socat emulation path used in testing.
 	DefaultDevicePath = "/dev/tmfifo_net0"
 
 	// nonceExpiry is how long nonces are tracked for replay protection.
@@ -25,6 +26,13 @@ const (
 	// maxMessageSize limits the size of incoming messages.
 	maxMessageSize = 64 * 1024 // 64KB
 )
+
+// devicePaths lists tmfifo device paths to check, in priority order.
+var devicePaths = []string{
+	"/dev/tmfifo_net0", // socat emulation (tests, legacy)
+	"/dev/tmfifo",      // symlink on some BF3 setups
+	"/dev/vport0p0",    // actual BlueField virtio-console device
+}
 
 var (
 	// ErrDeviceNotFound indicates the tmfifo device does not exist.
@@ -65,9 +73,15 @@ type Listener struct {
 
 // NewListener creates a tmfifo listener.
 // The handler is called for incoming ENROLL_REQUEST and POSTURE_REPORT messages.
+// If devicePath is empty, auto-detects from known tmfifo device paths.
 func NewListener(devicePath string, handler MessageHandler) *Listener {
 	if devicePath == "" {
-		devicePath = DefaultDevicePath
+		if found, detected := DetectDevice(); found {
+			devicePath = detected
+			log.Printf("tmfifo: auto-detected device at %s", devicePath)
+		} else {
+			devicePath = DefaultDevicePath // fallback for error reporting
+		}
 	}
 	return &Listener{
 		devicePath: devicePath,
@@ -391,10 +405,21 @@ func generateNonce() string {
 	return hex.EncodeToString(b)
 }
 
-// IsAvailable checks if the tmfifo device exists at the default path.
+// IsAvailable checks if a tmfifo device exists at any known path.
 func IsAvailable() bool {
-	_, err := os.Stat(DefaultDevicePath)
-	return err == nil
+	_, path := DetectDevice()
+	return path != ""
+}
+
+// DetectDevice searches for an available tmfifo device.
+// Returns true and the path if found, false and empty string otherwise.
+func DetectDevice() (bool, string) {
+	for _, path := range devicePaths {
+		if _, err := os.Stat(path); err == nil {
+			return true, path
+		}
+	}
+	return false, ""
 }
 
 // IsAvailableAt checks if the tmfifo device exists at the specified path.

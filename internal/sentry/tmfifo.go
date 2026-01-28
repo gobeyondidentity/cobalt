@@ -53,12 +53,20 @@ func NewTmfifoClient(devicePath, hostname string) *TmfifoClient {
 	}
 }
 
-// DetectTmfifo checks if the tmfifo device exists.
-// Returns the device path and true if available.
+// tmfifoDevicePaths lists tmfifo device paths to check, in priority order.
+var tmfifoDevicePaths = []string{
+	"/dev/tmfifo_net0", // socat emulation (tests, legacy)
+	"/dev/tmfifo",      // symlink on some BF3 setups
+	"/dev/vport0p0",    // actual BlueField virtio-console device
+}
+
+// DetectTmfifo checks if a tmfifo device exists.
+// Returns the device path and true if available, checking multiple known paths.
 func DetectTmfifo() (string, bool) {
-	path := DefaultTmfifoPath
-	if _, err := os.Stat(path); err == nil {
-		return path, true
+	for _, path := range tmfifoDevicePaths {
+		if _, err := os.Stat(path); err == nil {
+			return path, true
+		}
 	}
 	return "", false
 }
