@@ -158,3 +158,195 @@ func TestCrossConnectionInviteCodeVisibility(t *testing.T) {
 func DefaultExpirationTime() time.Time {
 	return time.Now().Add(24 * time.Hour)
 }
+
+// TestDeleteOperator_Success tests successful operator deletion.
+func TestDeleteOperator_Success(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create a tenant and operator
+	t.Log("Creating tenant and operator")
+	if err := store.AddTenant("tenant1", "Test Tenant", "", "", nil); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+	if err := store.CreateOperator("op1", "test@example.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Add operator to tenant
+	t.Log("Adding operator to tenant")
+	if err := store.AddOperatorToTenant("op1", "tenant1", "operator"); err != nil {
+		t.Fatalf("failed to add operator to tenant: %v", err)
+	}
+
+	// Verify operator exists
+	t.Log("Verifying operator exists before deletion")
+	op, err := store.GetOperator("op1")
+	if err != nil {
+		t.Fatalf("operator should exist before deletion: %v", err)
+	}
+	assert.Equal(t, "op1", op.ID)
+
+	// Delete the operator
+	t.Log("Deleting operator")
+	err = store.DeleteOperator("op1")
+	if err != nil {
+		t.Fatalf("DeleteOperator failed: %v", err)
+	}
+
+	// Verify operator is gone
+	t.Log("Verifying operator no longer exists")
+	_, err = store.GetOperator("op1")
+	assert.Error(t, err, "operator should not exist after deletion")
+
+	// Verify tenant membership is also removed
+	t.Log("Verifying tenant membership is removed")
+	memberships, err := store.GetOperatorTenants("op1")
+	assert.NoError(t, err)
+	assert.Len(t, memberships, 0, "operator should have no tenant memberships after deletion")
+}
+
+// TestDeleteOperator_HasKeymakers tests that operator deletion fails when keymakers exist.
+func TestDeleteOperator_HasKeymakers(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create operator
+	t.Log("Creating operator")
+	if err := store.CreateOperator("op1", "test@example.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create a keymaker for this operator
+	t.Log("Creating keymaker for operator")
+	km := &KeyMaker{
+		ID:                "km1",
+		OperatorID:        "op1",
+		Name:              "Test KeyMaker",
+		Platform:          "darwin",
+		SecureElement:     "TPM",
+		DeviceFingerprint: "fingerprint123",
+		PublicKey:         "pubkey123",
+		Status:            "active",
+	}
+	if err := store.CreateKeyMaker(km); err != nil {
+		t.Fatalf("failed to create keymaker: %v", err)
+	}
+
+	// Attempt to delete operator should fail
+	t.Log("Attempting to delete operator with keymakers (should fail)")
+	err := store.DeleteOperator("op1")
+	assert.Error(t, err, "deleting operator with keymakers should fail")
+	assert.Contains(t, err.Error(), "keymaker", "error should mention keymakers")
+
+	// Verify operator still exists
+	t.Log("Verifying operator still exists after failed deletion")
+	op, err := store.GetOperator("op1")
+	assert.NoError(t, err)
+	assert.Equal(t, "op1", op.ID)
+}
+
+// TestDeleteOperator_HasAuthorizations tests that operator deletion fails when authorizations exist.
+func TestDeleteOperator_HasAuthorizations(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create tenant and operator
+	t.Log("Creating tenant and operator")
+	if err := store.AddTenant("tenant1", "Test Tenant", "", "", nil); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+	if err := store.CreateOperator("op1", "test@example.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create an authorization for this operator
+	t.Log("Creating authorization for operator")
+	if err := store.CreateAuthorization("auth1", "op1", "tenant1", []string{"ca1"}, []string{"device1"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// Attempt to delete operator should fail
+	t.Log("Attempting to delete operator with authorizations (should fail)")
+	err := store.DeleteOperator("op1")
+	assert.Error(t, err, "deleting operator with authorizations should fail")
+	assert.Contains(t, err.Error(), "authorization", "error should mention authorizations")
+
+	// Verify operator still exists
+	t.Log("Verifying operator still exists after failed deletion")
+	op, err := store.GetOperator("op1")
+	assert.NoError(t, err)
+	assert.Equal(t, "op1", op.ID)
+}
+
+// TestDeleteOperator_NotFound tests deletion of non-existent operator.
+func TestDeleteOperator_NotFound(t *testing.T) {
+	t.Log("Setting up test store")
+	store := setupTestStore(t)
+
+	t.Log("Attempting to delete non-existent operator")
+	err := store.DeleteOperator("nonexistent")
+	assert.Error(t, err, "deleting non-existent operator should fail")
+	assert.Contains(t, err.Error(), "not found", "error should indicate operator not found")
+}
+
+// TestDeleteInviteCode_Success tests successful invite code deletion.
+func TestDeleteInviteCode_Success(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create a tenant
+	t.Log("Creating tenant")
+	if err := store.AddTenant("tenant1", "Test Tenant", "", "", nil); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an invite code
+	t.Log("Creating invite code")
+	code := GenerateInviteCode("TEST")
+	codeHash := HashInviteCode(code)
+	invite := &InviteCode{
+		ID:            "inv1",
+		CodeHash:      codeHash,
+		OperatorEmail: "test@example.com",
+		TenantID:      "tenant1",
+		Role:          "operator",
+		CreatedBy:     "admin",
+		ExpiresAt:     DefaultExpirationTime(),
+		Status:        "pending",
+	}
+	if err := store.CreateInviteCode(invite); err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Verify invite exists
+	t.Log("Verifying invite code exists before deletion")
+	found, err := store.GetInviteCodeByHash(codeHash)
+	if err != nil {
+		t.Fatalf("invite code should exist before deletion: %v", err)
+	}
+	assert.Equal(t, "inv1", found.ID)
+
+	// Delete the invite code
+	t.Log("Deleting invite code")
+	err = store.DeleteInviteCode("inv1")
+	if err != nil {
+		t.Fatalf("DeleteInviteCode failed: %v", err)
+	}
+
+	// Verify invite is gone
+	t.Log("Verifying invite code no longer exists")
+	_, err = store.GetInviteCodeByHash(codeHash)
+	assert.Error(t, err, "invite code should not exist after deletion")
+}
+
+// TestDeleteInviteCode_NotFound tests deletion of non-existent invite code.
+func TestDeleteInviteCode_NotFound(t *testing.T) {
+	t.Log("Setting up test store")
+	store := setupTestStore(t)
+
+	t.Log("Attempting to delete non-existent invite code")
+	err := store.DeleteInviteCode("nonexistent")
+	assert.Error(t, err, "deleting non-existent invite code should fail")
+	assert.Contains(t, err.Error(), "not found", "error should indicate invite code not found")
+}

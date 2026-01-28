@@ -24,13 +24,13 @@ func init() {
 	operatorCmd.AddCommand(operatorGrantCmd)
 	operatorCmd.AddCommand(operatorAuthorizationsCmd)
 	operatorCmd.AddCommand(operatorRevokeCmd)
+	operatorCmd.AddCommand(operatorRemoveCmd)
 
 	// Flags for operator invite
 	operatorInviteCmd.Flags().String("role", "operator", "Role: admin or operator")
 
 	// Flags for operator list
 	operatorListCmd.Flags().String("tenant", "", "Filter by tenant")
-
 
 	// Flags for operator revoke
 	operatorRevokeCmd.Flags().String("tenant", "", "Tenant name (required)")
@@ -597,6 +597,32 @@ Examples:
 		fmt.Println("Authorization revoked:")
 		fmt.Printf("  Operator: %s\n", email)
 		fmt.Printf("  CA:       %s\n", caName)
+		return nil
+	},
+}
+
+var operatorRemoveCmd = &cobra.Command{
+	Use:     "remove <email>",
+	Aliases: []string{"delete"},
+	Short:   "Remove an operator",
+	Long: `Remove an operator. The operator must not have any keymakers or authorizations.
+
+Examples:
+  bluectl operator remove marcus@acme.com`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+
+		op, err := dpuStore.GetOperatorByEmail(email)
+		if err != nil {
+			return fmt.Errorf("operator not found: %s", email)
+		}
+
+		if err := dpuStore.DeleteOperator(op.ID); err != nil {
+			return err
+		}
+
+		fmt.Printf("Removed operator '%s'\n", email)
 		return nil
 	},
 }

@@ -581,3 +581,58 @@ func HashInviteCode(code string) string {
 	hash := sha256.Sum256([]byte(code))
 	return hex.EncodeToString(hash[:])
 }
+
+// DeleteOperator deletes an operator by ID.
+// Returns error if operator has dependencies (keymakers, authorizations).
+// Tenant memberships are removed automatically.
+func (s *Store) DeleteOperator(id string) error {
+	// Check for keymakers
+	keymakers, err := s.ListKeyMakersByOperator(id)
+	if err != nil {
+		return fmt.Errorf("failed to check keymakers: %w", err)
+	}
+	if len(keymakers) > 0 {
+		return fmt.Errorf("operator has %d keymaker(s) that must be removed first", len(keymakers))
+	}
+
+	// Check for authorizations
+	auths, err := s.ListAuthorizationsByOperator(id)
+	if err != nil {
+		return fmt.Errorf("failed to check authorizations: %w", err)
+	}
+	if len(auths) > 0 {
+		return fmt.Errorf("operator has %d authorization(s) that must be revoked first", len(auths))
+	}
+
+	// Remove all tenant memberships first
+	_, err = s.db.Exec(`DELETE FROM operator_tenants WHERE operator_id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("failed to remove tenant memberships: %w", err)
+	}
+
+	// Delete operator
+	result, err := s.db.Exec(`DELETE FROM operators WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete operator: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("operator not found: %s", id)
+	}
+	return nil
+}
+
+// DeleteInviteCode deletes an invite code by ID.
+func (s *Store) DeleteInviteCode(id string) error {
+	result, err := s.db.Exec(`DELETE FROM invite_codes WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete invite code: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("invite code not found: %s", id)
+	}
+	return nil
+}
