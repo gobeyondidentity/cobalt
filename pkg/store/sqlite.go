@@ -152,6 +152,15 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
 
+	// Enable WAL mode for better concurrent access across processes.
+	// WAL mode allows readers to see committed changes immediately without
+	// blocking writers, which is essential when CLI creates invite codes
+	// and a long-running server needs to validate them.
+	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+
 	store := &Store{db: db}
 	if err := store.migrate(); err != nil {
 		db.Close()
