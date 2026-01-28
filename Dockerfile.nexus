@@ -1,4 +1,4 @@
-# Control Plane Container Image
+# Nexus (Control Plane) Container Image
 # Multi-stage build for minimal image size
 
 FROM golang:1.25-alpine AS builder
@@ -8,14 +8,14 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o control-plane ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o nexus ./cmd/nexus
 
 # Runtime image
 FROM alpine:3.20
 
 RUN apk --no-cache add ca-certificates tzdata
 
-COPY --from=builder /build/control-plane /usr/local/bin/control-plane
+COPY --from=builder /build/nexus /usr/local/bin/nexus
 
 # Run as non-root user
 RUN adduser -D -u 1000 server
@@ -23,4 +23,4 @@ USER server
 
 EXPOSE 8080
 
-ENTRYPOINT ["/usr/local/bin/control-plane"]
+ENTRYPOINT ["/usr/local/bin/nexus"]

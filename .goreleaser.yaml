@@ -47,7 +47,7 @@ builds:
       - -X github.com/nmelo/secure-infra/internal/version.Version={{.Version}}
 
   - id: host-agent
-    main: ./cmd/host-agent
+    main: ./cmd/sentry
     binary: sentry
     env:
       - CGO_ENABLED=0
@@ -62,8 +62,8 @@ builds:
       - -X github.com/nmelo/secure-infra/internal/version.Version={{.Version}}
 
   - id: control-plane
-    main: ./cmd/server
-    binary: control-plane
+    main: ./cmd/nexus
+    binary: nexus
     env:
       - CGO_ENABLED=0
     goos:
@@ -132,7 +132,7 @@ archives:
       - control-plane
     formats:
       - tar.gz
-    name_template: "control-plane_{{ .Os }}_{{ .Arch }}"
+    name_template: "nexus_{{ .Os }}_{{ .Arch }}"
     files:
       - none*
 
