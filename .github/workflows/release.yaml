@@ -230,9 +230,16 @@ jobs:
           cp /opt/mellanox/doca/lib/x86_64-linux-gnu/libdoca_comch.so* doca-libs/
           cp /opt/mellanox/doca/lib/x86_64-linux-gnu/libdoca_common.so* doca-libs/
 
+      - name: Install nfpm
+        run: |
+          if ! command -v nfpm &> /dev/null; then
+            go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          fi
+
       - name: Build Linux packages
         run: |
           export VERSION=${{ steps.version.outputs.VERSION }}
+          export PATH="$HOME/go/bin:$PATH"
           nfpm package -p deb -f packaging/nfpm-sentry-doca.yaml
           nfpm package -p rpm -f packaging/nfpm-sentry-doca.yaml
 
