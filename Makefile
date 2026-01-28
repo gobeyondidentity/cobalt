@@ -777,6 +777,126 @@ qa-test-transport-doca:
 	fi
 
 # =============================================================================
+# DOCA ComCh Hardware Testing
+# Tests from workbench (localhost or 192.168.1.235) against BF3 DPU (192.168.1.204)
+# =============================================================================
+
+.PHONY: qa-hardware-build qa-hardware-setup qa-hardware-cleanup qa-hardware-test qa-hardware-help
+
+# BlueField-3 DPU for hardware testing
+HW_BF3_IP := 192.168.1.204
+HW_BF3_USER := ubuntu
+HW_BF3_SSH := ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no $(HW_BF3_USER)@$(HW_BF3_IP)
+
+# Build binaries with DOCA tags for both local and BF3
+qa-hardware-build: $(BIN_DIR)
+	@echo "=== Building binaries for DOCA ComCh hardware testing ==="
+	@echo ""
+	@echo "Building aegis for ARM64 (BlueField-3)..."
+	@GOOS=linux GOARCH=arm64 go build -tags doca -ldflags "$(LDFLAGS)" -o $(AEGIS_ARM64) ./cmd/aegis
+	@echo "  $(AEGIS_ARM64)"
+	@echo ""
+	@echo "Building sentry for local platform..."
+	@go build -tags doca -ldflags "$(LDFLAGS)" -o $(SENTRY) ./cmd/sentry
+	@echo "  $(SENTRY)"
+	@echo ""
+	@echo "Building nexus for local platform..."
+	@go build -ldflags "$(LDFLAGS)" -o $(NEXUS) ./cmd/nexus
+	@echo "  $(NEXUS)"
+	@echo ""
+	@echo "Building bluectl for local platform..."
+	@go build -ldflags "$(LDFLAGS)" -o $(BLUECTL) ./cmd/bluectl
+	@echo "  $(BLUECTL)"
+	@echo ""
+	@echo "=== Hardware build complete ==="
+
+# Deploy aegis to BF3, verify connectivity
+qa-hardware-setup:
+	@echo "=== Setting up BF3 for hardware testing ==="
+	@echo ""
+	@echo "Verifying SSH connectivity to BF3 ($(HW_BF3_IP))..."
+	@$(HW_BF3_SSH) "echo 'Connected to BF3'" || (echo "ERROR: Cannot reach BF3 at $(HW_BF3_IP)" && exit 1)
+	@echo "  SSH connection OK"
+	@echo ""
+	@echo "Copying aegis-arm64 to BF3..."
+	@scp -o ConnectTimeout=5 -o StrictHostKeyChecking=no $(AEGIS_ARM64) $(HW_BF3_USER)@$(HW_BF3_IP):~/aegis
+	@$(HW_BF3_SSH) "chmod +x ~/aegis"
+	@echo "  Deployed to ~/aegis"
+	@echo ""
+	@echo "=== Setup complete ==="
+	@echo ""
+	@echo "To verify DOCA availability on BF3, SSH and check:"
+	@echo "  $(HW_BF3_SSH)"
+	@echo "  dpkg -l | grep doca"
+	@echo "  ls /dev/doca_comch*"
+	@echo "  lspci | grep -i mellanox"
+
+# Kill processes on BF3 and local
+qa-hardware-cleanup:
+	@echo "=== Cleaning up hardware test processes ==="
+	@echo ""
+	@echo "Killing aegis on BF3..."
+	-$(HW_BF3_SSH) "pkill -9 aegis" 2>/dev/null || true
+	@echo "  Done"
+	@echo ""
+	@echo "Killing local nexus and sentry..."
+	-pkill -9 nexus 2>/dev/null || true
+	-pkill -9 sentry 2>/dev/null || true
+	@echo "  Done"
+	@echo ""
+	@echo "=== Cleanup complete ==="
+
+# Run full hardware test suite
+qa-hardware-test:
+	@echo "=== DOCA ComCh Hardware Test Suite ==="
+	@echo ""
+	@echo "Environment variables:"
+	@echo "  BF3_IP=$(HW_BF3_IP) (override with BF3_IP=x.x.x.x)"
+	@echo "  BF3_USER=$(HW_BF3_USER) (override with BF3_USER=xxx)"
+	@echo "  DOCA_PCI_ADDR=03:00.0 (default, override with DOCA_PCI_ADDR=xx:xx.x)"
+	@echo "  DOCA_REP_PCI_ADDR=01:00.0 (default, override with DOCA_REP_PCI_ADDR=xx:xx.x)"
+	@echo "  DOCA_SERVER_NAME=secure-infra (default, override with DOCA_SERVER_NAME=xxx)"
+	@echo ""
+	@echo "Running hardware tests..."
+	@echo ""
+	BF3_IP=$(HW_BF3_IP) BF3_USER=$(HW_BF3_USER) \
+		go test -tags=hardware -v -timeout 10m ./... -run 'TestDOCA.*'
+
+# Print usage instructions
+qa-hardware-help:
+	@echo "DOCA ComCh Hardware Testing"
+	@echo "==========================="
+	@echo ""
+	@echo "Tests DOCA ComCh transport between workbench and BlueField-3 DPU."
+	@echo ""
+	@echo "Targets:"
+	@echo "  make qa-hardware-build    Build binaries with DOCA tags"
+	@echo "  make qa-hardware-setup    Deploy aegis to BF3, verify connectivity"
+	@echo "  make qa-hardware-cleanup  Kill processes on BF3 and local"
+	@echo "  make qa-hardware-test     Run full hardware test suite"
+	@echo "  make qa-hardware-help     Show this help"
+	@echo ""
+	@echo "Environment Variables (with defaults):"
+	@echo "  BF3_IP              BlueField-3 IP address (default: $(HW_BF3_IP))"
+	@echo "  BF3_USER            SSH user for BF3 (default: $(HW_BF3_USER))"
+	@echo "  DOCA_PCI_ADDR       PCI address for DOCA device (default: 03:00.0)"
+	@echo "  DOCA_REP_PCI_ADDR   PCI address for DOCA representor (default: 01:00.0)"
+	@echo "  DOCA_SERVER_NAME    DOCA ComCh server name (default: secure-infra)"
+	@echo ""
+	@echo "Example Usage:"
+	@echo "  # Full workflow"
+	@echo "  make qa-hardware-build"
+	@echo "  make qa-hardware-setup"
+	@echo "  make qa-hardware-test"
+	@echo "  make qa-hardware-cleanup"
+	@echo ""
+	@echo "  # Override BF3 IP"
+	@echo "  make qa-hardware-test BF3_IP=192.168.1.205"
+	@echo ""
+	@echo "  # Override PCI addresses"
+	@echo "  DOCA_PCI_ADDR=04:00.0 DOCA_REP_PCI_ADDR=02:00.0 make qa-hardware-test"
+
+# =============================================================================
 # Remote QA Testing (Workbench)
 # Runs VMs on workbench (192.168.1.235) instead of local machine
 # =============================================================================
