@@ -31,17 +31,23 @@ Examples:
   bluectl flows bf3-lab -o json`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dpu, err := dpuStore.Get(args[0])
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+		nexus := NewNexusClient(serverURL)
+
+		dpu, err := nexus.GetDPU(cmd.Context(), args[0])
 		if err != nil {
 			return err
 		}
 
 		bridge, _ := cmd.Flags().GetString("bridge")
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 		defer cancel()
 
-		client, err := grpcclient.NewClient(dpu.Address())
+		client, err := grpcclient.NewClient(fmt.Sprintf("%s:%d", dpu.Host, dpu.Port))
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
@@ -81,7 +87,6 @@ Examples:
 		}
 		w.Flush()
 
-		dpuStore.UpdateStatus(dpu.ID, "healthy")
 		return nil
 	},
 }

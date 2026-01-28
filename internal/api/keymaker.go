@@ -304,3 +304,152 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, response)
 }
+
+// ----- Operator Management Types -----
+
+// operatorResponse is the response for operator endpoints.
+type operatorResponse struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// updateOperatorStatusRequest is the request body for updating operator status.
+type updateOperatorStatusRequest struct {
+	Status string `json:"status"` // "active" or "suspended"
+}
+
+func operatorToResponse(op *store.Operator) operatorResponse {
+	return operatorResponse{
+		ID:        op.ID,
+		Email:     op.Email,
+		Status:    op.Status,
+		CreatedAt: op.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+// handleListOperators handles GET /api/v1/operators
+// Supports optional ?tenant=<name> query parameter to filter by tenant.
+func (s *Server) handleListOperators(w http.ResponseWriter, r *http.Request) {
+	tenantName := r.URL.Query().Get("tenant")
+
+	var operators []*store.Operator
+	var err error
+
+	if tenantName != "" {
+		// Resolve tenant name to ID
+		tenant, terr := s.store.GetTenant(tenantName)
+		if terr != nil {
+			writeError(w, r, http.StatusNotFound, fmt.Sprintf("tenant not found: %s", tenantName))
+			return
+		}
+		operators, err = s.store.ListOperatorsByTenant(tenant.ID)
+	} else {
+		operators, err = s.store.ListOperators()
+	}
+
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to list operators: "+err.Error())
+		return
+	}
+
+	result := make([]operatorResponse, 0, len(operators))
+	for _, op := range operators {
+		result = append(result, operatorToResponse(op))
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handleGetOperator handles GET /api/v1/operators/{email}
+func (s *Server) handleGetOperator(w http.ResponseWriter, r *http.Request) {
+	email := r.PathValue("email")
+
+	operator, err := s.store.GetOperatorByEmail(email)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "Operator not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, operatorToResponse(operator))
+}
+
+// handleUpdateOperatorStatus handles PATCH /api/v1/operators/{email}/status
+func (s *Server) handleUpdateOperatorStatus(w http.ResponseWriter, r *http.Request) {
+	email := r.PathValue("email")
+
+	// Look up operator by email
+	operator, err := s.store.GetOperatorByEmail(email)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "Operator not found")
+		return
+	}
+
+	var req updateOperatorStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		return
+	}
+
+	// Validate status
+	if req.Status != "active" && req.Status != "suspended" {
+		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid status: %s (must be 'active' or 'suspended')", req.Status))
+		return
+	}
+
+	// Update status
+	if err := s.store.UpdateOperatorStatus(operator.ID, req.Status); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to update operator status: "+err.Error())
+		return
+	}
+
+	// Fetch updated operator
+	operator, _ = s.store.GetOperatorByEmail(email)
+	writeJSON(w, http.StatusOK, operatorToResponse(operator))
+}
+
+// handleDeleteOperator handles DELETE /api/v1/operators/{email}
+func (s *Server) handleDeleteOperator(w http.ResponseWriter, r *http.Request) {
+	email := r.PathValue("email")
+
+	// Look up operator by email
+	operator, err := s.store.GetOperatorByEmail(email)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "Operator not found")
+		return
+	}
+
+	// Delete operator (store method handles dependency checks)
+	if err := s.store.DeleteOperator(operator.ID); err != nil {
+		if strings.Contains(err.Error(), "keymaker") || strings.Contains(err.Error(), "authorization") {
+			writeError(w, r, http.StatusConflict, err.Error())
+			return
+		}
+		writeError(w, r, http.StatusInternalServerError, "Failed to delete operator: "+err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleDeleteInvite handles DELETE /api/v1/invites/{code}
+func (s *Server) handleDeleteInvite(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+
+	// Hash the code and lookup
+	codeHash := store.HashInviteCode(code)
+	invite, err := s.store.GetInviteCodeByHash(codeHash)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "Invite code not found")
+		return
+	}
+
+	// Delete invite
+	if err := s.store.DeleteInviteCode(invite.ID); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to delete invite: "+err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

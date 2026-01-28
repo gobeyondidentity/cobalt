@@ -88,7 +88,14 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/keymakers/bind", s.handleBindKeyMaker)
 
 	// Operator routes
+	mux.HandleFunc("GET /api/v1/operators", s.handleListOperators)
 	mux.HandleFunc("POST /api/v1/operators/invite", s.handleInviteOperator)
+	mux.HandleFunc("GET /api/v1/operators/{email}", s.handleGetOperator)
+	mux.HandleFunc("PATCH /api/v1/operators/{email}/status", s.handleUpdateOperatorStatus)
+	mux.HandleFunc("DELETE /api/v1/operators/{email}", s.handleDeleteOperator)
+
+	// Invite routes
+	mux.HandleFunc("DELETE /api/v1/invites/{code}", s.handleDeleteInvite)
 
 	// Authorization routes
 	mux.HandleFunc("POST /api/v1/authorizations", s.handleCreateAuthorization)

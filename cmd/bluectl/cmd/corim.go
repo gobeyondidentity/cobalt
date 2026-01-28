@@ -104,16 +104,24 @@ The CoRIM contains golden reference measurements that can be used to validate
 the DPU's firmware integrity.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dpu, err := dpuStore.Get(args[0])
+		serverURL, err := requireServer()
 		if err != nil {
 			return err
+		}
+
+		nexusClient := NewNexusClient(serverURL)
+		dpu, err := nexusClient.GetDPU(cmd.Context(), args[0])
+		if err != nil {
+			return fmt.Errorf("DPU not found: %s", args[0])
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
+		dpuAddr := fmt.Sprintf("%s:%d", dpu.Host, dpu.Port)
+
 		// Get DPU inventory to find firmware version
-		client, err := grpcclient.NewClient(dpu.Address())
+		client, err := grpcclient.NewClient(dpuAddr)
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
@@ -182,7 +190,6 @@ the DPU's firmware integrity.`,
 		}
 		w.Flush()
 
-		dpuStore.UpdateStatus(dpu.ID, "healthy")
 		return nil
 	},
 }
@@ -196,9 +203,15 @@ These measurements reflect the current firmware state of the DPU and can be
 compared against reference values from a CoRIM.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dpu, err := dpuStore.Get(args[0])
+		serverURL, err := requireServer()
 		if err != nil {
 			return err
+		}
+
+		nexusClient := NewNexusClient(serverURL)
+		dpu, err := nexusClient.GetDPU(cmd.Context(), args[0])
+		if err != nil {
+			return fmt.Errorf("DPU not found: %s", args[0])
 		}
 
 		target, _ := cmd.Flags().GetString("target")
@@ -207,7 +220,8 @@ compared against reference values from a CoRIM.`,
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		client, err := grpcclient.NewClient(dpu.Address())
+		dpuAddr := fmt.Sprintf("%s:%d", dpu.Host, dpu.Port)
+		client, err := grpcclient.NewClient(dpuAddr)
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
@@ -246,7 +260,6 @@ compared against reference values from a CoRIM.`,
 		}
 		w.Flush()
 
-		dpuStore.UpdateStatus(dpu.ID, "healthy")
 		return nil
 	},
 }
@@ -263,9 +276,15 @@ This command:
 4. Reports match/mismatch status for each measurement index`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dpu, err := dpuStore.Get(args[0])
+		serverURL, err := requireServer()
 		if err != nil {
 			return err
+		}
+
+		nexusClient := NewNexusClient(serverURL)
+		dpu, err := nexusClient.GetDPU(cmd.Context(), args[0])
+		if err != nil {
+			return fmt.Errorf("DPU not found: %s", args[0])
 		}
 
 		verbose, _ := cmd.Flags().GetBool("verbose")
@@ -274,8 +293,10 @@ This command:
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
+		dpuAddr := fmt.Sprintf("%s:%d", dpu.Host, dpu.Port)
+
 		// Connect to DPU
-		client, err := grpcclient.NewClient(dpu.Address())
+		client, err := grpcclient.NewClient(dpuAddr)
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
@@ -377,12 +398,6 @@ This command:
 			fmt.Printf("\nOverall: ✓ VALID (%d/%d measurements verified)\n", summary.Matched, summary.TotalChecked)
 		} else {
 			fmt.Printf("\nOverall: ✗ INVALID (%d matched, %d mismatched)\n", summary.Matched, summary.Mismatched)
-		}
-
-		if summary.Valid {
-			dpuStore.UpdateStatus(dpu.ID, "healthy")
-		} else {
-			dpuStore.UpdateStatus(dpu.ID, "unhealthy")
 		}
 
 		return nil

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
@@ -43,48 +42,11 @@ var tenantListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all tenants",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Use remote Nexus server if configured
-		if serverURL := GetServer(); serverURL != "" {
-			return listTenantsRemote(cmd.Context(), serverURL)
-		}
-
-		tenants, err := dpuStore.ListTenants()
+		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-
-		if outputFormat != "table" {
-			return formatOutput(tenants)
-		}
-
-		if len(tenants) == 0 {
-			fmt.Println("No tenants found. Use 'bluectl tenant add' to create one.")
-			return nil
-		}
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tDESCRIPTION\tCONTACT\tDPUs\tTAGS")
-		for _, t := range tenants {
-			count, _ := dpuStore.GetTenantDPUCount(t.ID)
-			tags := strings.Join(t.Tags, ", ")
-			if tags == "" {
-				tags = "-"
-			}
-			desc := t.Description
-			if desc == "" {
-				desc = "-"
-			} else if len(desc) > 40 {
-				desc = desc[:37] + "..."
-			}
-			contact := t.Contact
-			if contact == "" {
-				contact = "-"
-			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n",
-				t.Name, desc, contact, count, tags)
-		}
-		w.Flush()
-		return nil
+		return listTenantsRemote(cmd.Context(), serverURL)
 	},
 }
 
@@ -149,19 +111,11 @@ Examples:
 		contact, _ := cmd.Flags().GetString("contact")
 		tags, _ := cmd.Flags().GetStringSlice("tags")
 
-		// Use remote Nexus server if configured
-		if serverURL := GetServer(); serverURL != "" {
-			return addTenantRemote(cmd.Context(), serverURL, name, description, contact, tags)
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
 		}
-
-		id := "tnt_" + uuid.New().String()[:8]
-
-		if err := dpuStore.AddTenant(id, name, description, contact, tags); err != nil {
-			return fmt.Errorf("failed to add tenant: %w", err)
-		}
-
-		fmt.Printf("Created tenant '%s'.\n", name)
-		return nil
+		return addTenantRemote(cmd.Context(), serverURL, name, description, contact, tags)
 	},
 }
 
@@ -194,47 +148,11 @@ Examples:
   bluectl tenant remove abc12345`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Use remote Nexus server if configured
-		if serverURL := GetServer(); serverURL != "" {
-			return removeTenantRemote(cmd.Context(), serverURL, args[0])
-		}
-
-		tenant, err := dpuStore.GetTenant(args[0])
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("tenant not found: %s", args[0])
-		}
-
-		deps, err := dpuStore.GetTenantDependencies(tenant.ID)
-		if err != nil {
-			return fmt.Errorf("failed to check dependencies: %w", err)
-		}
-
-		if deps.HasAny() {
-			fmt.Fprintf(os.Stderr, "Cannot remove tenant '%s'. The following depend on it:\n", tenant.Name)
-			if len(deps.DPUs) > 0 {
-				fmt.Fprintf(os.Stderr, "  DPUs (%d): %s\n", len(deps.DPUs), strings.Join(deps.DPUs, ", "))
-			}
-			if len(deps.Operators) > 0 {
-				fmt.Fprintf(os.Stderr, "  Operators (%d): %s\n", len(deps.Operators), strings.Join(deps.Operators, ", "))
-			}
-			if len(deps.CAs) > 0 {
-				fmt.Fprintf(os.Stderr, "  SSH CAs (%d): %s\n", len(deps.CAs), strings.Join(deps.CAs, ", "))
-			}
-			if deps.TrustRelationships > 0 {
-				fmt.Fprintf(os.Stderr, "  Trust relationships: %d\n", deps.TrustRelationships)
-			}
-			if deps.Invites > 0 {
-				fmt.Fprintf(os.Stderr, "  Pending invites: %d\n", deps.Invites)
-			}
-			fmt.Fprintf(os.Stderr, "\nTo see details: bluectl tenant show %s\n", tenant.Name)
-			return fmt.Errorf("tenant has dependencies that must be removed first")
-		}
-
-		if err := dpuStore.RemoveTenant(tenant.ID); err != nil {
 			return err
 		}
-		fmt.Printf("Removed tenant '%s'\n", tenant.Name)
-		return nil
+		return removeTenantRemote(cmd.Context(), serverURL, args[0])
 	},
 }
 
@@ -272,44 +190,52 @@ var tenantShowCmd = &cobra.Command{
 	Short:   "Show tenant details",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tenant, err := dpuStore.GetTenant(args[0])
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("tenant not found: %s", args[0])
+			return err
 		}
-
-		dpus, _ := dpuStore.ListDPUsByTenant(tenant.ID)
-
-		if outputFormat != "table" {
-			return formatOutput(map[string]interface{}{
-				"tenant": tenant,
-				"dpus":   dpus,
-			})
-		}
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "Name:\t%s\n", tenant.Name)
-		fmt.Fprintf(w, "Description:\t%s\n", tenant.Description)
-		fmt.Fprintf(w, "Contact:\t%s\n", tenant.Contact)
-		if len(tenant.Tags) > 0 {
-			fmt.Fprintf(w, "Tags:\t%s\n", strings.Join(tenant.Tags, ", "))
-		}
-		fmt.Fprintf(w, "Created:\t%s\n", tenant.CreatedAt.Format("2006-01-02 15:04:05"))
-		fmt.Fprintf(w, "Updated:\t%s\n", tenant.UpdatedAt.Format("2006-01-02 15:04:05"))
-		fmt.Fprintf(w, "DPU Count:\t%d\n", len(dpus))
-		w.Flush()
-
-		if len(dpus) > 0 {
-			fmt.Println("\nAssigned DPUs:")
-			w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  NAME\tHOST\tSTATUS")
-			for _, dpu := range dpus {
-				fmt.Fprintf(w, "  %s\t%s\t%s\n", dpu.Name, dpu.Host, dpu.Status)
-			}
-			w.Flush()
-		}
-
-		return nil
+		return showTenantRemote(cmd.Context(), serverURL, args[0])
 	},
+}
+
+func showTenantRemote(ctx context.Context, serverURL, nameOrID string) error {
+	client := NewNexusClient(serverURL)
+
+	// First resolve tenant to get ID
+	tenants, err := client.ListTenants(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list tenants: %w", err)
+	}
+
+	var tenant *tenantResponse
+	for i := range tenants {
+		if tenants[i].Name == nameOrID || tenants[i].ID == nameOrID {
+			tenant = &tenants[i]
+			break
+		}
+	}
+	if tenant == nil {
+		return fmt.Errorf("tenant not found: %s", nameOrID)
+	}
+
+	if outputFormat != "table" {
+		return formatOutput(tenant)
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "Name:\t%s\n", tenant.Name)
+	fmt.Fprintf(w, "ID:\t%s\n", tenant.ID)
+	fmt.Fprintf(w, "Description:\t%s\n", tenant.Description)
+	fmt.Fprintf(w, "Contact:\t%s\n", tenant.Contact)
+	if len(tenant.Tags) > 0 {
+		fmt.Fprintf(w, "Tags:\t%s\n", strings.Join(tenant.Tags, ", "))
+	}
+	fmt.Fprintf(w, "DPU Count:\t%d\n", tenant.DPUCount)
+	fmt.Fprintf(w, "Created:\t%s\n", tenant.CreatedAt)
+	fmt.Fprintf(w, "Updated:\t%s\n", tenant.UpdatedAt)
+	w.Flush()
+
+	return nil
 }
 
 var tenantUpdateCmd = &cobra.Command{
@@ -323,39 +249,64 @@ Examples:
   bluectl tenant update "Dev Team" -t dev,staging,test`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tenant, err := dpuStore.GetTenant(args[0])
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("tenant not found: %s", args[0])
+			return err
 		}
-
-		// Get new values or use existing
-		name, _ := cmd.Flags().GetString("name")
-		if name == "" {
-			name = tenant.Name
-		}
-
-		description, _ := cmd.Flags().GetString("description")
-		if !cmd.Flags().Changed("description") {
-			description = tenant.Description
-		}
-
-		contact, _ := cmd.Flags().GetString("contact")
-		if !cmd.Flags().Changed("contact") {
-			contact = tenant.Contact
-		}
-
-		tags, _ := cmd.Flags().GetStringSlice("tags")
-		if !cmd.Flags().Changed("tags") {
-			tags = tenant.Tags
-		}
-
-		if err := dpuStore.UpdateTenant(tenant.ID, name, description, contact, tags); err != nil {
-			return fmt.Errorf("failed to update tenant: %w", err)
-		}
-
-		fmt.Printf("Updated tenant '%s'\n", name)
-		return nil
+		return updateTenantRemote(cmd.Context(), serverURL, args[0], cmd)
 	},
+}
+
+func updateTenantRemote(ctx context.Context, serverURL, nameOrID string, cmd *cobra.Command) error {
+	client := NewNexusClient(serverURL)
+
+	// Get existing tenant
+	tenant, err := client.GetTenant(ctx, nameOrID)
+	if err != nil {
+		// Try by name
+		tenants, listErr := client.ListTenants(ctx)
+		if listErr != nil {
+			return fmt.Errorf("tenant not found: %s", nameOrID)
+		}
+		for i := range tenants {
+			if tenants[i].Name == nameOrID {
+				tenant = &tenants[i]
+				break
+			}
+		}
+		if tenant == nil {
+			return fmt.Errorf("tenant not found: %s", nameOrID)
+		}
+	}
+
+	// Get new values or use existing
+	name, _ := cmd.Flags().GetString("name")
+	if name == "" {
+		name = tenant.Name
+	}
+
+	description, _ := cmd.Flags().GetString("description")
+	if !cmd.Flags().Changed("description") {
+		description = tenant.Description
+	}
+
+	contact, _ := cmd.Flags().GetString("contact")
+	if !cmd.Flags().Changed("contact") {
+		contact = tenant.Contact
+	}
+
+	tags, _ := cmd.Flags().GetStringSlice("tags")
+	if !cmd.Flags().Changed("tags") {
+		tags = tenant.Tags
+	}
+
+	updated, err := client.UpdateTenant(ctx, tenant.ID, name, description, contact, tags)
+	if err != nil {
+		return fmt.Errorf("failed to update tenant: %w", err)
+	}
+
+	fmt.Printf("Updated tenant '%s'\n", updated.Name)
+	return nil
 }
 
 var tenantAssignCmd = &cobra.Command{
@@ -368,27 +319,11 @@ Examples:
   bluectl tenant assign acme123 dpu456`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Use remote Nexus server if configured
-		if serverURL := GetServer(); serverURL != "" {
-			return assignDPURemote(cmd.Context(), serverURL, args[0], args[1])
-		}
-
-		tenant, err := dpuStore.GetTenant(args[0])
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("tenant not found: %s", args[0])
+			return err
 		}
-
-		dpu, err := dpuStore.Get(args[1])
-		if err != nil {
-			return fmt.Errorf("DPU not found: %s", args[1])
-		}
-
-		if err := dpuStore.AssignDPUToTenant(dpu.ID, tenant.ID); err != nil {
-			return fmt.Errorf("failed to assign DPU: %w", err)
-		}
-
-		fmt.Printf("Assigned DPU '%s' to tenant '%s'\n", dpu.Name, tenant.Name)
-		return nil
+		return assignDPURemote(cmd.Context(), serverURL, args[0], args[1])
 	},
 }
 
@@ -448,32 +383,11 @@ Examples:
   bluectl tenant unassign dpu456`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Use remote Nexus server if configured
-		if serverURL := GetServer(); serverURL != "" {
-			return unassignDPURemote(cmd.Context(), serverURL, args[0])
-		}
-
-		dpu, err := dpuStore.Get(args[0])
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("DPU not found: %s", args[0])
+			return err
 		}
-
-		if dpu.TenantID == nil {
-			return fmt.Errorf("DPU '%s' is not assigned to any tenant", dpu.Name)
-		}
-
-		tenant, _ := dpuStore.GetTenant(*dpu.TenantID)
-		tenantName := *dpu.TenantID
-		if tenant != nil {
-			tenantName = tenant.Name
-		}
-
-		if err := dpuStore.UnassignDPUFromTenant(dpu.ID); err != nil {
-			return fmt.Errorf("failed to unassign DPU: %w", err)
-		}
-
-		fmt.Printf("Unassigned DPU '%s' from tenant '%s'\n", dpu.Name, tenantName)
-		return nil
+		return unassignDPURemote(cmd.Context(), serverURL, args[0])
 	},
 }
 

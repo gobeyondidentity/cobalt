@@ -6,8 +6,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/nmelo/secure-infra/pkg/attestation"
-	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/spf13/cobra"
 )
 
@@ -70,85 +68,24 @@ Examples:
 			return fmt.Errorf("source and target must be different hosts")
 		}
 
-		// Look up source host by hostname
-		sourceHost, err := dpuStore.GetAgentHostByHostname(sourceHostname)
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("source host not found: %s\nHint: Ensure the host agent is registered with 'host-agent' and paired with a DPU", sourceHostname)
+			return err
 		}
 
-		// Look up target host by hostname
-		targetHost, err := dpuStore.GetAgentHostByHostname(targetHostname)
-		if err != nil {
-			return fmt.Errorf("target host not found: %s\nHint: Ensure the host agent is registered with 'host-agent' and paired with a DPU", targetHostname)
-		}
+		client := NewNexusClient(serverURL)
 
-		// Get paired DPUs for both hosts
-		sourceDPU, err := dpuStore.Get(sourceHost.DPUName)
-		if err != nil {
-			return fmt.Errorf("source host's paired DPU not found: %s", sourceHost.DPUName)
-		}
-
-		targetDPU, err := dpuStore.Get(targetHost.DPUName)
-		if err != nil {
-			return fmt.Errorf("target host's paired DPU not found: %s", targetHost.DPUName)
-		}
-
-		// Both DPUs must belong to a tenant
-		if sourceDPU.TenantID == nil {
-			return fmt.Errorf("source host's DPU '%s' is not assigned to a tenant", sourceDPU.Name)
-		}
-		if targetDPU.TenantID == nil {
-			return fmt.Errorf("target host's DPU '%s' is not assigned to a tenant", targetDPU.Name)
-		}
-
-		// Both DPUs must belong to the same tenant
-		if *sourceDPU.TenantID != *targetDPU.TenantID {
-			return fmt.Errorf("source and target hosts must belong to the same tenant (via their paired DPUs)")
-		}
-
-		tenantID := *sourceDPU.TenantID
-
-		// Check if trust relationship already exists (by host)
-		exists, err := dpuStore.TrustRelationshipExistsByHost(sourceHostname, targetHostname, store.TrustType(trustType))
-		if err != nil {
-			return fmt.Errorf("failed to check existing trust: %w", err)
-		}
-		if exists {
-			return fmt.Errorf("trust relationship already exists between %s and %s for type %s", sourceHostname, targetHostname, trustType)
-		}
-
-		// Check attestation status for both DPUs (M2M Trust attestation gate)
-		if force {
-			fmt.Fprintf(os.Stderr, "WARNING: Bypassing attestation checks (--force). This action is audited.\n")
-		} else {
-			if err := checkAttestationForTrust(sourceDPU.Name); err != nil {
-				fmt.Fprintf(os.Stderr, "Hint: Run 'bluectl attestation %s' to verify device attestation\n", sourceDPU.Name)
-				fmt.Fprintf(os.Stderr, "      Use --force to bypass attestation checks (audited)\n")
-				return err
-			}
-			if err := checkAttestationForTrust(targetDPU.Name); err != nil {
-				fmt.Fprintf(os.Stderr, "Hint: Run 'bluectl attestation %s' to verify device attestation\n", targetDPU.Name)
-				fmt.Fprintf(os.Stderr, "      Use --force to bypass attestation checks (audited)\n")
-				return err
-			}
-		}
-
-		// Create trust relationship with host info
-		tr := &store.TrustRelationship{
+		req := createTrustRequest{
 			SourceHost:    sourceHostname,
 			TargetHost:    targetHostname,
-			SourceDPUID:   sourceDPU.ID,
-			SourceDPUName: sourceDPU.Name,
-			TargetDPUID:   targetDPU.ID,
-			TargetDPUName: targetDPU.Name,
-			TenantID:      tenantID,
-			TrustType:     store.TrustType(trustType),
+			TrustType:     trustType,
 			Bidirectional: bidirectional,
-			Status:        store.TrustStatusActive,
+			Force:         force,
 		}
 
-		if err := dpuStore.CreateTrustRelationship(tr); err != nil {
-			return fmt.Errorf("failed to create trust relationship: %w", err)
+		tr, err := client.CreateTrust(cmd.Context(), req)
+		if err != nil {
+			return fmt.Errorf("failed to create trust: %w", err)
 		}
 
 		if outputFormat != "table" {
@@ -195,25 +132,15 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tenantFilter, _ := cmd.Flags().GetString("tenant")
 
-		var relationships []*store.TrustRelationship
-		var err error
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
 
-		if tenantFilter != "" {
-			// Look up tenant by name
-			tenant, err := dpuStore.GetTenant(tenantFilter)
-			if err != nil {
-				return fmt.Errorf("tenant not found: %s", tenantFilter)
-			}
-			relationships, err = dpuStore.ListTrustRelationships(tenant.ID)
-			if err != nil {
-				return fmt.Errorf("failed to list trust relationships: %w", err)
-			}
-		} else {
-			// List all trust relationships
-			relationships, err = dpuStore.ListAllTrustRelationships()
-			if err != nil {
-				return fmt.Errorf("failed to list trust relationships: %w", err)
-			}
+		client := NewNexusClient(serverURL)
+		relationships, err := client.ListTrust(cmd.Context(), tenantFilter)
+		if err != nil {
+			return fmt.Errorf("failed to list trust relationships: %w", err)
 		}
 
 		if outputFormat != "table" {
@@ -226,18 +153,15 @@ Examples:
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "SOURCE HOST\tTARGET HOST\tDPUs\tTYPE\tDIRECTION\tSTATUS")
+		fmt.Fprintln(w, "SOURCE HOST\tTARGET HOST\tTYPE\tDIRECTION\tSTATUS")
 		for _, tr := range relationships {
 			direction := "one-way"
 			if tr.Bidirectional {
 				direction = "bidirectional"
 			}
-			// Show DPU pairing for context
-			dpuInfo := fmt.Sprintf("%s/%s", tr.SourceDPUName, tr.TargetDPUName)
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 				tr.SourceHost,
 				tr.TargetHost,
-				dpuInfo,
 				tr.TrustType,
 				direction,
 				tr.Status)
@@ -260,13 +184,13 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		trustID := args[0]
 
-		// Verify trust exists before deletion
-		_, err := dpuStore.GetTrustRelationship(trustID)
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("trust relationship not found: %s", trustID)
+			return err
 		}
 
-		if err := dpuStore.DeleteTrustRelationship(trustID); err != nil {
+		client := NewNexusClient(serverURL)
+		if err := client.DeleteTrust(cmd.Context(), trustID); err != nil {
 			return fmt.Errorf("failed to delete trust relationship: %w", err)
 		}
 
@@ -287,16 +211,3 @@ func formatTrustType(trustType string) string {
 	}
 }
 
-// checkAttestationForTrust verifies that a DPU has valid attestation for trust creation.
-// Returns nil if attestation is verified and fresh, otherwise returns an error.
-func checkAttestationForTrust(dpuName string) error {
-	gate := attestation.NewGate(dpuStore)
-	decision, err := gate.CanDistribute(dpuName)
-	if err != nil {
-		return fmt.Errorf("cannot create trust: '%s' attestation check failed", dpuName)
-	}
-	if !decision.Allowed {
-		return fmt.Errorf("cannot create trust: '%s' attestation not verified", dpuName)
-	}
-	return nil
-}

@@ -567,3 +567,91 @@ func TestBindKeyMaker_InvalidJSON(t *testing.T) {
 		t.Errorf("expected status 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// TestDeleteInvite_Success tests successful deletion of an invite code.
+func TestDeleteInvite_Success(t *testing.T) {
+	t.Log("Setting up test server and creating test data")
+	server, mux := setupTestServer(t)
+
+	// Create a tenant
+	t.Log("Creating test tenant")
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	t.Log("Creating test operator")
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "nelson@acme.com", "Nelson"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Generate and store invite code
+	t.Log("Creating invite code to be deleted")
+	inviteCode := store.GenerateInviteCode("ACME")
+	codeHash := store.HashInviteCode(inviteCode)
+	inviteID := uuid.New().String()[:8]
+	invite := &store.InviteCode{
+		ID:            inviteID,
+		CodeHash:      codeHash,
+		OperatorEmail: "nelson@acme.com",
+		TenantID:      tenantID,
+		Role:          "admin",
+		CreatedBy:     "system",
+		ExpiresAt:     time.Now().Add(24 * time.Hour),
+		Status:        "pending",
+	}
+	if err := server.store.CreateInviteCode(invite); err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Verify invite exists before deletion
+	t.Log("Verifying invite code exists before deletion")
+	_, err := server.store.GetInviteCodeByHash(codeHash)
+	if err != nil {
+		t.Fatalf("invite code should exist before deletion: %v", err)
+	}
+
+	// Delete the invite
+	t.Log("Sending DELETE request to /api/v1/invites/{code}")
+	req := httptest.NewRequest("DELETE", "/api/v1/invites/"+inviteCode, nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	t.Log("Verifying response status is 204 No Content")
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected status 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify invite is deleted
+	t.Log("Verifying invite code no longer exists in database")
+	_, err = server.store.GetInviteCodeByHash(codeHash)
+	if err == nil {
+		t.Error("expected invite to be deleted, but it still exists")
+	}
+}
+
+// TestDeleteInvite_NotFound tests deletion of a nonexistent invite code.
+func TestDeleteInvite_NotFound(t *testing.T) {
+	t.Log("Setting up test server")
+	_, mux := setupTestServer(t)
+
+	// Try to delete a nonexistent invite code
+	t.Log("Sending DELETE request for nonexistent invite code")
+	req := httptest.NewRequest("DELETE", "/api/v1/invites/FAKE-1234-5678", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	t.Log("Verifying response status is 404 Not Found")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d: %s", w.Code, w.Body.String())
+	}
+
+	t.Log("Verifying error message")
+	var result map[string]string
+	json.NewDecoder(w.Body).Decode(&result)
+	if result["error"] != "Invite code not found" {
+		t.Errorf("expected error 'Invite code not found', got '%s'", result["error"])
+	}
+}
