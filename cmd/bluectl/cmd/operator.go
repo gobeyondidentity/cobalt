@@ -605,24 +605,25 @@ var operatorRemoveCmd = &cobra.Command{
 	Use:     "remove <email>",
 	Aliases: []string{"delete"},
 	Short:   "Remove an operator",
-	Long: `Remove an operator. The operator must not have any keymakers or authorizations.
+	Long: `Remove an operator from the server. The operator must not have any keymakers or authorizations.
 
 Examples:
   bluectl operator remove marcus@acme.com`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		email := args[0]
-
-		op, err := dpuStore.GetOperatorByEmail(email)
-		if err != nil {
-			return fmt.Errorf("operator not found: %s", email)
+		serverURL := GetServer()
+		if serverURL == "" {
+			return fmt.Errorf("operator remove requires a server connection (--server or BLUECTL_SERVER)")
 		}
-
-		if err := dpuStore.DeleteOperator(op.ID); err != nil {
-			return err
-		}
-
-		fmt.Printf("Removed operator '%s'\n", email)
-		return nil
+		return removeOperatorRemote(cmd.Context(), serverURL, args[0])
 	},
+}
+
+func removeOperatorRemote(ctx context.Context, serverURL, email string) error {
+	client := NewNexusClient(serverURL)
+	if err := client.RemoveOperator(ctx, email); err != nil {
+		return fmt.Errorf("failed to remove operator: %w", err)
+	}
+	fmt.Printf("Removed operator '%s'\n", email)
+	return nil
 }

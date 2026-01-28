@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/spf13/cobra"
 )
 
@@ -21,40 +21,26 @@ var inviteRemoveCmd = &cobra.Command{
 	Use:     "remove <code>",
 	Aliases: []string{"delete", "revoke"},
 	Short:   "Remove/revoke an invite code",
-	Long: `Remove an invite code. If the invite is pending, it will be deleted.
+	Long: `Remove an invite code from the server. If the invite is pending, it will be deleted.
 If already used, it will be marked as revoked.
 
 Examples:
   bluectl invite remove ACME-ABCD-1234`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		code := args[0]
-
-		// Hash the code to find it
-		codeHash := store.HashInviteCode(code)
-		invite, err := dpuStore.GetInviteCodeByHash(codeHash)
-		if err != nil {
-			return fmt.Errorf("invite code not found: %s", code)
+		serverURL := GetServer()
+		if serverURL == "" {
+			return fmt.Errorf("invite remove requires a server connection (--server or BLUECTL_SERVER)")
 		}
-
-		// For pending invites, delete them. For used invites, just mark revoked.
-		if invite.Status == "pending" {
-			if err := dpuStore.DeleteInviteCode(invite.ID); err != nil {
-				return err
-			}
-			fmt.Printf("Removed pending invite for %s\n", invite.OperatorEmail)
-		} else {
-			// Already used or in other state - can't delete, just revoke if not already
-			if invite.Status != "revoked" {
-				if err := dpuStore.RevokeInviteCode(invite.ID); err != nil {
-					return err
-				}
-				fmt.Printf("Revoked invite for %s (was: %s)\n", invite.OperatorEmail, invite.Status)
-			} else {
-				fmt.Printf("Invite for %s already revoked\n", invite.OperatorEmail)
-			}
-		}
-
-		return nil
+		return removeInviteRemote(cmd.Context(), serverURL, args[0])
 	},
+}
+
+func removeInviteRemote(ctx context.Context, serverURL, code string) error {
+	client := NewNexusClient(serverURL)
+	if err := client.RemoveInviteCode(ctx, code); err != nil {
+		return fmt.Errorf("failed to remove invite: %w", err)
+	}
+	fmt.Printf("Removed invite code\n")
+	return nil
 }
