@@ -978,17 +978,16 @@ qa-remote-up:
 qa-remote-down:
 	$(WORKBENCH_SSH) "cd $(WORKBENCH_DIR) && make qa-down"
 
-# Run integration tests on workbench
-qa-remote-test:
-	@echo "=== Fetching latest main on workbench ==="
-	$(WORKBENCH_SSH) "cd ~/secure-infra && git fetch origin && git checkout origin/main"
+# Run integration tests on workbench (rebuilds binaries first)
+qa-remote-test: qa-remote-build
 	@echo "=== Syncing integration test to workbench ==="
 	scp integration_test.go $(WORKBENCH_USER)@$(WORKBENCH_IP):$(WORKBENCH_DIR)/
 	@echo "=== Running Go integration tests on workbench ==="
 	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 15m -run 'Test(TMFIFOTransportIntegration|CredentialDeliveryE2E|NexusRestartPersistence|AegisRestartSentryReconnection|StateSyncConsistency|MultiTenantEnrollmentIsolation|DPURegistrationFlows|TenantLifecycle)'"
 
 # Run integration test with VM rebuild (full setup)
-qa-remote-test-full: qa-remote-vm-create qa-remote-build qa-remote-test
+# Note: qa-remote-build is already a dependency of qa-remote-test
+qa-remote-test-full: qa-remote-vm-create qa-remote-test
 
 # =============================================================================
 # Help

@@ -751,12 +751,15 @@ func (c *NexusClient) ListAgentHosts(ctx context.Context, tenant string) ([]agen
 		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var hosts []agentHostResponse
-	if err := json.NewDecoder(resp.Body).Decode(&hosts); err != nil {
+	// API returns wrapped response: {"hosts": [...]}
+	var wrapper struct {
+		Hosts []agentHostResponse `json:"hosts"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return hosts, nil
+	return wrapper.Hosts, nil
 }
 
 // GetAgentHost retrieves an agent host by ID from the Nexus server.

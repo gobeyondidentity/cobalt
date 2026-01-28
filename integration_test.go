@@ -2541,16 +2541,17 @@ func TestTenantLifecycle(t *testing.T) {
 	}
 	t.Logf("Assigned DPU '%s' to tenant '%s'", dpuName, tenantName)
 
-	// Verify assignment
+	// Verify assignment by checking DPU count increased
+	// Note: tenant show displays "DPU Count: N", not individual DPU names
 	tenantShow, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
 		"tenant", "show", tenantName, "--server", "http://localhost:18080")
 	if err != nil {
 		t.Fatalf("Failed to show tenant: %v", err)
 	}
-	if !strings.Contains(tenantShow, dpuName) {
-		t.Fatalf("DPU '%s' not visible in tenant show. Output:\n%s", dpuName, tenantShow)
+	if !strings.Contains(tenantShow, "DPU Count:") || strings.Contains(tenantShow, "DPU Count:\t0") {
+		t.Fatalf("Expected DPU Count > 0 after assignment. Output:\n%s", tenantShow)
 	}
-	logOK(t, fmt.Sprintf("DPU '%s' assigned to tenant '%s'", dpuName, tenantName))
+	logOK(t, fmt.Sprintf("DPU '%s' assigned to tenant '%s' (DPU Count > 0)", dpuName, tenantName))
 
 	logStep(t, 7, "Attempting to delete tenant with assigned DPU (should fail)...")
 	t.Log("Testing: Tenant deletion should be blocked when DPUs are assigned")
@@ -2731,28 +2732,39 @@ func TestTenantLifecycle(t *testing.T) {
 
 	// Create an operator invite for this tenant
 	operatorEmail := fmt.Sprintf("orphan-test-%s@test.local", testID)
+	var inviteCode string
 	inviteOutput, inviteErr := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
 		"operator", "invite", operatorEmail, orphanTenantName, "--server", "http://localhost:18080")
 	if inviteErr != nil {
 		t.Logf("Note: Could not create invite (may be expected): %v", inviteErr)
 	} else {
 		t.Logf("Created operator invite for: %s", operatorEmail)
-		_ = inviteOutput // Invite code extracted but not used
+		// Extract invite code from output (format: "Code: XXXX-XXXX-XXXX")
+		for _, line := range strings.Split(inviteOutput, "\n") {
+			if strings.HasPrefix(line, "Code:") {
+				inviteCode = strings.TrimSpace(strings.TrimPrefix(line, "Code:"))
+				break
+			}
+		}
 	}
 
-	// Delete the tenant (should also clean up related invites/operators)
+	// Delete the tenant - API blocks deletion if dependencies exist, so remove them first
 	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
 		"tenant", "remove", orphanTenantName, "--server", "http://localhost:18080")
 	if err != nil {
-		// If deletion fails due to operator dependency, remove operator first
-		if strings.Contains(err.Error(), "depend") || strings.Contains(err.Error(), "Operator") {
-			t.Logf("Tenant has operator dependency, removing operator first")
+		// If deletion fails due to dependencies, remove operator and invite first
+		if strings.Contains(err.Error(), "depend") {
+			t.Logf("Tenant has dependencies, removing operator and invite first")
 			_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
 				"operator", "remove", operatorEmail, "--server", "http://localhost:18080")
+			if inviteCode != "" {
+				_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+					"invite", "remove", inviteCode, "--server", "http://localhost:18080")
+			}
 			_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
 				"tenant", "remove", orphanTenantName, "--server", "http://localhost:18080")
 			if err != nil {
-				t.Fatalf("Failed to delete orphan test tenant after operator removal: %v", err)
+				t.Fatalf("Failed to delete orphan test tenant after removing dependencies: %v", err)
 			}
 		} else {
 			t.Fatalf("Failed to delete orphan test tenant: %v", err)

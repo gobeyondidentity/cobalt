@@ -1061,3 +1061,147 @@ func TestNexusClient_InviteOperator(t *testing.T) {
 		})
 	}
 }
+
+// ----- Agent Host Client Tests -----
+
+func TestNexusClient_ListAgentHosts(t *testing.T) {
+	tests := []struct {
+		name       string
+		tenant     string
+		serverResp []agentHostResponse
+		serverCode int
+		wantErr    bool
+		wantCount  int
+	}{
+		{
+			name:   "successful list with hosts",
+			tenant: "",
+			serverResp: []agentHostResponse{
+				{ID: "host_abc123", DPUName: "bf3-lab", Hostname: "worker-1", LastSeenAt: "2024-01-01T00:00:00Z"},
+				{ID: "host_def456", DPUName: "bf3-dev", Hostname: "worker-2", LastSeenAt: "2024-01-01T01:00:00Z"},
+			},
+			serverCode: http.StatusOK,
+			wantErr:    false,
+			wantCount:  2,
+		},
+		{
+			name:       "empty list",
+			tenant:     "",
+			serverResp: []agentHostResponse{},
+			serverCode: http.StatusOK,
+			wantErr:    false,
+			wantCount:  0,
+		},
+		{
+			name:   "list filtered by tenant",
+			tenant: "acme",
+			serverResp: []agentHostResponse{
+				{ID: "host_abc123", DPUName: "bf3-lab", Hostname: "worker-1", LastSeenAt: "2024-01-01T00:00:00Z"},
+			},
+			serverCode: http.StatusOK,
+			wantErr:    false,
+			wantCount:  1,
+		},
+		{
+			name:       "server error",
+			tenant:     "",
+			serverCode: http.StatusInternalServerError,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Log("Creating test server that returns wrapped hosts response")
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					t.Errorf("expected GET, got %s", r.Method)
+				}
+				expectedPath := "/api/v1/hosts"
+				if r.URL.Path != expectedPath {
+					t.Errorf("expected %s, got %s", expectedPath, r.URL.Path)
+				}
+
+				// Verify tenant query parameter if expected
+				if tt.tenant != "" {
+					gotTenant := r.URL.Query().Get("tenant")
+					if gotTenant != tt.tenant {
+						t.Errorf("expected tenant query param %s, got %s", tt.tenant, gotTenant)
+					}
+				}
+
+				w.WriteHeader(tt.serverCode)
+				if tt.serverCode == http.StatusOK {
+					// Server returns wrapped response: {"hosts": [...]}
+					t.Log("Returning wrapped response format: {\"hosts\": [...]}")
+					wrapper := struct {
+						Hosts []agentHostResponse `json:"hosts"`
+					}{Hosts: tt.serverResp}
+					json.NewEncoder(w).Encode(wrapper)
+				}
+			}))
+			defer server.Close()
+
+			t.Log("Calling ListAgentHosts via NexusClient")
+			client := NewNexusClient(server.URL)
+			resp, err := client.ListAgentHosts(context.Background(), tt.tenant)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ListAgentHosts() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				t.Logf("Verifying response contains %d hosts", tt.wantCount)
+				if len(resp) != tt.wantCount {
+					t.Errorf("expected %d hosts, got %d", tt.wantCount, len(resp))
+				}
+
+				// Verify host data is correctly parsed
+				for i, host := range resp {
+					if host.ID != tt.serverResp[i].ID {
+						t.Errorf("host[%d]: expected ID %s, got %s", i, tt.serverResp[i].ID, host.ID)
+					}
+					if host.DPUName != tt.serverResp[i].DPUName {
+						t.Errorf("host[%d]: expected DPUName %s, got %s", i, tt.serverResp[i].DPUName, host.DPUName)
+					}
+					if host.Hostname != tt.serverResp[i].Hostname {
+						t.Errorf("host[%d]: expected Hostname %s, got %s", i, tt.serverResp[i].Hostname, host.Hostname)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestNexusClient_ListAgentHosts_RejectsUnwrappedResponse(t *testing.T) {
+	// This test ensures the client properly handles the wrapped format and rejects
+	// a server returning a raw array instead of {"hosts": [...]}
+	t.Log("Testing that client expects wrapped response format")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// Simulate a buggy server returning raw array instead of wrapped
+		t.Log("Server returning raw array (incorrect format)")
+		rawArray := []agentHostResponse{
+			{ID: "host_abc123", DPUName: "bf3-lab", Hostname: "worker-1"},
+		}
+		json.NewEncoder(w).Encode(rawArray)
+	}))
+	defer server.Close()
+
+	client := NewNexusClient(server.URL)
+	_, err := client.ListAgentHosts(context.Background(), "")
+
+	// With wrapped response handling, a raw array causes a JSON decode error
+	// because it cannot unmarshal an array into the wrapper struct
+	t.Log("Verifying that raw array response causes decode error")
+	if err == nil {
+		t.Error("expected error when server returns raw array, got nil")
+		return
+	}
+
+	if !strings.Contains(err.Error(), "failed to decode response") {
+		t.Errorf("expected decode error, got: %v", err)
+	}
+}
