@@ -60,8 +60,20 @@ func (s *Server) handleBindKeyMaker(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 3: Validate invite status and expiration
-	if invite.Status != "pending" {
+	switch invite.Status {
+	case "pending":
+		// fall through to expiration check
+	case "used":
 		writeError(w, r, http.StatusBadRequest, "invite code has already been used")
+		return
+	case "revoked":
+		writeError(w, r, http.StatusBadRequest, "invite code has been revoked")
+		return
+	case "expired":
+		writeError(w, r, http.StatusBadRequest, "invite code has expired")
+		return
+	default:
+		writeError(w, r, http.StatusBadRequest, "invalid invite code")
 		return
 	}
 

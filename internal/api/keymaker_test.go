@@ -266,6 +266,129 @@ func TestBindKeyMaker_AlreadyUsed(t *testing.T) {
 	}
 }
 
+// TestBindKeyMaker_RevokedCode tests binding with a revoked invite code.
+func TestBindKeyMaker_RevokedCode(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant first
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "nelson@acme.com", "Nelson"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Generate and store revoked invite code
+	inviteCode := store.GenerateInviteCode("ACME")
+	codeHash := store.HashInviteCode(inviteCode)
+	inviteID := uuid.New().String()[:8]
+	invite := &store.InviteCode{
+		ID:            inviteID,
+		CodeHash:      codeHash,
+		OperatorEmail: "nelson@acme.com",
+		TenantID:      tenantID,
+		Role:          "admin",
+		CreatedBy:     "system",
+		ExpiresAt:     time.Now().Add(24 * time.Hour),
+		Status:        "revoked", // Revoked by admin
+	}
+	if err := server.store.CreateInviteCode(invite); err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Try to bind KeyMaker with revoked code
+	body := BindRequest{
+		InviteCode:        inviteCode,
+		PublicKey:         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey",
+		Platform:          "darwin",
+		SecureElement:     "secure_enclave",
+		DeviceFingerprint: "abc123def456",
+		DeviceName:        "workstation-home",
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/api/v1/keymakers/bind", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result map[string]string
+	json.NewDecoder(w.Body).Decode(&result)
+	if result["error"] != "invite code has been revoked" {
+		t.Errorf("expected error 'invite code has been revoked', got '%s'", result["error"])
+	}
+}
+
+// TestBindKeyMaker_ExpiredStatusCode tests binding with an invite code marked as expired (by cleanup).
+func TestBindKeyMaker_ExpiredStatusCode(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant first
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "nelson@acme.com", "Nelson"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Generate invite code with status "expired" (set by CleanupExpiredInvites)
+	// Note: ExpiresAt is in the future, but status is already "expired"
+	inviteCode := store.GenerateInviteCode("ACME")
+	codeHash := store.HashInviteCode(inviteCode)
+	inviteID := uuid.New().String()[:8]
+	invite := &store.InviteCode{
+		ID:            inviteID,
+		CodeHash:      codeHash,
+		OperatorEmail: "nelson@acme.com",
+		TenantID:      tenantID,
+		Role:          "admin",
+		CreatedBy:     "system",
+		ExpiresAt:     time.Now().Add(24 * time.Hour), // Future expiry, but status is expired
+		Status:        "expired",                      // Marked expired by cleanup job
+	}
+	if err := server.store.CreateInviteCode(invite); err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Try to bind KeyMaker with expired status code
+	body := BindRequest{
+		InviteCode:        inviteCode,
+		PublicKey:         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey",
+		Platform:          "darwin",
+		SecureElement:     "secure_enclave",
+		DeviceFingerprint: "abc123def456",
+		DeviceName:        "workstation-home",
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/api/v1/keymakers/bind", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result map[string]string
+	json.NewDecoder(w.Body).Decode(&result)
+	if result["error"] != "invite code has expired" {
+		t.Errorf("expected error 'invite code has expired', got '%s'", result["error"])
+	}
+}
+
 // TestBindKeyMaker_CannotReuse tests that an invite code cannot be reused after successful binding.
 func TestBindKeyMaker_CannotReuse(t *testing.T) {
 	server, mux := setupTestServer(t)
