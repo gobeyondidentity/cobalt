@@ -94,6 +94,16 @@ test:
 	@echo "Running tests..."
 	@go test ./...
 
+# Run integration tests (requires VMs running)
+# Use WORKBENCH_IP=192.168.1.235 to run on workbench instead of local
+test-integration:
+	@echo "Running integration tests..."
+	go test -tags=integration -v -timeout 5m ./... -run Integration
+
+# Run integration tests on workbench
+test-integration-remote:
+	WORKBENCH_IP=192.168.1.235 go test -tags=integration -v -timeout 5m ./... -run Integration
+
 # Remove bin directory contents
 clean:
 	@echo "Cleaning bin/..."
@@ -341,7 +351,7 @@ hw-step9:
 
 # QA VM Configuration
 QA_VM_SERVER := qa-server
-QA_VM_EMU := qa-emu
+QA_VM_DPU := qa-dpu
 QA_VM_HOST := qa-host
 QA_WORKSPACE := $(shell pwd)/qa-workspace
 QA_TMFIFO_PORT := 54321
@@ -389,22 +399,23 @@ qa-help:
 	@echo ""
 	@echo "Architecture:"
 	@echo "  qa-server  Control plane server (:18080)"
-	@echo "  qa-emu     DPU emulator (:50051 gRPC, :9443 local API)"
+	@echo "  qa-dpu     DPU agent (:18051 gRPC, :9443 local API)"
 	@echo "  qa-host    GPU host with sentry (connects via TMFIFO)"
 	@echo ""
 	@echo "TMFIFO emulation:"
-	@echo "  qa-emu:/dev/tmfifo_net0  <--TCP:$(QA_TMFIFO_PORT)-->  qa-host:/dev/tmfifo_net0"
+	@echo "  qa-dpu:/dev/tmfifo_net0  <--TCP:$(QA_TMFIFO_PORT)-->  qa-host:/dev/tmfifo_net0"
 
 # Create all three QA VMs in parallel
 qa-vm-create:
-	@echo "Creating 3 VMs in parallel..."
-	@( multipass launch 24.04 --name $(QA_VM_SERVER) --cpus 2 --memory 1G --disk 5G >/dev/null 2>&1 && echo "  qa-server: done" ) & \
-	( multipass launch 24.04 --name $(QA_VM_EMU) --cpus 1 --memory 512M --disk 5G >/dev/null 2>&1 && echo "  qa-emu: done" ) & \
-	( multipass launch 24.04 --name $(QA_VM_HOST) --cpus 1 --memory 512M --disk 5G >/dev/null 2>&1 && echo "  qa-host: done" ) & \
-	wait
-	@echo "Installing socat on qa-emu..."
-	@multipass exec $(QA_VM_EMU) -- sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-	@multipass exec $(QA_VM_EMU) -- sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq socat
+	@echo "Creating qa-server..."
+	multipass launch -v 24.04 --name $(QA_VM_SERVER) --cpus 2 --memory 1G --disk 5G
+	@echo "Creating qa-dpu..."
+	multipass launch -v 24.04 --name $(QA_VM_DPU) --cpus 1 --memory 512M --disk 5G
+	@echo "Creating qa-host..."
+	multipass launch -v 24.04 --name $(QA_VM_HOST) --cpus 1 --memory 512M --disk 5G
+	@echo "Installing socat on qa-dpu..."
+	@multipass exec $(QA_VM_DPU) -- sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+	@multipass exec $(QA_VM_DPU) -- sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq socat
 	@echo "Installing socat on qa-host..."
 	@multipass exec $(QA_VM_HOST) -- sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
 	@multipass exec $(QA_VM_HOST) -- sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq socat
@@ -413,22 +424,22 @@ qa-vm-create:
 # Delete all QA VMs
 qa-vm-delete:
 	@multipass delete $(QA_VM_SERVER) --purge 2>/dev/null || true
-	@multipass delete $(QA_VM_EMU) --purge 2>/dev/null || true
+	@multipass delete $(QA_VM_DPU) --purge 2>/dev/null || true
 	@multipass delete $(QA_VM_HOST) --purge 2>/dev/null || true
 	@rm -rf $(QA_WORKSPACE)
 
 # Start all QA VMs
 qa-vm-start:
-	@multipass start $(QA_VM_SERVER) $(QA_VM_EMU) $(QA_VM_HOST) >/dev/null 2>&1
+	@multipass start $(QA_VM_SERVER) $(QA_VM_DPU) $(QA_VM_HOST) >/dev/null 2>&1
 
 # Stop all QA VMs
 qa-vm-stop:
-	@multipass stop $(QA_VM_SERVER) $(QA_VM_EMU) $(QA_VM_HOST) >/dev/null 2>&1
+	@multipass stop $(QA_VM_SERVER) $(QA_VM_DPU) $(QA_VM_HOST) >/dev/null 2>&1
 
 # Recover stuck QA VMs
 qa-vm-recover:
 	@echo "Checking for stuck VMs..."
-	@for vm in $(QA_VM_SERVER) $(QA_VM_EMU) $(QA_VM_HOST); do \
+	@for vm in $(QA_VM_SERVER) $(QA_VM_DPU) $(QA_VM_HOST); do \
 		STATE=$$(multipass info $$vm 2>/dev/null | grep State | awk '{print $$2}'); \
 		if [ "$$STATE" = "Unknown" ] || [ "$$STATE" = "Suspended" ]; then \
 			echo "  $$vm is stuck ($$STATE), recreating..."; \
@@ -454,9 +465,9 @@ qa-vm-status:
 	@multipass exec $(QA_VM_SERVER) -- pgrep -a nexus 2>/dev/null || echo "  server: not running"
 	@echo ""
 	@echo "=== Emulator VM (DPU) ==="
-	@multipass info $(QA_VM_EMU) 2>/dev/null | grep -E "^(Name|State|IPv4)" || echo "Not running"
-	@multipass exec $(QA_VM_EMU) -- pgrep -a dpuemu 2>/dev/null || echo "  dpuemu: not running"
-	@multipass exec $(QA_VM_EMU) -- pgrep -a "socat.*tmfifo_net0" 2>/dev/null || echo "  tmfifo: not running"
+	@multipass info $(QA_VM_DPU) 2>/dev/null | grep -E "^(Name|State|IPv4)" || echo "Not running"
+	@multipass exec $(QA_VM_DPU) -- pgrep -a aegis || echo "  aegis: not running"
+	@multipass exec $(QA_VM_DPU) -- pgrep -a "socat.*tmfifo_net0" 2>/dev/null || echo "  tmfifo: not running"
 	@echo ""
 	@echo "=== Host VM ==="
 	@multipass info $(QA_VM_HOST) 2>/dev/null | grep -E "^(Name|State|IPv4)" || echo "Not running"
@@ -475,31 +486,42 @@ qa-build:
 	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(QA_WORKSPACE)/aegis ./cmd/aegis
 	@$(MAKE) qa-push-binaries
 
-# Push pre-built binaries to QA VMs
+# Push pre-built binaries to QA VMs (stops services first to unlock binaries)
 qa-push-binaries:
+	@echo "=== Stopping services before push ==="
+	@multipass exec $(QA_VM_SERVER) -- pkill -9 nexus || true
+	@multipass exec $(QA_VM_DPU) -- pkill -9 dpuemu || true
+	@multipass exec $(QA_VM_DPU) -- pkill -9 aegis || true
+	@multipass exec $(QA_VM_HOST) -- pkill -9 sentry || true
+	@sleep 1
 	@echo "=== Pushing binaries to VMs ==="
 	@multipass transfer $(QA_WORKSPACE)/nexus $(QA_VM_SERVER):/home/ubuntu/
 	@multipass exec $(QA_VM_SERVER) -- chmod +x /home/ubuntu/nexus
-	@multipass transfer $(QA_WORKSPACE)/dpuemu $(QA_VM_EMU):/home/ubuntu/
-	@multipass transfer $(QA_WORKSPACE)/aegis $(QA_VM_EMU):/home/ubuntu/
-	@multipass exec $(QA_VM_EMU) -- chmod +x /home/ubuntu/dpuemu /home/ubuntu/aegis
+	@multipass transfer $(QA_WORKSPACE)/dpuemu $(QA_VM_DPU):/home/ubuntu/
+	@multipass transfer $(QA_WORKSPACE)/aegis $(QA_VM_DPU):/home/ubuntu/
+	@multipass exec $(QA_VM_DPU) -- chmod +x /home/ubuntu/dpuemu /home/ubuntu/aegis
 	@multipass transfer $(QA_WORKSPACE)/sentry $(QA_VM_HOST):/home/ubuntu/
 	@multipass exec $(QA_VM_HOST) -- chmod +x /home/ubuntu/sentry
 	@echo "=== Done ==="
 
-# Start TMFIFO emulation using socat
+# Start TMFIFO emulation using socat (kills existing first, then starts fresh)
 qa-tmfifo-up:
-	@EMU_IP=$$(multipass info $(QA_VM_EMU) | grep IPv4 | awk '{print $$2}'); \
-	echo "=== Starting TMFIFO on $$EMU_IP:$(QA_TMFIFO_PORT) ==="; \
-	multipass exec $(QA_VM_EMU) -- sudo socat -d PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:$(QA_TMFIFO_PORT),reuseaddr,fork >/dev/null 2>&1 & \
+	@echo "=== Starting TMFIFO channel ==="
+	@multipass exec $(QA_VM_DPU) -- sudo pkill -9 socat || true
+	@multipass exec $(QA_VM_HOST) -- sudo pkill -9 socat || true
+	@sleep 1
+	@DPU_IP=$$(multipass info $(QA_VM_DPU) | grep IPv4 | awk '{print $$2}'); \
+	echo "DPU IP: $$DPU_IP"; \
+	multipass exec $(QA_VM_DPU) -- sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:$(QA_TMFIFO_PORT),reuseaddr,fork &\
 	sleep 2; \
-	multipass exec $(QA_VM_HOST) -- sudo socat -d PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:$$EMU_IP:$(QA_TMFIFO_PORT) >/dev/null 2>&1 & \
-	sleep 2; \
-	echo "TMFIFO ready"
+	multipass exec $(QA_VM_HOST) -- sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:$$DPU_IP:$(QA_TMFIFO_PORT) &\
+	sleep 2
+	@multipass exec $(QA_VM_HOST) -- ls /dev/tmfifo_net0
+	@echo "TMFIFO ready"
 
 # Stop TMFIFO emulation
 qa-tmfifo-down:
-	@multipass exec $(QA_VM_EMU) -- sudo pkill -9 socat >/dev/null 2>&1 || true
+	@multipass exec $(QA_VM_DPU) -- sudo pkill -9 socat >/dev/null 2>&1 || true
 	@multipass exec $(QA_VM_HOST) -- sudo pkill -9 socat >/dev/null 2>&1 || true
 
 # Test TMFIFO communication
@@ -508,31 +530,38 @@ qa-test-tmfifo:
 	@echo "Test 1: Host -> DPU"
 	@multipass exec $(QA_VM_HOST) -- bash -c 'echo "PING_FROM_HOST" > /dev/tmfifo_net0' & \
 	sleep 1; \
-	multipass exec $(QA_VM_EMU) -- bash -c 'timeout 3 head -n1 /dev/tmfifo_net0 || echo "FAIL: timeout"'
+	multipass exec $(QA_VM_DPU) -- bash -c 'timeout 3 head -n1 /dev/tmfifo_net0 || echo "FAIL: timeout"'
 	@echo ""
 	@echo "Test 2: DPU -> Host"
-	@multipass exec $(QA_VM_EMU) -- bash -c 'echo "PONG_FROM_DPU" > /dev/tmfifo_net0' & \
+	@multipass exec $(QA_VM_DPU) -- bash -c 'echo "PONG_FROM_DPU" > /dev/tmfifo_net0' & \
 	sleep 1; \
 	multipass exec $(QA_VM_HOST) -- bash -c 'timeout 3 head -n1 /dev/tmfifo_net0 || echo "FAIL: timeout"'
 	@echo ""
 	@echo "=== TMFIFO test complete ==="
 
-# Start QA services
+# Start QA services (uses aegis for TMFIFO transport testing)
 qa-up: qa-tmfifo-up
 	@echo "=== Starting server ==="
-	@multipass exec $(QA_VM_SERVER) -- pgrep -x server || multipass exec $(QA_VM_SERVER) -- bash -c "nohup /home/ubuntu/nexus > /home/ubuntu/nexus.log 2>&1 &"
+	@multipass exec $(QA_VM_SERVER) -- pgrep -x nexus || \
+		multipass exec $(QA_VM_SERVER) -- bash -c "nohup /home/ubuntu/nexus > /tmp/nexus.log 2>&1 &"
 	@sleep 2
-	@echo "=== Starting emulator ==="
-	@multipass exec $(QA_VM_EMU) -- pgrep -x dpuemu || multipass exec $(QA_VM_EMU) -- bash -c "nohup /home/ubuntu/dpuemu serve --listen :50051 > /home/ubuntu/dpuemu.log 2>&1 &"
+	@echo "=== Starting aegis (DPU agent) ==="
+	@SERVER_IP=$$(multipass info $(QA_VM_SERVER) | grep IPv4 | awk '{print $$2}'); \
+	multipass exec $(QA_VM_DPU) -- pgrep -x aegis || \
+		multipass exec $(QA_VM_DPU) -- bash -c "nohup sudo /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://$$SERVER_IP:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 &"
 	@sleep 2
+	@echo "=== Registering DPU with control plane ==="
+	@DPU_IP=$$(multipass info $(QA_VM_DPU) | grep IPv4 | awk '{print $$2}'); \
+	$(BIN_DIR)/bluectl dpu add $$DPU_IP --name qa-dpu --insecure || echo "DPU already registered or registration failed"
 	@$(MAKE) qa-health
 
 # Stop QA services
 qa-down: qa-tmfifo-down
 	@echo "=== Stopping services ==="
-	@multipass exec $(QA_VM_SERVER) -- pkill -f server 2>/dev/null || true
-	@multipass exec $(QA_VM_EMU) -- pkill -f dpuemu 2>/dev/null || true
-	@multipass exec $(QA_VM_HOST) -- pkill -f sentry 2>/dev/null || true
+	@multipass exec $(QA_VM_SERVER) -- sudo pkill -9 nexus || true
+	@multipass exec $(QA_VM_DPU) -- sudo pkill -9 aegis || true
+	@multipass exec $(QA_VM_DPU) -- sudo pkill -9 dpuemu || true
+	@multipass exec $(QA_VM_HOST) -- sudo pkill -9 sentry || true
 	@echo "Services stopped"
 
 # Full rebuild: down, clean, build, up
@@ -545,10 +574,10 @@ qa-health:
 	echo "  IP: $$SERVER_IP"; \
 	curl -s http://$$SERVER_IP:18080/health | python3 -m json.tool || echo "  Status: not responding"
 	@echo ""
-	@echo "=== Emulator (DPU) ==="
-	@EMU_IP=$$(multipass info $(QA_VM_EMU) | grep IPv4 | awk '{print $$2}'); \
-	echo "  IP: $$EMU_IP"; \
-	echo "  gRPC: :50051"; \
+	@echo "=== DPU (aegis) ==="
+	@DPU_IP=$$(multipass info $(QA_VM_DPU) | grep IPv4 | awk '{print $$2}'); \
+	echo "  IP: $$DPU_IP"; \
+	echo "  gRPC: :18051"; \
 	echo "  Local API: :9443"
 
 # Show QA environment status
@@ -565,14 +594,14 @@ qa-logs:
 	@multipass exec $(QA_VM_SERVER) -- tail -30 /home/ubuntu/nexus.log 2>/dev/null || echo "No server log"
 	@echo ""
 	@echo "=== Emulator log ==="
-	@multipass exec $(QA_VM_EMU) -- tail -30 /home/ubuntu/dpuemu.log 2>/dev/null || echo "No emulator log"
+	@multipass exec $(QA_VM_DPU) -- tail -30 /home/ubuntu/dpuemu.log 2>/dev/null || echo "No emulator log"
 	@echo ""
 	@echo "=== Host Agent log ==="
 	@multipass exec $(QA_VM_HOST) -- tail -30 /home/ubuntu/sentry.log 2>/dev/null || echo "No host-agent log"
 	@echo ""
 	@echo "=== TMFIFO socat logs ==="
-	@echo "-- EMU --"
-	@multipass exec $(QA_VM_EMU) -- tail -10 /home/ubuntu/tmfifo-socat.log 2>/dev/null || echo "No socat log"
+	@echo "-- DPU --"
+	@multipass exec $(QA_VM_DPU) -- tail -10 /home/ubuntu/tmfifo-socat.log 2>/dev/null || echo "No socat log"
 	@echo "-- HOST --"
 	@multipass exec $(QA_VM_HOST) -- tail -10 /home/ubuntu/tmfifo-socat.log 2>/dev/null || echo "No socat log"
 
@@ -581,7 +610,7 @@ qa-clean:
 	@$(MAKE) qa-down 2>/dev/null || true
 	@rm -rf $(QA_WORKSPACE)
 	@multipass exec $(QA_VM_SERVER) -- rm -f /home/ubuntu/nexus /home/ubuntu/*.log 2>/dev/null || true
-	@multipass exec $(QA_VM_EMU) -- rm -f /home/ubuntu/dpuemu /home/ubuntu/aegis /home/ubuntu/*.log 2>/dev/null || true
+	@multipass exec $(QA_VM_DPU) -- rm -f /home/ubuntu/dpuemu /home/ubuntu/aegis /home/ubuntu/*.log 2>/dev/null || true
 	@multipass exec $(QA_VM_HOST) -- rm -f /home/ubuntu/sentry /home/ubuntu/*.log 2>/dev/null || true
 	@echo "Cleaned"
 
@@ -600,15 +629,12 @@ qa-test-transport-mock:
 	@go test -v ./pkg/transport/... -run "Mock"
 
 # Test TmfifoNetTransport via emulator (requires VMs + TMFIFO)
-# Prerequisites: make qa-up
-qa-test-transport-tmfifo:
+qa-test-transport-tmfifo: qa-tmfifo-up
 	@echo "=== TmfifoNetTransport Test ==="
-	@echo "Checking prerequisites..."
-	@multipass exec $(QA_VM_HOST) -- ls /dev/tmfifo_net0 >/dev/null 2>&1 || (echo "ERROR: TMFIFO not available. Run 'make qa-up' first." && exit 1)
 	@echo "Running sentry with --force-tmfifo --oneshot..."
 	@HOST_IP=$$(multipass info $(QA_VM_HOST) | grep IPv4 | awk '{print $$2}'); \
-	EMU_IP=$$(multipass info $(QA_VM_EMU) | grep IPv4 | awk '{print $$2}'); \
-	multipass exec $(QA_VM_HOST) -- /home/ubuntu/sentry --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-transport-test.log; \
+	DPU_IP=$$(multipass info $(QA_VM_DPU) | grep IPv4 | awk '{print $$2}'); \
+	multipass exec $(QA_VM_HOST) -- sudo /home/ubuntu/sentry --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-transport-test.log; \
 	if grep -q "Transport: tmfifo_net" /tmp/qa-transport-test.log; then \
 		echo ""; \
 		echo "✓ PASS: TmfifoNetTransport used"; \
@@ -627,8 +653,7 @@ qa-test-transport-tmfifo:
 	@echo "=== TmfifoNetTransport test complete ==="
 
 # Full integration test: sentry enrollment through Transport layer
-# Prerequisites: make qa-rebuild (to push latest binaries)
-qa-test-transport-integration:
+qa-test-transport-integration: qa-tmfifo-up
 	@echo "=== Transport Integration Test ==="
 	@echo "This test verifies the full stack:"
 	@echo "  1. DPU agent listening via TmfifoNetListener"
@@ -636,16 +661,16 @@ qa-test-transport-integration:
 	@echo "  3. Enrollment message round-trip"
 	@echo "  4. Posture report via transport"
 	@echo ""
-	@echo "Step 1: Verify services are running..."
+	@echo "Step 1: Verify binaries deployed..."
+	@multipass exec $(QA_VM_HOST) -- test -x /home/ubuntu/sentry || \
+		(echo "ERROR: sentry not found on qa-host. Run 'make qa-build' first." && exit 1)
+	@echo "✓ sentry binary present"
+	@echo ""
+	@echo "Step 2: Verify services are running..."
 	@$(MAKE) qa-health
 	@echo ""
-	@echo "Step 2: Verify TMFIFO is connected..."
-	@multipass exec $(QA_VM_HOST) -- ls /dev/tmfifo_net0 >/dev/null 2>&1 || (echo "ERROR: TMFIFO not available" && exit 1)
-	@multipass exec $(QA_VM_EMU) -- ls /dev/tmfifo_net0 >/dev/null 2>&1 || (echo "ERROR: TMFIFO not available on EMU" && exit 1)
-	@echo "✓ TMFIFO connected"
-	@echo ""
 	@echo "Step 3: Run sentry enrollment..."
-	@multipass exec $(QA_VM_HOST) -- /home/ubuntu/sentry --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-integration-test.log
+	@multipass exec $(QA_VM_HOST) -- sudo /home/ubuntu/sentry --force-tmfifo --oneshot 2>&1 | tee /tmp/qa-integration-test.log
 	@echo ""
 	@echo "Step 4: Verify results..."
 	@PASS=true; \
@@ -750,6 +775,101 @@ qa-test-transport-doca:
 	else \
 		echo "=== DOCA transport test status: check output above ==="; \
 	fi
+
+# =============================================================================
+# Remote QA Testing (Workbench)
+# Runs VMs on workbench (192.168.1.235) instead of local machine
+# =============================================================================
+
+.PHONY: qa-remote-vm-create qa-remote-vm-delete qa-remote-vm-status qa-remote-build qa-remote-up qa-remote-down qa-remote-clean
+
+# Workbench configuration
+WORKBENCH_IP := 192.168.1.235
+WORKBENCH_USER := nmelo
+WORKBENCH_SSH := ssh $(WORKBENCH_USER)@$(WORKBENCH_IP)
+WORKBENCH_DIR := ~/secure-infra/eng
+
+# Create VMs on workbench
+qa-remote-vm-create:
+	@echo "Checking for existing VMs on workbench..."
+	@if $(WORKBENCH_SSH) "multipass list --format csv" | grep -qE '^(qa-server|qa-dpu|qa-host),'; then \
+		echo ""; \
+		echo "ERROR: QA VMs already exist. Run 'make qa-remote-clean' first."; \
+		echo ""; \
+		exit 1; \
+	fi
+	@echo "Creating VMs on workbench ($(WORKBENCH_IP))..."
+	@echo "Creating qa-server..."
+	$(WORKBENCH_SSH) "multipass launch -v 24.04 --name $(QA_VM_SERVER) --cpus 2 --memory 1G --disk 5G"
+	@echo "Creating qa-dpu..."
+	$(WORKBENCH_SSH) "multipass launch -v 24.04 --name $(QA_VM_DPU) --cpus 1 --memory 512M --disk 5G"
+	@echo "Creating qa-host..."
+	$(WORKBENCH_SSH) "multipass launch -v 24.04 --name $(QA_VM_HOST) --cpus 1 --memory 512M --disk 5G"
+	@echo "Installing socat..."
+	$(WORKBENCH_SSH) "multipass exec $(QA_VM_DPU) -- sudo apt-get update -qq && multipass exec $(QA_VM_DPU) -- sudo apt-get install -y -qq socat"
+	$(WORKBENCH_SSH) "multipass exec $(QA_VM_HOST) -- sudo apt-get update -qq && multipass exec $(QA_VM_HOST) -- sudo apt-get install -y -qq socat"
+	$(WORKBENCH_SSH) "multipass list"
+
+# Delete VMs on workbench
+qa-remote-vm-delete:
+	@echo "Deleting VMs on workbench..."
+	$(WORKBENCH_SSH) "multipass delete --all --purge" || true
+
+# Full cleanup: kill processes in VMs, then delete VMs
+qa-remote-clean:
+	@echo "=== Cleaning up remote environment ==="
+	-$(WORKBENCH_SSH) "multipass exec qa-server -- sudo pkill -9 nexus" 2>/dev/null || true
+	-$(WORKBENCH_SSH) "multipass exec qa-dpu -- sudo pkill -9 aegis" 2>/dev/null || true
+	-$(WORKBENCH_SSH) "multipass exec qa-dpu -- sudo pkill -9 socat" 2>/dev/null || true
+	-$(WORKBENCH_SSH) "multipass exec qa-host -- sudo pkill -9 sentry" 2>/dev/null || true
+	-$(WORKBENCH_SSH) "multipass exec qa-host -- sudo pkill -9 socat" 2>/dev/null || true
+	@echo "Stopping and deleting VMs..."
+	$(WORKBENCH_SSH) "multipass stop --all" || true
+	$(WORKBENCH_SSH) "multipass delete --all --purge" || true
+	@echo "Remote environment cleaned"
+
+# Show VM status on workbench
+qa-remote-vm-status:
+	$(WORKBENCH_SSH) "multipass list"
+
+# Sync code and build on workbench (native Linux build, no cross-compile)
+qa-remote-build:
+	@echo "=== Syncing code to workbench ==="
+	rsync -az --delete --exclude='.git' --exclude='bin/' --exclude='qa-workspace/' \
+		-e ssh .. $(WORKBENCH_USER)@$(WORKBENCH_IP):~/secure-infra/
+	@echo "=== Building natively on workbench ==="
+	$(WORKBENCH_SSH) "export PATH=/snap/bin:\$$PATH && cd $(WORKBENCH_DIR) && make all"
+	@echo "=== Pushing binaries to VMs ==="
+	$(WORKBENCH_SSH) "multipass exec $(QA_VM_SERVER) -- pkill -9 nexus || true"
+	$(WORKBENCH_SSH) "multipass exec $(QA_VM_DPU) -- pkill -9 aegis || true"
+	$(WORKBENCH_SSH) "multipass exec $(QA_VM_HOST) -- pkill -9 sentry || true"
+	$(WORKBENCH_SSH) "multipass transfer $(WORKBENCH_DIR)/bin/nexus $(QA_VM_SERVER):/home/ubuntu/"
+	$(WORKBENCH_SSH) "multipass transfer $(WORKBENCH_DIR)/bin/bluectl $(QA_VM_SERVER):/home/ubuntu/"
+	$(WORKBENCH_SSH) "multipass transfer $(WORKBENCH_DIR)/bin/aegis $(QA_VM_DPU):/home/ubuntu/"
+	$(WORKBENCH_SSH) "multipass transfer $(WORKBENCH_DIR)/bin/sentry $(QA_VM_HOST):/home/ubuntu/"
+	$(WORKBENCH_SSH) "multipass exec $(QA_VM_SERVER) -- chmod +x /home/ubuntu/nexus /home/ubuntu/bluectl"
+	$(WORKBENCH_SSH) "multipass exec $(QA_VM_DPU) -- chmod +x /home/ubuntu/aegis"
+	$(WORKBENCH_SSH) "multipass exec $(QA_VM_HOST) -- chmod +x /home/ubuntu/sentry"
+	$(WORKBENCH_SSH) "multipass exec $(QA_VM_SERVER) -- /home/ubuntu/bluectl config set-server http://127.0.0.1:18080"
+	@echo "=== Done ==="
+
+# Start services on workbench VMs
+qa-remote-up:
+	$(WORKBENCH_SSH) "cd $(WORKBENCH_DIR) && make qa-up"
+
+# Stop services on workbench VMs
+qa-remote-down:
+	$(WORKBENCH_SSH) "cd $(WORKBENCH_DIR) && make qa-down"
+
+# Run integration test on workbench
+qa-remote-test:
+	@echo "=== Syncing integration test to workbench ==="
+	scp integration_test.go $(WORKBENCH_USER)@$(WORKBENCH_IP):$(WORKBENCH_DIR)/
+	@echo "=== Running Go integration test on workbench ==="
+	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 5m -run TestTMFIFOTransportIntegration"
+
+# Run integration test with VM rebuild (full setup)
+qa-remote-test-full: qa-remote-vm-create qa-remote-build qa-remote-test
 
 # =============================================================================
 # Help
