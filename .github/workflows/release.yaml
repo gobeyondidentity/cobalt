@@ -113,7 +113,7 @@ jobs:
           export CGO_ENABLED=1
           go build -tags doca \
             -ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
-            -o aegis ./cmd/agent
+            -o aegis ./cmd/aegis
 
       - name: Generate checksum
         run: sha256sum aegis > aegis_linux_arm64.sha256
@@ -199,7 +199,7 @@ jobs:
           export CGO_LDFLAGS="-L/opt/mellanox/doca/lib/x86_64-linux-gnu"
           go build -tags doca \
             -ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
-            -o sentry ./cmd/host-agent
+            -o sentry ./cmd/sentry
 
       - name: Generate checksum
         run: sha256sum sentry > sentry-doca_linux_amd64.sha256
