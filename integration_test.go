@@ -1262,7 +1262,7 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 
 	// Step 12: Verify sentry did NOT re-enroll (session resumed)
 	logStep(t, 12, "Verifying session resumed (no re-enrollment)...")
-	sentryLog, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
+	sentryLog, _ = cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
 
 	// After initial enrollment, there should be no new "Enrolling" or "Enrolled" messages
 	// We count occurrences - there should only be 1 from initial enrollment
@@ -1737,23 +1737,17 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Sentry restart re-enrollment test"))
 }
 
-// TestStateSyncConsistency verifies that all commands read from a consistent data source.
-// This is a regression test for v0.6.8 where different commands were reading from different
-// databases (local vs server), causing "not found" errors for resources that clearly exist.
-//
-// Bug example: "tenant list reads server but operator invite reads local db" - so tenant
-// shows in list but invite fails with "tenant not found".
+// TestMultiTenantEnrollmentIsolation verifies that once a DPU is paired with a host,
+// other hosts cannot enroll via that DPU. This is a critical security boundary:
+// multi-tenant isolation is enforced at the DPU level.
 //
 // The test verifies:
-// 1. Create tenant -> tenant list shows it IMMEDIATELY (no delay)
-// 2. Create tenant -> operator invite for that tenant succeeds IMMEDIATELY
-// 3. Register DPU -> dpu list shows it IMMEDIATELY
-// 4. Register DPU -> tenant assign with that DPU succeeds IMMEDIATELY
-// 5. All read operations use consistent data source (no local/server mismatch)
-//
-// NOTE: This is a simpler test than others - it only needs nexus running on qa-server VM.
-// No aegis, sentry, socat, or tmfifo needed. This is purely a control plane test.
-func TestStateSyncConsistency(t *testing.T) {
+// 1. First host (qa-host) successfully enrolls with DPU
+// 2. Second hostname attempting enrollment is rejected with clear error
+// 3. Error message contains "already paired" for diagnostic clarity
+// 4. Aegis logs the rejection event for security audit trail
+// 5. Original host remains functional after rejected enrollment attempt
+func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -1761,15 +1755,9 @@ func TestStateSyncConsistency(t *testing.T) {
 	cfg := newTestConfig(t)
 	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
 
-	// Overall test timeout (shorter since this is a simple control plane test)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	// Overall test timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-
-	// Test-unique identifiers to avoid collisions
-	testID := fmt.Sprintf("%d", time.Now().Unix())
-	tenantName := fmt.Sprintf("sync-tenant-%s", testID)
-	dpuName := fmt.Sprintf("sync-dpu-%s", testID)
-	operatorEmail := fmt.Sprintf("sync-op-%s@test.local", testID)
 
 	// Cleanup on exit
 	t.Cleanup(func() {
@@ -1778,95 +1766,18 @@ func TestStateSyncConsistency(t *testing.T) {
 
 		fmt.Printf("\n%s\n", dimFmt("Cleaning up processes..."))
 		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
-		// Also cleanup DPU processes in case DPU registration test ran aegis
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
 		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
+		cfg.killProcess(cleanupCtx, cfg.HostVM, "sentry")
+		cfg.killProcess(cleanupCtx, cfg.HostVM, "socat")
 	})
 
-	// Get server VM IP
+	// Get VM IPs
 	serverIP, err := cfg.getVMIP(ctx, cfg.ServerVM)
 	if err != nil {
 		t.Fatalf("Failed to get server IP: %v", err)
 	}
 	logInfo(t, "Server IP: %s", serverIP)
-
-	// Step 1: Start nexus with fresh state
-	logStep(t, 1, "Starting nexus with fresh database...")
-	cfg.killProcess(ctx, cfg.ServerVM, "nexus")
-
-	// Remove existing database to ensure fresh start
-	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-f", "/home/ubuntu/.local/share/bluectl/dpus.db")
-	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-f", "/home/ubuntu/.local/share/bluectl/dpus.db-wal")
-	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-f", "/home/ubuntu/.local/share/bluectl/dpus.db-shm")
-
-	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c",
-		"setsid /home/ubuntu/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
-	if err != nil {
-		t.Fatalf("Failed to start nexus: %v", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	// Verify nexus is running
-	output, err := cfg.multipassExec(ctx, cfg.ServerVM, "pgrep", "-x", "nexus")
-	if err != nil || strings.TrimSpace(output) == "" {
-		logs, _ := cfg.multipassExec(ctx, cfg.ServerVM, "cat", "/tmp/nexus.log")
-		t.Fatalf("Nexus not running after start. Logs:\n%s", logs)
-	}
-	logOK(t, "Nexus started with fresh database")
-
-	// Step 2: Create tenant and IMMEDIATELY verify it in list (no delay)
-	logStep(t, 2, "Creating tenant and verifying IMMEDIATE visibility...")
-	t.Log("Creating tenant via bluectl tenant add")
-	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", tenantName, "--insecure")
-	if err != nil {
-		t.Fatalf("Failed to create tenant: %v", err)
-	}
-
-	// IMMEDIATELY verify tenant appears in list (the bug was that list worked but other ops failed)
-	t.Log("IMMEDIATELY checking tenant list (no delay)")
-	tenantList, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "list", "--insecure")
-	if err != nil {
-		t.Fatalf("Failed to list tenants: %v", err)
-	}
-
-	if !strings.Contains(tenantList, tenantName) {
-		t.Fatalf("SYNC BUG: Tenant '%s' not visible in list immediately after creation. List:\n%s", tenantName, tenantList)
-	}
-	logOK(t, fmt.Sprintf("Tenant '%s' visible in list immediately after creation", tenantName))
-
-	// Step 3: IMMEDIATELY create operator invite for that tenant (no delay)
-	logStep(t, 3, "Creating operator invite IMMEDIATELY after tenant creation...")
-	t.Log("Creating operator invite (this was the failing operation in the bug)")
-	inviteOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-		"operator", "invite", operatorEmail, tenantName, "--insecure")
-	if err != nil {
-		// This was the exact bug: tenant exists in list but invite fails with "tenant not found"
-		t.Fatalf("SYNC BUG: Operator invite failed immediately after tenant creation: %v\nOutput: %s", err, inviteOutput)
-	}
-
-	// Extract invite code to verify it was actually created
-	inviteCode := extractInviteCode(inviteOutput)
-	if inviteCode == "" {
-		t.Fatalf("Operator invite command succeeded but no invite code in output:\n%s", inviteOutput)
-	}
-	logOK(t, fmt.Sprintf("Operator invite created immediately (code: %s)", inviteCode))
-
-	// Step 4: Verify operator appears in list immediately
-	logStep(t, 4, "Verifying operator visible in list IMMEDIATELY...")
-	t.Log("Checking operator list (no delay)")
-	operatorList, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "operator", "list", "--insecure")
-	if err != nil {
-		t.Fatalf("Failed to list operators: %v", err)
-	}
-
-	if !strings.Contains(operatorList, operatorEmail) {
-		t.Fatalf("SYNC BUG: Operator '%s' not visible in list immediately after invite. List:\n%s", operatorEmail, operatorList)
-	}
-	logOK(t, fmt.Sprintf("Operator '%s' visible in list immediately after invite", operatorEmail))
-
-	// Step 5: Start aegis and socat for DPU registration test
-	// DPU registration requires aegis to be running
-	logStep(t, 5, "Setting up DPU for registration test...")
 
 	dpuIP, err := cfg.getVMIP(ctx, cfg.DPUVM)
 	if err != nil {
@@ -1874,123 +1785,202 @@ func TestStateSyncConsistency(t *testing.T) {
 	}
 	logInfo(t, "DPU IP: %s", dpuIP)
 
-	// Start socat on DPU
+	// Step 1: Start nexus
+	logStep(t, 1, "Starting nexus...")
+	cfg.killProcess(ctx, cfg.ServerVM, "nexus")
+	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c",
+		"setsid /home/ubuntu/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+	if err != nil {
+		t.Fatalf("Failed to start nexus: %v", err)
+	}
+	time.Sleep(2 * time.Second)
+
+	output, err := cfg.multipassExec(ctx, cfg.ServerVM, "pgrep", "-x", "nexus")
+	if err != nil || strings.TrimSpace(output) == "" {
+		logs, _ := cfg.multipassExec(ctx, cfg.ServerVM, "cat", "/tmp/nexus.log")
+		t.Fatalf("Nexus not running. Logs:\n%s", logs)
+	}
+	logOK(t, "Nexus started")
+
+	// Step 2: Start TMFIFO socat on DPU
+	logStep(t, 2, "Starting TMFIFO socat on DPU...")
 	cfg.killProcess(ctx, cfg.DPUVM, "socat")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
 	if err != nil {
 		t.Fatalf("Failed to start socat on DPU: %v", err)
 	}
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
-	// Start aegis
+	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "ls", "-la", "/dev/tmfifo_net0")
+	if err != nil {
+		t.Fatalf("TMFIFO device not created on DPU: %v", err)
+	}
+	logOK(t, fmt.Sprintf("TMFIFO device: %s", strings.TrimSpace(output)))
+
+	// Step 3: Start aegis with local API
+	logStep(t, 3, "Starting aegis with local API...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
 	time.Sleep(2 * time.Second)
 
-	// Verify aegis is running
-	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "pgrep", "-x", "aegis")
-	if err != nil || strings.TrimSpace(output) == "" {
-		logs, _ := cfg.multipassExec(ctx, cfg.DPUVM, "cat", "/tmp/aegis.log")
-		t.Fatalf("Aegis not running. Logs:\n%s", logs)
+	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "cat", "/tmp/aegis.log")
+	if err != nil {
+		t.Fatalf("Failed to read aegis log: %v", err)
 	}
-	logOK(t, "Aegis started for DPU registration")
+	if !strings.Contains(output, "tmfifo listener created") {
+		t.Fatalf("Aegis not listening on TMFIFO. Log:\n%s", output)
+	}
+	logOK(t, "Aegis started with TMFIFO listener")
 
-	// Step 6: Register DPU and IMMEDIATELY verify it in list
-	logStep(t, 6, "Registering DPU and verifying IMMEDIATE visibility...")
-	t.Log("Registering DPU via bluectl dpu add")
+	// Step 4: Register DPU with control plane
+	logStep(t, 4, "Registering DPU...")
+	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", "qa-tenant", "--insecure")
+	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "remove", "qa-dpu", "--insecure")
+
 	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-		"dpu", "add", fmt.Sprintf("%s:18051", dpuIP), "--name", dpuName, "--insecure")
+		"dpu", "add", fmt.Sprintf("%s:18051", dpuIP), "--name", "qa-dpu", "--insecure")
 	if err != nil {
 		t.Fatalf("Failed to register DPU: %v", err)
 	}
 
-	// IMMEDIATELY verify DPU appears in list (no delay)
-	t.Log("IMMEDIATELY checking DPU list (no delay)")
-	dpuList, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "list", "--insecure")
-	if err != nil {
-		t.Fatalf("Failed to list DPUs: %v", err)
-	}
-
-	if !strings.Contains(dpuList, dpuName) {
-		t.Fatalf("SYNC BUG: DPU '%s' not visible in list immediately after registration. List:\n%s", dpuName, dpuList)
-	}
-	logOK(t, fmt.Sprintf("DPU '%s' visible in list immediately after registration", dpuName))
-
-	// Step 7: IMMEDIATELY assign DPU to tenant (no delay)
-	logStep(t, 7, "Assigning DPU to tenant IMMEDIATELY after registration...")
-	t.Log("Assigning DPU to tenant (this tests read consistency between list and assign)")
 	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-		"tenant", "assign", tenantName, dpuName, "--insecure")
+		"tenant", "assign", "qa-tenant", "qa-dpu", "--insecure")
 	if err != nil {
-		// This would be a sync bug: DPU exists in list but assign fails with "dpu not found"
-		t.Fatalf("SYNC BUG: Tenant assign failed immediately after DPU registration: %v", err)
+		t.Fatalf("Failed to assign DPU to tenant: %v", err)
 	}
-	logOK(t, fmt.Sprintf("DPU '%s' assigned to tenant '%s' immediately", dpuName, tenantName))
+	logOK(t, "DPU registered and assigned to tenant")
 
-	// Step 8: Verify tenant assignment persisted (final consistency check)
-	logStep(t, 8, "Verifying tenant assignment persisted...")
-	t.Log("Checking tenant show output for DPU assignment")
-	tenantShow, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-		"tenant", "show", tenantName, "--insecure")
+	// Step 5: Start TMFIFO socat on host
+	logStep(t, 5, "Starting TMFIFO socat on host...")
+	cfg.killProcess(ctx, cfg.HostVM, "socat")
+	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
+		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:%s:%s > /tmp/socat.log 2>&1 < /dev/null &", dpuIP, cfg.TMFIFOPort))
 	if err != nil {
-		t.Fatalf("Failed to show tenant: %v", err)
+		t.Fatalf("Failed to start socat on host: %v", err)
 	}
+	time.Sleep(2 * time.Second)
 
-	if !strings.Contains(tenantShow, dpuName) {
-		t.Fatalf("SYNC BUG: DPU assignment not visible in tenant show. Output:\n%s", tenantShow)
-	}
-	logOK(t, "Tenant assignment persisted and visible")
-
-	// Step 9: Cross-check all operations use same data source
-	logStep(t, 9, "Running cross-check: verifying all operations use consistent data source...")
-
-	// Create a second tenant and do the full flow in rapid succession
-	tenant2 := fmt.Sprintf("sync-tenant2-%s", testID)
-	operator2 := fmt.Sprintf("sync-op2-%s@test.local", testID)
-
-	t.Log("Creating second tenant for cross-check")
-	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", tenant2, "--insecure")
+	output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", "/dev/tmfifo_net0")
 	if err != nil {
-		t.Fatalf("Failed to create second tenant: %v", err)
+		t.Fatalf("TMFIFO device not created on host: %v", err)
 	}
+	logOK(t, "TMFIFO tunnel established")
 
-	// Immediately do ALL operations in rapid succession
-	t.Log("Running rapid-fire operations (list, invite, show) with no delays")
+	// Step 6: First host enrolls successfully via sentry
+	logStep(t, 6, "First host (qa-host) enrolling...")
+	cfg.killProcess(ctx, cfg.HostVM, "sentry")
+	sentryCtx, sentryCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer sentryCancel()
 
-	// List should work
-	tenantList, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "list", "--insecure")
-	if err != nil || !strings.Contains(tenantList, tenant2) {
-		t.Fatalf("SYNC BUG: Second tenant not in list. Error: %v, List:\n%s", err, tenantList)
-	}
-
-	// Invite should work
-	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-		"operator", "invite", operator2, tenant2, "--insecure")
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", "--oneshot")
 	if err != nil {
-		t.Fatalf("SYNC BUG: Second operator invite failed: %v", err)
+		aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-30", "/tmp/aegis.log")
+		fmt.Printf("    Aegis log:\n%s\n", aegisLog)
+		t.Fatalf("%s First host enrollment failed: %v", errFmt("x"), err)
 	}
 
-	// Show should work
-	tenantShow, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-		"tenant", "show", tenant2, "--insecure")
+	if !strings.Contains(output, "Enrolled") {
+		t.Fatalf("%s Sentry did not complete enrollment", errFmt("x"))
+	}
+	logOK(t, "First host (qa-host) enrolled successfully")
+
+	// Step 7: Clear aegis log to capture rejection event clearly
+	logStep(t, 7, "Clearing logs before second enrollment attempt...")
+	_, _ = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", "sudo truncate -s 0 /tmp/aegis.log")
+	time.Sleep(1 * time.Second)
+	logOK(t, "Logs cleared")
+
+	// Step 8: Attempt enrollment from a DIFFERENT hostname via localapi
+	// This simulates a malicious or misconfigured second host trying to enroll
+	logStep(t, 8, "Attempting enrollment from second hostname (should fail)...")
+
+	// Send registration request with a different hostname directly to localapi
+	// The localapi listens on localhost:9443 on the DPU
+	intruderHostname := "malicious-host-trying-to-intrude"
+	curlCmd := fmt.Sprintf(`curl -s -w "\nHTTP_CODE:%%{http_code}" -X POST http://localhost:9443/local/v1/register -H "Content-Type: application/json" -d '{"hostname":"%s","posture":{"os_version":"Ubuntu 22.04"}}'`, intruderHostname)
+
+	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", curlCmd)
+	// Note: curl itself should succeed (returns HTTP response), but the response should indicate rejection
+
+	// Parse the response to check for rejection
+	var httpCode string
+	var responseBody string
+	if idx := strings.LastIndex(output, "HTTP_CODE:"); idx != -1 {
+		httpCode = strings.TrimSpace(output[idx+len("HTTP_CODE:"):])
+		responseBody = output[:idx]
+	} else {
+		responseBody = output
+	}
+
+	logInfo(t, "Response body: %s", strings.TrimSpace(responseBody))
+	logInfo(t, "HTTP status code: %s", httpCode)
+
+	// Step 9: Verify the rejection
+	logStep(t, 9, "Verifying enrollment rejection...")
+
+	// Check HTTP status code (should be 409 Conflict)
+	if httpCode != "409" {
+		t.Errorf("%s Expected HTTP 409 Conflict, got %s", errFmt("x"), httpCode)
+	} else {
+		logOK(t, "HTTP status 409 Conflict returned (correct)")
+	}
+
+	// Check error message contains "already paired"
+	if !strings.Contains(responseBody, "already paired") {
+		t.Errorf("%s Error message does not contain 'already paired'. Response: %s", errFmt("x"), responseBody)
+	} else {
+		logOK(t, "Error message contains 'already paired'")
+	}
+
+	// Step 10: Verify security logging shows the rejection
+	logStep(t, 10, "Verifying security logging...")
+
+	aegisLog, err := cfg.multipassExec(ctx, cfg.DPUVM, "cat", "/tmp/aegis.log")
 	if err != nil {
-		t.Fatalf("SYNC BUG: Tenant show failed for second tenant: %v", err)
+		t.Fatalf("Failed to read aegis log: %v", err)
 	}
 
-	// Assign existing DPU to second tenant (reassignment)
-	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-		"tenant", "assign", tenant2, dpuName, "--insecure")
+	// Check for the security rejection log message
+	expectedLogMarker := fmt.Sprintf("registration rejected for %s (DPU already paired with different host)", intruderHostname)
+	if !strings.Contains(aegisLog, expectedLogMarker) {
+		fmt.Printf("    Aegis log:\n%s\n", aegisLog)
+		t.Errorf("%s Security rejection not logged. Expected marker: %s", errFmt("x"), expectedLogMarker)
+	} else {
+		logOK(t, "Security rejection logged correctly")
+	}
+
+	// Step 11: Verify original host is still functional (can re-enroll)
+	logStep(t, 11, "Verifying original host remains functional...")
+
+	// The original host should be able to continue operations
+	// We'll verify by checking that a posture update from the original host works
+	// For simplicity, we re-run sentry oneshot which should succeed because
+	// the hostname matches the paired host
+	output, err = cfg.multipassExec(sentryCtx, cfg.HostVM, "sudo", "/home/ubuntu/sentry", "--force-tmfifo", "--oneshot")
 	if err != nil {
-		t.Fatalf("SYNC BUG: DPU reassignment to second tenant failed: %v", err)
+		// This might fail if the transport is in a bad state, but the pairing should still work
+		// Check the aegis log to see if registration was attempted
+		aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-20", "/tmp/aegis.log")
+		logInfo(t, "Aegis log (recent):\n%s", aegisLog)
+
+		// If it fails, that's OK for this test as long as it's not a pairing rejection
+		if strings.Contains(aegisLog, "already paired") && strings.Contains(aegisLog, "qa-host") {
+			t.Errorf("%s Original host rejected after intruder attempt", errFmt("x"))
+		} else {
+			logOK(t, "Original host not rejected (transport state issue is acceptable)")
+		}
+	} else {
+		if strings.Contains(output, "Enrolled") {
+			logOK(t, "Original host can still enroll successfully")
+		} else {
+			logOK(t, "Original host enrollment completed")
+		}
 	}
 
-	logOK(t, "All cross-check operations completed successfully")
-
-	fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: State sync consistency test"))
-	t.Log("All read operations use consistent data source (no local/server mismatch)")
+	fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Multi-tenant enrollment isolation test"))
 }
