@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,7 +26,7 @@ func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return m.response, m.err
 }
 
-func newMockResponse(statusCode int, body interface{}) *http.Response {
+func newMockResponse(statusCode int, body any) *http.Response {
 	var bodyBytes []byte
 	switch v := body.(type) {
 	case string:
@@ -39,8 +42,36 @@ func newMockResponse(statusCode int, body interface{}) *http.Response {
 	}
 }
 
+// createTestKeyFile creates a temporary Ed25519 private key file for testing.
+// Returns the path to the temp file and a cleanup function.
+func createTestKeyFile(t *testing.T) (string, func()) {
+	t.Helper()
+
+	// Generate an Ed25519 key pair
+	_, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("Failed to generate test key: %v", err)
+	}
+
+	// Create temp directory
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "test_key")
+
+	// Write the private key (raw 64 bytes)
+	if err := os.WriteFile(keyPath, privateKey, 0600); err != nil {
+		t.Fatalf("Failed to write test key: %v", err)
+	}
+
+	return keyPath, func() {
+		os.RemoveAll(tmpDir)
+	}
+}
+
 func TestCallPushAPI_Success(t *testing.T) {
 	t.Log("Testing successful push API call")
+
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
 
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusOK, pushResponse{
@@ -59,7 +90,8 @@ func TestCallPushAPI_Success(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API with caName=ops-ca, targetDPU=bf3-lab, force=false")
@@ -105,16 +137,25 @@ func TestCallPushAPI_Success(t *testing.T) {
 	if sentReq.TargetDPU != "bf3-lab" {
 		t.Errorf("Expected target_dpu=bf3-lab, got %s", sentReq.TargetDPU)
 	}
-	if sentReq.OperatorID != "op_123" {
-		t.Errorf("Expected operator_id=op_123, got %s", sentReq.OperatorID)
-	}
 	if sentReq.Force {
 		t.Error("Expected force=false")
+	}
+
+	t.Log("Verifying Authorization header is set (JWT auth)")
+	authHeader := mockClient.request.Header.Get("Authorization")
+	if authHeader == "" {
+		t.Error("Expected Authorization header to be set")
+	}
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		t.Errorf("Expected Authorization header to start with 'Bearer ', got %s", authHeader)
 	}
 }
 
 func TestCallPushAPI_SuccessWithForce(t *testing.T) {
 	t.Log("Testing push API call with force flag")
+
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
 
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusOK, pushResponse{
@@ -132,7 +173,8 @@ func TestCallPushAPI_SuccessWithForce(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API with force=true")
@@ -157,6 +199,9 @@ func TestCallPushAPI_SuccessWithForce(t *testing.T) {
 func TestCallPushAPI_CANotFound(t *testing.T) {
 	t.Log("Testing push API when CA is not found (404)")
 
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
+
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusNotFound, map[string]string{
 			"error": "CA not found",
@@ -169,7 +214,8 @@ func TestCallPushAPI_CANotFound(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API expecting CA not found error")
@@ -191,6 +237,9 @@ func TestCallPushAPI_CANotFound(t *testing.T) {
 func TestCallPushAPI_DeviceNotFound(t *testing.T) {
 	t.Log("Testing push API when DPU is not found (404)")
 
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
+
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusNotFound, map[string]string{
 			"error": "DPU not found",
@@ -203,7 +252,8 @@ func TestCallPushAPI_DeviceNotFound(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API expecting device not found error")
@@ -225,6 +275,9 @@ func TestCallPushAPI_DeviceNotFound(t *testing.T) {
 func TestCallPushAPI_NotAuthorized(t *testing.T) {
 	t.Log("Testing push API when not authorized (403)")
 
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
+
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusForbidden, map[string]string{
 			"error": "not authorized for this CA and device",
@@ -237,7 +290,8 @@ func TestCallPushAPI_NotAuthorized(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API expecting not authorized error")
@@ -259,6 +313,9 @@ func TestCallPushAPI_NotAuthorized(t *testing.T) {
 func TestCallPushAPI_AttestationStale(t *testing.T) {
 	t.Log("Testing push API when attestation is stale (412)")
 
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
+
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusPreconditionFailed, pushResponse{
 			Success:           false,
@@ -274,7 +331,8 @@ func TestCallPushAPI_AttestationStale(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API expecting attestation stale error")
@@ -304,6 +362,9 @@ func TestCallPushAPI_AttestationStale(t *testing.T) {
 func TestCallPushAPI_AttestationFailed(t *testing.T) {
 	t.Log("Testing push API when attestation failed (412)")
 
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
+
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusPreconditionFailed, pushResponse{
 			Success:           false,
@@ -318,7 +379,8 @@ func TestCallPushAPI_AttestationFailed(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API expecting attestation failed error")
@@ -344,6 +406,9 @@ func TestCallPushAPI_AttestationFailed(t *testing.T) {
 func TestCallPushAPI_ConnectionError(t *testing.T) {
 	t.Log("Testing push API when server connection fails")
 
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
+
 	mockClient := &mockHTTPClient{
 		err: &mockNetError{message: "connection refused"},
 	}
@@ -354,7 +419,8 @@ func TestCallPushAPI_ConnectionError(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API expecting connection failed error")
@@ -376,6 +442,9 @@ func TestCallPushAPI_ConnectionError(t *testing.T) {
 func TestCallPushAPI_ServerError(t *testing.T) {
 	t.Log("Testing push API when server returns 500")
 
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
+
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusInternalServerError, map[string]string{
 			"error": "internal server error",
@@ -388,7 +457,8 @@ func TestCallPushAPI_ServerError(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API expecting internal error")
@@ -410,6 +480,9 @@ func TestCallPushAPI_ServerError(t *testing.T) {
 func TestCallPushAPI_ServiceUnavailable(t *testing.T) {
 	t.Log("Testing push API when DPU connection fails (503)")
 
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
+
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusServiceUnavailable, map[string]string{
 			"error": "failed to connect to DPU",
@@ -422,7 +495,8 @@ func TestCallPushAPI_ServiceUnavailable(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API expecting connection failed error")
@@ -448,6 +522,9 @@ func TestCallPushAPI_ServiceUnavailable(t *testing.T) {
 func TestCallPushAPI_BadRequest(t *testing.T) {
 	t.Log("Testing push API with bad request (400)")
 
+	keyPath, cleanup := createTestKeyFile(t)
+	defer cleanup()
+
 	mockClient := &mockHTTPClient{
 		response: newMockResponse(http.StatusBadRequest, map[string]string{
 			"error": "ca_name is required",
@@ -460,7 +537,8 @@ func TestCallPushAPI_BadRequest(t *testing.T) {
 
 	config := &KMConfig{
 		ControlPlaneURL: "http://localhost:8080",
-		OperatorID:      "op_123",
+		KeyMakerID:      "km_123",
+		PrivateKeyPath:  keyPath,
 	}
 
 	t.Log("Calling push API expecting internal error for bad request")

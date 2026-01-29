@@ -6,10 +6,13 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -23,32 +26,68 @@ const (
 	contextKeyKeyMakerID    contextKey = "keymaker_id"
 )
 
-// AuthMiddleware validates requests using Ed25519 signatures.
-// Required headers:
-//   - X-KM-ID: KeyMaker ID (e.g., "km_abc123")
-//   - X-KM-Signature: Base64-encoded Ed25519 signature of request body
+// KMClaims represents the JWT claims for km authentication.
+// See system-design.md:1424-1430
+type KMClaims struct {
+	KeyMakerID string `json:"kid"`
+	IssuedAt   int64  `json:"iat"`
+	ExpiresAt  int64  `json:"exp"`
+	Nonce      string `json:"nonce"`
+}
+
+// jwtHeader is the standard JWT header for Ed25519 signing.
+type jwtHeader struct {
+	Algorithm string `json:"alg"`
+	Type      string `json:"typ"`
+}
+
+const (
+	// jwtValidityWindow is the maximum age of a valid JWT (5 minutes).
+	jwtValidityWindow = 5 * time.Minute
+	// jwtClockSkew allows for clock drift between client and server.
+	jwtClockSkew = 30 * time.Second
+)
+
+// AuthMiddleware validates requests using signed JWTs.
+// Required header: Authorization: Bearer <jwt>
+//
+// JWT format: header.claims.signature (base64url encoded)
+// Claims must include: kid (keymaker_id), iat, exp, nonce
+// Signature: Ed25519 signature of "header.claims" using KeyMaker private key
 func (s *Server) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Extract headers
-		kmID := r.Header.Get("X-KM-ID")
-		signature := r.Header.Get("X-KM-Signature")
-
-		if kmID == "" {
-			log.Printf("AUTH DENIED: %s %s - missing X-KM-ID header from %s", r.Method, r.URL.Path, r.RemoteAddr)
-			writeError(w, r, http.StatusUnauthorized, "missing X-KM-ID header")
+		// Extract Authorization header
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			log.Printf("AUTH DENIED: %s %s - missing Authorization header from %s",
+				r.Method, r.URL.Path, r.RemoteAddr)
+			writeError(w, r, http.StatusUnauthorized, "missing Authorization header")
 			return
 		}
 
-		if signature == "" {
-			log.Printf("AUTH DENIED: %s %s - missing X-KM-Signature header from %s (km_id=%s)", r.Method, r.URL.Path, r.RemoteAddr, kmID)
-			writeError(w, r, http.StatusUnauthorized, "missing X-KM-Signature header")
+		// Parse Bearer token
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			log.Printf("AUTH DENIED: %s %s - invalid Authorization format from %s",
+				r.Method, r.URL.Path, r.RemoteAddr)
+			writeError(w, r, http.StatusUnauthorized, "invalid Authorization format")
+			return
+		}
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		// Parse and validate JWT
+		claims, err := s.validateJWT(token)
+		if err != nil {
+			log.Printf("AUTH DENIED: %s %s - %v from %s",
+				r.Method, r.URL.Path, err, r.RemoteAddr)
+			writeError(w, r, http.StatusUnauthorized, err.Error())
 			return
 		}
 
 		// Look up KeyMaker
-		km, err := s.store.GetKeyMaker(kmID)
+		km, err := s.store.GetKeyMaker(claims.KeyMakerID)
 		if err != nil {
-			log.Printf("AUTH DENIED: %s %s - unknown keymaker %s from %s", r.Method, r.URL.Path, kmID, r.RemoteAddr)
+			log.Printf("AUTH DENIED: %s %s - unknown keymaker %s from %s",
+				r.Method, r.URL.Path, claims.KeyMakerID, r.RemoteAddr)
 			writeError(w, r, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
@@ -56,7 +95,7 @@ func (s *Server) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		// Check KeyMaker status
 		if km.Status != "active" {
 			log.Printf("AUTH DENIED: %s %s - keymaker %s status is %s (operator=%s) from %s",
-				r.Method, r.URL.Path, kmID, km.Status, km.OperatorID, r.RemoteAddr)
+				r.Method, r.URL.Path, claims.KeyMakerID, km.Status, km.OperatorID, r.RemoteAddr)
 			writeError(w, r, http.StatusUnauthorized, "keymaker is not active")
 			return
 		}
@@ -65,72 +104,141 @@ func (s *Server) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		operator, err := s.store.GetOperator(km.OperatorID)
 		if err != nil {
 			log.Printf("AUTH DENIED: %s %s - operator %s not found for keymaker %s from %s",
-				r.Method, r.URL.Path, km.OperatorID, kmID, r.RemoteAddr)
+				r.Method, r.URL.Path, km.OperatorID, claims.KeyMakerID, r.RemoteAddr)
 			writeError(w, r, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 
 		if operator.Status == "suspended" {
 			log.Printf("AUTH DENIED: %s %s - operator %s is suspended (keymaker=%s) from %s",
-				r.Method, r.URL.Path, operator.Email, kmID, r.RemoteAddr)
+				r.Method, r.URL.Path, operator.Email, claims.KeyMakerID, r.RemoteAddr)
 			writeError(w, r, http.StatusForbidden, "account suspended")
 			return
 		}
 
 		if operator.Status != "active" {
 			log.Printf("AUTH DENIED: %s %s - operator %s status is %s (keymaker=%s) from %s",
-				r.Method, r.URL.Path, operator.Email, operator.Status, kmID, r.RemoteAddr)
+				r.Method, r.URL.Path, operator.Email, operator.Status, claims.KeyMakerID, r.RemoteAddr)
 			writeError(w, r, http.StatusForbidden, "account not active")
 			return
 		}
 
-		// Read request body for signature verification
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Printf("AUTH ERROR: %s %s - failed to read body: %v", r.Method, r.URL.Path, err)
-			writeError(w, r, http.StatusBadRequest, "failed to read request body")
-			return
-		}
-		// Restore body for handler
-		r.Body = io.NopCloser(bytes.NewReader(body))
-
-		// Decode signature
-		sigBytes, err := base64.StdEncoding.DecodeString(signature)
-		if err != nil {
-			log.Printf("AUTH DENIED: %s %s - invalid signature encoding from %s (km_id=%s)",
-				r.Method, r.URL.Path, r.RemoteAddr, kmID)
-			writeError(w, r, http.StatusUnauthorized, "invalid signature encoding")
-			return
-		}
-
-		// Parse public key from stored SSH format
-		pubKey, err := parseSSHPublicKey(km.PublicKey)
-		if err != nil {
-			log.Printf("AUTH ERROR: %s %s - failed to parse public key for km %s: %v",
-				r.Method, r.URL.Path, kmID, err)
-			writeError(w, r, http.StatusInternalServerError, "invalid keymaker public key")
-			return
-		}
-
-		// Verify signature
-		if !ed25519.Verify(pubKey, body, sigBytes) {
-			log.Printf("AUTH DENIED: %s %s - signature verification failed from %s (km_id=%s, operator=%s)",
-				r.Method, r.URL.Path, r.RemoteAddr, kmID, operator.Email)
-			writeError(w, r, http.StatusUnauthorized, "invalid signature")
-			return
+		// Restore request body for handler (was consumed during JWT validation if needed)
+		// JWT is self-contained so body wasn't needed, but ensure it's still available
+		if r.Body != nil {
+			body, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
 		}
 
 		// Add authenticated context
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, contextKeyOperatorID, operator.ID)
 		ctx = context.WithValue(ctx, contextKeyOperatorEmail, operator.Email)
-		ctx = context.WithValue(ctx, contextKeyKeyMakerID, kmID)
+		ctx = context.WithValue(ctx, contextKeyKeyMakerID, claims.KeyMakerID)
 
 		log.Printf("AUTH OK: %s %s - operator=%s keymaker=%s from %s",
-			r.Method, r.URL.Path, operator.Email, kmID, r.RemoteAddr)
+			r.Method, r.URL.Path, operator.Email, claims.KeyMakerID, r.RemoteAddr)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
+}
+
+// validateJWT parses and validates a JWT token.
+// Returns the claims if valid, or an error describing the failure.
+func (s *Server) validateJWT(token string) (*KMClaims, error) {
+	// Split into parts: header.claims.signature
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid token format")
+	}
+
+	headerB64, claimsB64, signatureB64 := parts[0], parts[1], parts[2]
+
+	// Decode header
+	headerJSON, err := base64.RawURLEncoding.DecodeString(headerB64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token header encoding")
+	}
+
+	var header jwtHeader
+	if err := json.Unmarshal(headerJSON, &header); err != nil {
+		return nil, fmt.Errorf("invalid token header")
+	}
+
+	// Verify algorithm is EdDSA (Ed25519)
+	if header.Algorithm != "EdDSA" {
+		return nil, fmt.Errorf("unsupported algorithm: %s", header.Algorithm)
+	}
+
+	// Decode claims
+	claimsJSON, err := base64.RawURLEncoding.DecodeString(claimsB64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token claims encoding")
+	}
+
+	var claims KMClaims
+	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
+		return nil, fmt.Errorf("invalid token claims")
+	}
+
+	// Validate required claims
+	if claims.KeyMakerID == "" {
+		return nil, fmt.Errorf("missing keymaker_id in token")
+	}
+	if claims.IssuedAt == 0 {
+		return nil, fmt.Errorf("missing iat in token")
+	}
+	if claims.Nonce == "" {
+		return nil, fmt.Errorf("missing nonce in token")
+	}
+
+	// Validate timestamps
+	now := time.Now()
+	issuedAt := time.Unix(claims.IssuedAt, 0)
+
+	// Check if token is from the future (with clock skew allowance)
+	if issuedAt.After(now.Add(jwtClockSkew)) {
+		return nil, fmt.Errorf("token issued in the future")
+	}
+
+	// Check expiry if provided
+	if claims.ExpiresAt > 0 {
+		expiresAt := time.Unix(claims.ExpiresAt, 0)
+		if now.After(expiresAt.Add(jwtClockSkew)) {
+			return nil, fmt.Errorf("token expired")
+		}
+	} else {
+		// No explicit expiry, use validity window from iat
+		if now.After(issuedAt.Add(jwtValidityWindow)) {
+			return nil, fmt.Errorf("token expired")
+		}
+	}
+
+	// Look up KeyMaker to get public key for signature verification
+	km, err := s.store.GetKeyMaker(claims.KeyMakerID)
+	if err != nil {
+		return nil, fmt.Errorf("unknown keymaker")
+	}
+
+	// Parse public key
+	pubKey, err := parseSSHPublicKey(km.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("invalid keymaker public key")
+	}
+
+	// Decode signature
+	signature, err := base64.RawURLEncoding.DecodeString(signatureB64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid signature encoding")
+	}
+
+	// Verify signature over header.claims
+	signedData := []byte(headerB64 + "." + claimsB64)
+	if !ed25519.Verify(pubKey, signedData, signature) {
+		return nil, fmt.Errorf("invalid signature")
+	}
+
+	return &claims, nil
 }
 
 // parseSSHPublicKey extracts an Ed25519 public key from SSH authorized_keys format.
@@ -144,13 +252,13 @@ func parseSSHPublicKey(sshPubKey string) (ed25519.PublicKey, error) {
 	// Extract the crypto public key
 	cryptoPubKey, ok := pubKey.(ssh.CryptoPublicKey)
 	if !ok {
-		return nil, err
+		return nil, fmt.Errorf("not a crypto public key")
 	}
 
 	// Get the underlying ed25519 key
 	ed25519Key, ok := cryptoPubKey.CryptoPublicKey().(ed25519.PublicKey)
 	if !ok {
-		return nil, err
+		return nil, fmt.Errorf("not an ed25519 key")
 	}
 
 	return ed25519Key, nil
@@ -178,9 +286,4 @@ func GetAuthKeyMakerID(ctx context.Context) string {
 		return v.(string)
 	}
 	return ""
-}
-
-// isSSHED25519Key checks if the SSH public key is an Ed25519 key.
-func isSSHED25519Key(sshPubKey string) bool {
-	return strings.HasPrefix(sshPubKey, "ssh-ed25519 ")
 }

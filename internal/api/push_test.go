@@ -76,14 +76,22 @@ func setupPushTestStore(t *testing.T) *store.Store {
 	return s
 }
 
+// addAuthContext adds authenticated operator context to a request.
+// This simulates what AuthMiddleware does after validating a JWT.
+func addAuthContext(req *http.Request, operatorID, operatorEmail, keyMakerID string) *http.Request {
+	ctx := req.Context()
+	ctx = context.WithValue(ctx, contextKeyOperatorID, operatorID)
+	ctx = context.WithValue(ctx, contextKeyOperatorEmail, operatorEmail)
+	ctx = context.WithValue(ctx, contextKeyKeyMakerID, keyMakerID)
+	return req.WithContext(ctx)
+}
+
 func TestHandlePush_MissingRequiredFields(t *testing.T) {
 	t.Log("Testing push endpoint with missing required fields")
 	s := setupPushTestStore(t)
 	defer s.Close()
 
 	server := NewServer(s)
-	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
 
 	tests := []struct {
 		name    string
@@ -92,18 +100,13 @@ func TestHandlePush_MissingRequiredFields(t *testing.T) {
 	}{
 		{
 			name:    "missing ca_name",
-			body:    pushRequest{TargetDPU: "dpu-1", OperatorID: "op-1"},
+			body:    pushRequest{TargetDPU: "dpu-1"},
 			wantErr: "ca_name is required",
 		},
 		{
 			name:    "missing target_dpu",
-			body:    pushRequest{CAName: "test-ca", OperatorID: "op-1"},
+			body:    pushRequest{CAName: "test-ca"},
 			wantErr: "target_dpu is required",
-		},
-		{
-			name:    "missing operator_id",
-			body:    pushRequest{CAName: "test-ca", TargetDPU: "dpu-1"},
-			wantErr: "operator_id is required",
 		},
 	}
 
@@ -113,9 +116,11 @@ func TestHandlePush_MissingRequiredFields(t *testing.T) {
 			body, _ := json.Marshal(tt.body)
 			req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
+			// Add auth context (operator is authenticated)
+			req = addAuthContext(req, "op-1", "alice@acme.com", "km-1")
 
 			w := httptest.NewRecorder()
-			mux.ServeHTTP(w, req)
+			server.handlePush(w, req)
 
 			t.Logf("Response status: %d", w.Code)
 			if w.Code != http.StatusBadRequest {
@@ -132,25 +137,54 @@ func TestHandlePush_MissingRequiredFields(t *testing.T) {
 	}
 }
 
+func TestHandlePush_Unauthenticated(t *testing.T) {
+	t.Log("Testing push endpoint without authentication")
+	s := setupPushTestStore(t)
+	defer s.Close()
+
+	server := NewServer(s)
+
+	body, _ := json.Marshal(pushRequest{
+		CAName:    "test-ca",
+		TargetDPU: "dpu-1",
+	})
+	req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	// No auth context added
+
+	w := httptest.NewRecorder()
+	server.handlePush(w, req)
+
+	t.Logf("Response status: %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", w.Code)
+	}
+
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	t.Logf("Response error: %s", resp["error"])
+	if resp["error"] != "authentication required" {
+		t.Errorf("expected error 'authentication required', got %q", resp["error"])
+	}
+}
+
 func TestHandlePush_CANotFound(t *testing.T) {
 	t.Log("Testing push endpoint with non-existent CA")
 	s := setupPushTestStore(t)
 	defer s.Close()
 
 	server := NewServer(s)
-	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
 
 	body, _ := json.Marshal(pushRequest{
-		CAName:     "nonexistent-ca",
-		TargetDPU:  "dpu-1",
-		OperatorID: "op-1",
+		CAName:    "nonexistent-ca",
+		TargetDPU: "dpu-1",
 	})
 	req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addAuthContext(req, "op-1", "alice@acme.com", "km-1")
 
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	server.handlePush(w, req)
 
 	t.Logf("Response status: %d", w.Code)
 	if w.Code != http.StatusNotFound {
@@ -171,19 +205,17 @@ func TestHandlePush_DPUNotFound(t *testing.T) {
 	defer s.Close()
 
 	server := NewServer(s)
-	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
 
 	body, _ := json.Marshal(pushRequest{
-		CAName:     "test-ca",
-		TargetDPU:  "nonexistent-dpu",
-		OperatorID: "op-1",
+		CAName:    "test-ca",
+		TargetDPU: "nonexistent-dpu",
 	})
 	req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addAuthContext(req, "op-1", "alice@acme.com", "km-1")
 
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	server.handlePush(w, req)
 
 	t.Logf("Response status: %d", w.Code)
 	if w.Code != http.StatusNotFound {
@@ -215,19 +247,18 @@ func TestHandlePush_NotAuthorized(t *testing.T) {
 	}
 
 	server := NewServer(s)
-	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
 
 	body, _ := json.Marshal(pushRequest{
-		CAName:     "test-ca",
-		TargetDPU:  "dpu-1",
-		OperatorID: "op-2", // Unauthorized operator
+		CAName:    "test-ca",
+		TargetDPU: "dpu-1",
 	})
 	req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	// Authenticate as unauthorized operator
+	req = addAuthContext(req, "op-2", "bob@acme.com", "km-2")
 
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	server.handlePush(w, req)
 
 	t.Logf("Response status: %d", w.Code)
 	if w.Code != http.StatusForbidden {
@@ -260,20 +291,18 @@ func TestHandlePush_StaleAttestationWithoutForce(t *testing.T) {
 	}
 
 	server := NewServer(s)
-	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
 
 	body, _ := json.Marshal(pushRequest{
-		CAName:     "test-ca",
-		TargetDPU:  "dpu-1",
-		OperatorID: "op-1",
-		Force:      false,
+		CAName:    "test-ca",
+		TargetDPU: "dpu-1",
+		Force:     false,
 	})
 	req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addAuthContext(req, "op-1", "alice@acme.com", "km-1")
 
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	server.handlePush(w, req)
 
 	t.Logf("Response status: %d", w.Code)
 	// Should return 412 Precondition Failed for stale attestation
@@ -309,21 +338,19 @@ func TestHandlePush_FailedAttestation(t *testing.T) {
 	}
 
 	server := NewServer(s)
-	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
 
 	// Even with force=true, failed attestation should be rejected
 	body, _ := json.Marshal(pushRequest{
-		CAName:     "test-ca",
-		TargetDPU:  "dpu-1",
-		OperatorID: "op-1",
-		Force:      true,
+		CAName:    "test-ca",
+		TargetDPU: "dpu-1",
+		Force:     true,
 	})
 	req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addAuthContext(req, "op-1", "alice@acme.com", "km-1")
 
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	server.handlePush(w, req)
 
 	t.Logf("Response status: %d", w.Code)
 	if w.Code != http.StatusPreconditionFailed {
@@ -361,20 +388,18 @@ func TestHandlePush_StaleAttestationWithForce(t *testing.T) {
 	}
 
 	server := NewServer(s)
-	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
 
 	body, _ := json.Marshal(pushRequest{
-		CAName:     "test-ca",
-		TargetDPU:  "dpu-1",
-		OperatorID: "op-1",
-		Force:      true,
+		CAName:    "test-ca",
+		TargetDPU: "dpu-1",
+		Force:     true,
 	})
 	req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addAuthContext(req, "op-1", "alice@acme.com", "km-1")
 
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	server.handlePush(w, req)
 
 	t.Logf("Response status: %d", w.Code)
 	// With force=true and only stale attestation (not failed),
@@ -407,14 +432,13 @@ func TestHandlePush_InvalidJSON(t *testing.T) {
 	defer s.Close()
 
 	server := NewServer(s)
-	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
 
 	req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader([]byte("not json")))
 	req.Header.Set("Content-Type", "application/json")
+	req = addAuthContext(req, "op-1", "alice@acme.com", "km-1")
 
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	server.handlePush(w, req)
 
 	t.Logf("Response status: %d", w.Code)
 	if w.Code != http.StatusBadRequest {
