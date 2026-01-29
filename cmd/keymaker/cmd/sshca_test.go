@@ -1,46 +1,14 @@
 package cmd
 
 import (
-	"crypto/ed25519"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
-// createTestKeyFileSSHCA creates a temporary Ed25519 private key file for testing.
-// Returns the path to the temp file and a cleanup function.
-func createTestKeyFileSSHCA(t *testing.T) (string, func()) {
-	t.Helper()
-
-	// Generate an Ed25519 key pair
-	_, privateKey, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		t.Fatalf("Failed to generate test key: %v", err)
-	}
-
-	// Create temp directory
-	tmpDir := t.TempDir()
-	keyPath := filepath.Join(tmpDir, "test_key")
-
-	// Write the private key (raw 64 bytes)
-	if err := os.WriteFile(keyPath, privateKey, 0600); err != nil {
-		t.Fatalf("Failed to write test key: %v", err)
-	}
-
-	return keyPath, func() {
-		os.RemoveAll(tmpDir)
-	}
-}
-
 func TestRegisterSSHCA_Success(t *testing.T) {
 	t.Log("Testing SSH CA registration succeeds on 201 Created")
-
-	keyPath, cleanup := createTestKeyFileSSHCA(t)
-	defer cleanup()
 
 	// Mock server that returns success
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,15 +20,6 @@ func TestRegisterSSHCA_Success(t *testing.T) {
 		}
 		if r.URL.Path != "/api/v1/ssh-cas" {
 			t.Errorf("Expected path /api/v1/ssh-cas, got %s", r.URL.Path)
-		}
-
-		// Verify Authorization header is set
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			t.Error("Expected Authorization header to be set")
-		}
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			t.Errorf("Expected Bearer token, got: %s", authHeader)
 		}
 
 		// Parse and validate request body
@@ -80,6 +39,9 @@ func TestRegisterSSHCA_Success(t *testing.T) {
 		if req["key_type"] == "" {
 			t.Error("Request missing 'key_type' field")
 		}
+		if req["operator_id"] == "" {
+			t.Error("Request missing 'operator_id' field")
+		}
 
 		t.Logf("Registration request for CA: %s", req["name"])
 
@@ -95,8 +57,7 @@ func TestRegisterSSHCA_Success(t *testing.T) {
 	defer server.Close()
 
 	config := &KMConfig{
-		KeyMakerID:      "km_test123",
-		PrivateKeyPath:  keyPath,
+		OperatorID:      "op_test123",
 		ControlPlaneURL: server.URL,
 	}
 
@@ -115,9 +76,6 @@ func TestRegisterSSHCA_Success(t *testing.T) {
 func TestRegisterSSHCA_Conflict(t *testing.T) {
 	t.Log("Testing SSH CA registration handles 409 Conflict silently")
 
-	keyPath, cleanup := createTestKeyFileSSHCA(t)
-	defer cleanup()
-
 	// Mock server that returns conflict
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Log("Received request - returning conflict")
@@ -129,8 +87,7 @@ func TestRegisterSSHCA_Conflict(t *testing.T) {
 	defer server.Close()
 
 	config := &KMConfig{
-		KeyMakerID:      "km_test123",
-		PrivateKeyPath:  keyPath,
+		OperatorID:      "op_test123",
 		ControlPlaneURL: server.URL,
 	}
 
@@ -149,9 +106,6 @@ func TestRegisterSSHCA_Conflict(t *testing.T) {
 func TestRegisterSSHCA_ServerError(t *testing.T) {
 	t.Log("Testing SSH CA registration returns warning on server error")
 
-	keyPath, cleanup := createTestKeyFileSSHCA(t)
-	defer cleanup()
-
 	// Mock server that returns error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Log("Received request - returning internal server error")
@@ -163,8 +117,7 @@ func TestRegisterSSHCA_ServerError(t *testing.T) {
 	defer server.Close()
 
 	config := &KMConfig{
-		KeyMakerID:      "km_test123",
-		PrivateKeyPath:  keyPath,
+		OperatorID:      "op_test123",
 		ControlPlaneURL: server.URL,
 	}
 
@@ -183,12 +136,8 @@ func TestRegisterSSHCA_ServerError(t *testing.T) {
 func TestRegisterSSHCA_ConnectionFailed(t *testing.T) {
 	t.Log("Testing SSH CA registration returns warning when connection fails")
 
-	keyPath, cleanup := createTestKeyFileSSHCA(t)
-	defer cleanup()
-
 	config := &KMConfig{
-		KeyMakerID:      "km_test123",
-		PrivateKeyPath:  keyPath,
+		OperatorID:      "op_test123",
 		ControlPlaneURL: "http://localhost:99999", // Invalid port
 	}
 
@@ -210,9 +159,6 @@ func TestRegisterSSHCA_ConnectionFailed(t *testing.T) {
 func TestRegisterSSHCA_BadRequest(t *testing.T) {
 	t.Log("Testing SSH CA registration handles 400 Bad Request")
 
-	keyPath, cleanup := createTestKeyFileSSHCA(t)
-	defer cleanup()
-
 	// Mock server that returns bad request
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Log("Received request - returning bad request")
@@ -224,8 +170,7 @@ func TestRegisterSSHCA_BadRequest(t *testing.T) {
 	defer server.Close()
 
 	config := &KMConfig{
-		KeyMakerID:      "km_invalid",
-		PrivateKeyPath:  keyPath,
+		OperatorID:      "op_invalid",
 		ControlPlaneURL: server.URL,
 	}
 
@@ -244,12 +189,10 @@ func TestRegisterSSHCA_BadRequest(t *testing.T) {
 func TestRegisterSSHCA_RequestBody(t *testing.T) {
 	t.Log("Testing SSH CA registration sends correct request body")
 
-	keyPath, cleanup := createTestKeyFileSSHCA(t)
-	defer cleanup()
-
 	expectedName := "my-test-ca"
 	expectedPubKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJKpF..."
 	expectedKeyType := "ed25519"
+	expectedOperatorID := "op_abc123"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req map[string]string
@@ -270,10 +213,8 @@ func TestRegisterSSHCA_RequestBody(t *testing.T) {
 		if req["key_type"] != expectedKeyType {
 			t.Errorf("Expected key_type %q, got %q", expectedKeyType, req["key_type"])
 		}
-
-		// Verify operator_id is NOT in the request body (auth is via JWT now)
-		if _, exists := req["operator_id"]; exists {
-			t.Error("operator_id should not be in request body (auth is via JWT)")
+		if req["operator_id"] != expectedOperatorID {
+			t.Errorf("Expected operator_id %q, got %q", expectedOperatorID, req["operator_id"])
 		}
 
 		w.WriteHeader(http.StatusCreated)
@@ -282,8 +223,7 @@ func TestRegisterSSHCA_RequestBody(t *testing.T) {
 	defer server.Close()
 
 	config := &KMConfig{
-		KeyMakerID:      "km_abc123",
-		PrivateKeyPath:  keyPath,
+		OperatorID:      expectedOperatorID,
 		ControlPlaneURL: server.URL,
 	}
 
