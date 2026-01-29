@@ -3595,7 +3595,7 @@ func TestCALifecycleE2E(t *testing.T) {
 		logOK(t, fmt.Sprintf("Granted operator access to CA '%s'", lifecycleCA))
 
 		logStep(t, 2, "Signing certificate with valid CA...")
-		signOutput, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
+		signOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
 			"ssh-ca", "sign", lifecycleCA, "--principal", "testuser", "--pubkey", testKeyPath+".pub")
 		if err != nil {
 			t.Fatalf("km ssh-ca sign failed: %v\nOutput: %s", err, signOutput)
