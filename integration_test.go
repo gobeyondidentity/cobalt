@@ -265,6 +265,8 @@ func TestTMFIFOTransportIntegration(t *testing.T) {
 	// Step 2: Start aegis (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 2, "Starting aegis...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	// Clear aegis state for test isolation
+	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
@@ -403,6 +405,8 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	// Step 2: Start aegis with local API (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 2, "Starting aegis with local API...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	// Clear aegis state for test isolation
+	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
@@ -690,6 +694,8 @@ func TestNexusRestartPersistence(t *testing.T) {
 	// Step 4: Start aegis (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 4, "Starting aegis...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	// Clear aegis state for test isolation
+	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 	if err != nil {
@@ -1011,6 +1017,8 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	// Step 2: Start aegis with local API (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 2, "Starting aegis (initial)...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	// Clear aegis state for test isolation
+	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
@@ -1384,6 +1392,8 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	// Step 2: Start aegis with local API (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 2, "Starting aegis with local API...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	// Clear aegis state for test isolation
+	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
@@ -1679,6 +1689,8 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	// Step 2: Start aegis with local API (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 2, "Starting aegis with local API...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	// Clear aegis state for test isolation
+	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
@@ -1973,6 +1985,8 @@ func TestStateSyncConsistency(t *testing.T) {
 
 	// Start aegis
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	// Clear aegis state for test isolation
+	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 	if err != nil {
@@ -2188,6 +2202,8 @@ func TestDPURegistrationFlows(t *testing.T) {
 	// Step 4: Start aegis on DPU (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 4, "Starting aegis on DPU...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	// Clear aegis state for test isolation
+	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 	if err != nil {
@@ -2537,6 +2553,8 @@ func TestTenantLifecycle(t *testing.T) {
 	t.Log("Setting up: Start aegis to register and assign DPU to tenant")
 
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	// Clear aegis state for test isolation
+	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
 		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 	if err != nil {
