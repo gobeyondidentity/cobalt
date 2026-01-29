@@ -1556,15 +1556,28 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	}
 	logOK(t, "Credential push initiated")
 
-	// Allow time for credential to propagate
-	time.Sleep(3 * time.Second)
+	// Wait for credential file to appear with content (async delivery)
+	logStep(t, 9, "Waiting for credential to be installed...")
+	credentialTimeout := 15 * time.Second
+	pollInterval := 500 * time.Millisecond
+	deadline := time.Now().Add(credentialTimeout)
+	var credContent string
 
-	// Verify credential was delivered
-	output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", caPath)
-	if err != nil {
+	for time.Now().Before(deadline) {
+		output, err := cfg.multipassExec(ctx, cfg.HostVM, "cat", caPath)
+		if err == nil {
+			credContent = strings.TrimSpace(output)
+			if strings.HasPrefix(credContent, "ssh-") || strings.HasPrefix(credContent, "ecdsa-") {
+				break
+			}
+		}
+		time.Sleep(pollInterval)
+	}
+
+	if credContent == "" || (!strings.HasPrefix(credContent, "ssh-") && !strings.HasPrefix(credContent, "ecdsa-")) {
 		sentryLog, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
 		fmt.Printf("    Sentry log:\n%s\n", sentryLog)
-		t.Fatalf("Credential file not found after re-enrollment: %v", err)
+		t.Fatalf("Credential file not found or invalid after re-enrollment at %s", caPath)
 	}
 	logOK(t, fmt.Sprintf("Credential delivered to %s", caPath))
 
@@ -3957,30 +3970,37 @@ func TestOperatorOnboardingE2E(t *testing.T) {
 		}
 		logOK(t, "Credential pushed successfully")
 
-		// Allow time for credential to propagate
-		time.Sleep(3 * time.Second)
+		// Step 11: Wait for credential file to appear with content (async delivery)
+		// The API returns success when the message is sent, but sentry still needs to
+		// receive and write the file. Poll with timeout instead of fixed sleep.
+		logStep(t, 11, "Waiting for credential installation on qa-host...")
+		var content string
+		credentialTimeout := 15 * time.Second
+		pollInterval := 500 * time.Millisecond
+		deadline := time.Now().Add(credentialTimeout)
 
-		// Step 11: Verify credential file exists on qa-host
-		logStep(t, 11, "Verifying credential installation on qa-host...")
-		output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", caPath)
-		if err != nil {
+		for time.Now().Before(deadline) {
+			output, err := cfg.multipassExec(ctx, cfg.HostVM, "cat", caPath)
+			if err == nil {
+				content = strings.TrimSpace(output)
+				if strings.HasPrefix(content, "ssh-") || strings.HasPrefix(content, "ecdsa-") {
+					break // File exists with valid SSH key content
+				}
+			}
+			time.Sleep(pollInterval)
+		}
+
+		if content == "" {
 			sentryLog, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
+			aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-30", "/tmp/aegis.log")
 			fmt.Printf("    Sentry log:\n%s\n", sentryLog)
-			t.Fatalf("Credential file not found at %s: %v", caPath, err)
+			fmt.Printf("    Aegis log:\n%s\n", aegisLog)
+			t.Fatalf("Credential file not found or empty at %s after %v", caPath, credentialTimeout)
 		}
-		logOK(t, fmt.Sprintf("Credential file exists: %s", strings.TrimSpace(output)))
-
-		// Step 12: Verify content is a valid SSH public key
-		logStep(t, 12, "Verifying credential content...")
-		content, err := cfg.multipassExec(ctx, cfg.HostVM, "cat", caPath)
-		if err != nil {
-			t.Fatalf("Failed to read credential file: %v", err)
-		}
-		content = strings.TrimSpace(content)
 		if !strings.HasPrefix(content, "ssh-") && !strings.HasPrefix(content, "ecdsa-") {
 			t.Fatalf("Credential file does not contain valid SSH public key. Content: %s", content[:min(50, len(content))])
 		}
-		logOK(t, "Credential contains valid SSH public key")
+		logOK(t, fmt.Sprintf("Credential installed at %s", caPath))
 
 		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Scenario 1 - Happy path complete"))
 	})
@@ -4311,13 +4331,27 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		}
 		logOK(t, "Push succeeded before suspension")
 
-		// Wait for credential to propagate
-		time.Sleep(3 * time.Second)
+		// Wait for credential file to appear with content (async delivery)
+		credentialTimeout := 15 * time.Second
+		pollInterval := 500 * time.Millisecond
+		deadline := time.Now().Add(credentialTimeout)
+		var credContent string
 
-		// Verify credential file exists
-		_, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", caBeforeSuspendPath)
-		if err != nil {
-			t.Fatalf("Credential file not found at %s: %v", caBeforeSuspendPath, err)
+		for time.Now().Before(deadline) {
+			output, err := cfg.multipassExec(ctx, cfg.HostVM, "cat", caBeforeSuspendPath)
+			if err == nil {
+				credContent = strings.TrimSpace(output)
+				if strings.HasPrefix(credContent, "ssh-") || strings.HasPrefix(credContent, "ecdsa-") {
+					break
+				}
+			}
+			time.Sleep(pollInterval)
+		}
+
+		if credContent == "" || (!strings.HasPrefix(credContent, "ssh-") && !strings.HasPrefix(credContent, "ecdsa-")) {
+			sentryLog, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
+			fmt.Printf("    Sentry log:\n%s\n", sentryLog)
+			t.Fatalf("Credential file not found or invalid at %s after %v", caBeforeSuspendPath, credentialTimeout)
 		}
 		logOK(t, fmt.Sprintf("Credential file exists: %s", caBeforeSuspendPath))
 
@@ -4428,16 +4462,28 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		}
 		logOK(t, "Push succeeded after activation")
 
-		// Wait for credential to propagate
-		time.Sleep(3 * time.Second)
-
-		// Step 4: Verify credential file exists
+		// Step 4: Wait for credential file to appear with content (async delivery)
 		logStep(t, 4, "Verifying credential was installed...")
-		_, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", caAfterActivatePath)
-		if err != nil {
+		credentialTimeout := 15 * time.Second
+		pollInterval := 500 * time.Millisecond
+		deadline := time.Now().Add(credentialTimeout)
+		var credContent string
+
+		for time.Now().Before(deadline) {
+			output, err := cfg.multipassExec(ctx, cfg.HostVM, "cat", caAfterActivatePath)
+			if err == nil {
+				credContent = strings.TrimSpace(output)
+				if strings.HasPrefix(credContent, "ssh-") || strings.HasPrefix(credContent, "ecdsa-") {
+					break
+				}
+			}
+			time.Sleep(pollInterval)
+		}
+
+		if credContent == "" || (!strings.HasPrefix(credContent, "ssh-") && !strings.HasPrefix(credContent, "ecdsa-")) {
 			sentryLog, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
 			fmt.Printf("    Sentry log:\n%s\n", sentryLog)
-			t.Fatalf("Credential file not found at %s: %v", caAfterActivatePath, err)
+			t.Fatalf("Credential file not found or invalid at %s after %v", caAfterActivatePath, credentialTimeout)
 		}
 		logOK(t, fmt.Sprintf("Credential file exists: %s", caAfterActivatePath))
 
