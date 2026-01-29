@@ -1262,7 +1262,7 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 
 	// Step 12: Verify sentry did NOT re-enroll (session resumed)
 	logStep(t, 12, "Verifying session resumed (no re-enrollment)...")
-	sentryLog, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
+	sentryLog, _ = cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
 
 	// After initial enrollment, there should be no new "Enrolling" or "Enrolled" messages
 	// We count occurrences - there should only be 1 from initial enrollment
@@ -1398,4 +1398,532 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 
 	fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Aegis restart sentry reconnection test"))
+}
+
+// TestOperatorOnboardingE2E tests the full operator onboarding workflow including:
+// - Tenant creation
+// - Invite code generation
+// - KeyMaker binding via API
+// - Authorization grant creation
+// - Authorization check validation
+// - Credential delivery to host
+//
+// This test exercises the same server-side flows as `km push` would use,
+// but at the API level since the CLI command is not yet implemented.
+func TestOperatorOnboardingE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	cfg := newTestConfig(t)
+	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
+
+	// Overall test timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// Test-unique identifiers to avoid collisions
+	testID := fmt.Sprintf("%d", time.Now().Unix())
+	tenantName := fmt.Sprintf("onboard-tenant-%s", testID)
+	dpuName := fmt.Sprintf("onboard-dpu-%s", testID)
+	operatorEmail := fmt.Sprintf("onboard-op-%s@test.local", testID)
+	keymakerName := fmt.Sprintf("test-km-%s", testID)
+	caName := fmt.Sprintf("onboard-ca-%s", testID)
+	caPath := fmt.Sprintf("/etc/ssh/trusted-user-ca-keys.d/%s.pub", caName)
+
+	// Cleanup on exit
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+
+		fmt.Printf("\n%s\n", dimFmt("Cleaning up processes and test artifacts..."))
+		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
+		cfg.killProcess(cleanupCtx, cfg.DPUVM, "aegis")
+		cfg.killProcess(cleanupCtx, cfg.DPUVM, "socat")
+		cfg.killProcess(cleanupCtx, cfg.HostVM, "sentry")
+		cfg.killProcess(cleanupCtx, cfg.HostVM, "socat")
+
+		// Clean up test CA file
+		cfg.multipassExec(cleanupCtx, cfg.HostVM, "sudo", "rm", "-f", caPath)
+	})
+
+	// Get VM IPs
+	serverIP, err := cfg.getVMIP(ctx, cfg.ServerVM)
+	if err != nil {
+		t.Fatalf("Failed to get server IP: %v", err)
+	}
+	logInfo(t, "Server IP: %s", serverIP)
+
+	dpuIP, err := cfg.getVMIP(ctx, cfg.DPUVM)
+	if err != nil {
+		t.Fatalf("Failed to get DPU IP: %v", err)
+	}
+	logInfo(t, "DPU IP: %s", dpuIP)
+
+	// ===== INFRASTRUCTURE SETUP (Steps 1-6) =====
+
+	// Step 1: Start nexus with fresh state
+	logStep(t, 1, "Starting nexus...")
+	cfg.killProcess(ctx, cfg.ServerVM, "nexus")
+
+	// Remove existing database to ensure fresh start
+	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-f", "/home/ubuntu/.local/share/bluectl/dpus.db")
+	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-f", "/home/ubuntu/.local/share/bluectl/dpus.db-wal")
+	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-f", "/home/ubuntu/.local/share/bluectl/dpus.db-shm")
+
+	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c",
+		"setsid /home/ubuntu/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+	if err != nil {
+		t.Fatalf("Failed to start nexus: %v", err)
+	}
+	time.Sleep(2 * time.Second)
+
+	output, err := cfg.multipassExec(ctx, cfg.ServerVM, "pgrep", "-x", "nexus")
+	if err != nil || strings.TrimSpace(output) == "" {
+		logs, _ := cfg.multipassExec(ctx, cfg.ServerVM, "cat", "/tmp/nexus.log")
+		t.Fatalf("Nexus not running. Logs:\n%s", logs)
+	}
+	logOK(t, "Nexus started")
+
+	// Step 2: Start TMFIFO socat on DPU
+	logStep(t, 2, "Starting TMFIFO socat on DPU...")
+	cfg.killProcess(ctx, cfg.DPUVM, "socat")
+	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
+		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP-LISTEN:%s,reuseaddr,fork > /tmp/socat.log 2>&1 < /dev/null &", cfg.TMFIFOPort))
+	if err != nil {
+		t.Fatalf("Failed to start socat on DPU: %v", err)
+	}
+	time.Sleep(2 * time.Second)
+
+	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "ls", "-la", "/dev/tmfifo_net0")
+	if err != nil {
+		t.Fatalf("TMFIFO device not created on DPU: %v", err)
+	}
+	logOK(t, fmt.Sprintf("TMFIFO device: %s", strings.TrimSpace(output)))
+
+	// Step 3: Start aegis with local API
+	logStep(t, 3, "Starting aegis with local API...")
+	cfg.killProcess(ctx, cfg.DPUVM, "aegis")
+	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
+	if err != nil {
+		t.Fatalf("Failed to start aegis: %v", err)
+	}
+	time.Sleep(2 * time.Second)
+
+	output, err = cfg.multipassExec(ctx, cfg.DPUVM, "cat", "/tmp/aegis.log")
+	if err != nil {
+		t.Fatalf("Failed to read aegis log: %v", err)
+	}
+	if !strings.Contains(output, "tmfifo listener created") {
+		t.Fatalf("Aegis not listening on TMFIFO. Log:\n%s", output)
+	}
+	logOK(t, "Aegis started with TMFIFO listener")
+
+	// Step 4: Start TMFIFO socat on host
+	logStep(t, 4, "Starting TMFIFO socat on host...")
+	cfg.killProcess(ctx, cfg.HostVM, "socat")
+	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
+		fmt.Sprintf("sudo setsid socat PTY,raw,echo=0,link=/dev/tmfifo_net0,mode=666 TCP:%s:%s > /tmp/socat.log 2>&1 < /dev/null &", dpuIP, cfg.TMFIFOPort))
+	if err != nil {
+		t.Fatalf("Failed to start socat on host: %v", err)
+	}
+	time.Sleep(2 * time.Second)
+
+	output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", "/dev/tmfifo_net0")
+	if err != nil {
+		t.Fatalf("TMFIFO device not created on host: %v", err)
+	}
+	logOK(t, "TMFIFO tunnel established")
+
+	// Step 5: Start sentry daemon (will enroll on first connect)
+	logStep(t, 5, "Starting sentry daemon (will enroll on connect)...")
+	cfg.killProcess(ctx, cfg.HostVM, "sentry")
+	_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
+		"sudo setsid /home/ubuntu/sentry --force-tmfifo > /tmp/sentry.log 2>&1 < /dev/null &")
+	if err != nil {
+		t.Fatalf("Failed to start sentry daemon: %v", err)
+	}
+
+	// Wait for enrollment to complete
+	time.Sleep(5 * time.Second)
+
+	// Verify sentry is running and enrolled
+	output, err = cfg.multipassExec(ctx, cfg.HostVM, "pgrep", "-x", "sentry")
+	if err != nil || strings.TrimSpace(output) == "" {
+		logs, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
+		t.Fatalf("Sentry not running. Logs:\n%s", logs)
+	}
+
+	sentryLog, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
+	if !strings.Contains(sentryLog, "Enrolled") && !strings.Contains(sentryLog, "enrolled") {
+		aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-30", "/tmp/aegis.log")
+		fmt.Printf("    Sentry log:\n%s\n", sentryLog)
+		fmt.Printf("    Aegis log:\n%s\n", aegisLog)
+		t.Fatalf("%s Sentry did not complete enrollment", errFmt("x"))
+	}
+	logOK(t, "Sentry daemon started and enrolled")
+
+	// ===== SCENARIO 1: HAPPY PATH - FULL ONBOARDING TO CREDENTIAL DELIVERY =====
+
+	t.Run("Scenario1_HappyPath", func(t *testing.T) {
+		t.Log("Scenario 1: Happy path - full onboarding to credential delivery")
+
+		// Step 6: Create tenant via bluectl
+		logStep(t, 6, "Creating tenant...")
+		_, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", tenantName, "--insecure")
+		if err != nil {
+			t.Fatalf("Failed to create tenant: %v", err)
+		}
+		logOK(t, fmt.Sprintf("Created tenant '%s'", tenantName))
+
+		// Step 7: Create invite via bluectl
+		logStep(t, 7, "Creating invite code...")
+		inviteOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"operator", "invite", operatorEmail, tenantName, "--insecure")
+		if err != nil {
+			t.Fatalf("Failed to create invite: %v", err)
+		}
+
+		inviteCode := extractInviteCode(inviteOutput)
+		if inviteCode == "" {
+			t.Fatalf("Could not extract invite code from output:\n%s", inviteOutput)
+		}
+		logOK(t, fmt.Sprintf("Created invite code: %s", inviteCode))
+
+		// Step 8: Bind KeyMaker via API
+		logStep(t, 8, "Binding KeyMaker via API...")
+
+		// Generate a test ed25519 public key
+		testPublicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJTa5xOvvKPh8rO5lDXm0G8dLJHBUGYT0NxXTTZ9R1Z2 test@example.com"
+
+		bindJSON := fmt.Sprintf(`{
+			"invite_code": "%s",
+			"public_key": "%s",
+			"platform": "linux",
+			"secure_element": "software",
+			"device_fingerprint": "test-fp-%s",
+			"device_name": "%s"
+		}`, inviteCode, testPublicKey, testID, keymakerName)
+
+		bindCmd := fmt.Sprintf(`curl -s -X POST http://127.0.0.1:18080/api/v1/keymakers/bind -H "Content-Type: application/json" -d '%s'`, bindJSON)
+		bindOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c", bindCmd)
+		if err != nil {
+			t.Fatalf("Failed to bind KeyMaker: %v", err)
+		}
+
+		// Parse bind response to extract keymaker_id and operator_id
+		var keymakerID, operatorID string
+		if strings.Contains(bindOutput, "keymaker_id") {
+			// Extract keymaker_id from JSON response
+			for _, part := range strings.Split(bindOutput, ",") {
+				if strings.Contains(part, "keymaker_id") {
+					start := strings.Index(part, `:`) + 1
+					keymakerID = strings.Trim(strings.TrimSpace(part[start:]), `"{}`)
+				}
+				if strings.Contains(part, "operator_id") {
+					start := strings.Index(part, `:`) + 1
+					operatorID = strings.Trim(strings.TrimSpace(part[start:]), `"{}`)
+				}
+			}
+		}
+
+		if keymakerID == "" {
+			t.Fatalf("Bind response missing keymaker_id: %s", bindOutput)
+		}
+		if operatorID == "" {
+			t.Fatalf("Bind response missing operator_id: %s", bindOutput)
+		}
+		logOK(t, fmt.Sprintf("KeyMaker bound: keymaker_id=%s, operator_id=%s", keymakerID, operatorID))
+
+		// Step 9: Register DPU and assign to tenant
+		logStep(t, 9, "Registering DPU and assigning to tenant...")
+
+		// Remove stale DPU if exists
+		_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "remove", dpuName, "--insecure")
+
+		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"dpu", "add", fmt.Sprintf("%s:18051", dpuIP), "--name", dpuName, "--insecure")
+		if err != nil {
+			t.Fatalf("Failed to register DPU: %v", err)
+		}
+
+		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"tenant", "assign", tenantName, dpuName, "--insecure")
+		if err != nil {
+			t.Fatalf("Failed to assign DPU to tenant: %v", err)
+		}
+		logOK(t, fmt.Sprintf("DPU '%s' registered and assigned to tenant '%s'", dpuName, tenantName))
+
+		// Step 10: Get tenant ID for authorization
+		logStep(t, 10, "Getting tenant ID for authorization...")
+		tenantListOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"tenant", "list", "--insecure", "-o", "json")
+		if err != nil {
+			t.Fatalf("Failed to list tenants: %v", err)
+		}
+
+		// Extract tenant ID from JSON output
+		var tenantID string
+		for _, line := range strings.Split(tenantListOutput, "\n") {
+			if strings.Contains(line, tenantName) && strings.Contains(line, "id") {
+				// Find the ID in this tenant entry
+				idStart := strings.Index(line, `"id":"`)
+				if idStart >= 0 {
+					idStart += 6
+					idEnd := strings.Index(line[idStart:], `"`)
+					if idEnd >= 0 {
+						tenantID = line[idStart : idStart+idEnd]
+					}
+				}
+			}
+		}
+		if tenantID == "" {
+			// Alternative: try to parse as JSON array
+			if strings.Contains(tenantListOutput, tenantName) {
+				// Look for pattern "id":"..." near the tenant name
+				idx := strings.Index(tenantListOutput, tenantName)
+				if idx > 0 {
+					// Search backward for "id":"
+					searchStr := tenantListOutput[:idx]
+					lastID := strings.LastIndex(searchStr, `"id":"`)
+					if lastID >= 0 {
+						lastID += 6
+						endID := strings.Index(searchStr[lastID:], `"`)
+						if endID >= 0 {
+							tenantID = searchStr[lastID : lastID+endID]
+						}
+					}
+				}
+			}
+		}
+		if tenantID == "" {
+			t.Logf("Warning: Could not extract tenant ID from output, using tenant name: %s", tenantName)
+			tenantID = tenantName // Fallback to using name
+		}
+		logOK(t, fmt.Sprintf("Tenant ID: %s", tenantID))
+
+		// Step 11: Create authorization grant via API
+		logStep(t, 11, "Creating authorization grant via API...")
+
+		authJSON := fmt.Sprintf(`{
+			"operator_email": "%s",
+			"tenant_id": "%s",
+			"ca_ids": ["%s"],
+			"device_ids": ["all"]
+		}`, operatorEmail, tenantID, caName)
+
+		authCmd := fmt.Sprintf(`curl -s -X POST http://127.0.0.1:18080/api/v1/authorizations -H "Content-Type: application/json" -d '%s'`, authJSON)
+		authOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c", authCmd)
+		if err != nil {
+			t.Fatalf("Failed to create authorization: %v", err)
+		}
+
+		if strings.Contains(authOutput, "error") && !strings.Contains(authOutput, "id") {
+			t.Fatalf("Authorization creation failed: %s", authOutput)
+		}
+		logOK(t, fmt.Sprintf("Authorization grant created: %s", strings.TrimSpace(authOutput)))
+
+		// Step 12: Verify authorization check passes
+		logStep(t, 12, "Verifying authorization check passes...")
+
+		checkJSON := fmt.Sprintf(`{
+			"operator_id": "%s",
+			"ca_id": "%s"
+		}`, operatorID, caName)
+
+		checkCmd := fmt.Sprintf(`curl -s -X POST http://127.0.0.1:18080/api/v1/authorizations/check -H "Content-Type: application/json" -d '%s'`, checkJSON)
+		checkOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c", checkCmd)
+		if err != nil {
+			t.Fatalf("Failed to check authorization: %v", err)
+		}
+
+		if !strings.Contains(checkOutput, `"authorized":true`) {
+			t.Fatalf("Authorization check failed: expected authorized=true, got: %s", checkOutput)
+		}
+		logOK(t, "Authorization check passed (authorized=true)")
+
+		// Step 13: Push credential via aegis localapi
+		logStep(t, 13, "Pushing SSH CA credential via aegis localapi...")
+
+		// Clear logs before push
+		_, _ = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", "sudo truncate -s 0 /tmp/aegis.log")
+		_, _ = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c", "sudo truncate -s 0 /tmp/sentry.log")
+
+		testCAKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJTa5xOvvKPh8rO5lDXm0G8dLJHBUGYT0NxXTTZ9R1Z2 test-ca@example.com"
+		testCAKeyB64 := base64.StdEncoding.EncodeToString([]byte(testCAKey))
+
+		credCmd := fmt.Sprintf(`curl -s -X POST http://localhost:9443/local/v1/credential -H "Content-Type: application/json" -d '{"credential_type":"ssh-ca","credential_name":"%s","data":"%s"}'`, caName, testCAKeyB64)
+		credOutput, err := cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c", credCmd)
+		if err != nil {
+			aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-50", "/tmp/aegis.log")
+			fmt.Printf("    Aegis log:\n%s\n", aegisLog)
+			t.Fatalf("Failed to push credential via localapi: %v", err)
+		}
+		if !strings.Contains(credOutput, `"success":true`) {
+			t.Fatalf("Credential push failed: %s", credOutput)
+		}
+		logOK(t, "Credential push via localapi completed")
+
+		// Allow time for credential to propagate
+		time.Sleep(3 * time.Second)
+
+		// Step 14: Verify credential file appears on host
+		logStep(t, 14, "Verifying credential installation on host...")
+
+		output, err = cfg.multipassExec(ctx, cfg.HostVM, "ls", "-la", caPath)
+		if err != nil {
+			sentryLog, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
+			fmt.Printf("    Sentry log:\n%s\n", sentryLog)
+			t.Fatalf("Credential file not found at %s: %v", caPath, err)
+		}
+		logOK(t, fmt.Sprintf("Credential file exists: %s", strings.TrimSpace(output)))
+
+		// Verify content is a valid SSH public key
+		output, err = cfg.multipassExec(ctx, cfg.HostVM, "cat", caPath)
+		if err != nil {
+			t.Fatalf("Failed to read credential file: %v", err)
+		}
+		output = strings.TrimSpace(output)
+		if !strings.HasPrefix(output, "ssh-") {
+			t.Errorf("%s Credential file does not contain valid SSH public key: %s", errFmt("x"), output[:min(50, len(output))])
+		} else {
+			logOK(t, "Credential contains valid SSH public key")
+		}
+
+		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Scenario 1 - Happy path onboarding"))
+	})
+
+	// ===== SCENARIO 2: AUTHORIZATION FAILURE WITHOUT GRANT =====
+
+	t.Run("Scenario2_AuthorizationFailure", func(t *testing.T) {
+		t.Log("Scenario 2: Authorization failure without grant")
+
+		// Create a new operator without any grants
+		noGrantEmail := fmt.Sprintf("nogrant-%s@test.local", testID)
+		noGrantInviteCode := ""
+
+		// Step 15: Create new invite for operator without grant
+		logStep(t, 15, "Creating invite for no-grant operator...")
+		inviteOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"operator", "invite", noGrantEmail, tenantName, "--insecure")
+		if err != nil {
+			t.Fatalf("Failed to create invite: %v", err)
+		}
+		noGrantInviteCode = extractInviteCode(inviteOutput)
+		if noGrantInviteCode == "" {
+			t.Fatalf("Could not extract invite code from output:\n%s", inviteOutput)
+		}
+		logOK(t, fmt.Sprintf("Created invite code for no-grant operator: %s", noGrantInviteCode))
+
+		// Step 16: Bind KeyMaker for no-grant operator
+		logStep(t, 16, "Binding KeyMaker for no-grant operator...")
+
+		testPublicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJTa5xOvvKPh8rO5lDXm0G8dLJHBUGYT0NxXTTZ9R1Z2 nogrant@example.com"
+
+		bindJSON := fmt.Sprintf(`{
+			"invite_code": "%s",
+			"public_key": "%s",
+			"platform": "linux",
+			"secure_element": "software",
+			"device_fingerprint": "test-fp-nogrant-%s",
+			"device_name": "nogrant-km-%s"
+		}`, noGrantInviteCode, testPublicKey, testID, testID)
+
+		bindCmd := fmt.Sprintf(`curl -s -X POST http://127.0.0.1:18080/api/v1/keymakers/bind -H "Content-Type: application/json" -d '%s'`, bindJSON)
+		bindOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c", bindCmd)
+		if err != nil {
+			t.Fatalf("Failed to bind KeyMaker: %v", err)
+		}
+
+		// Extract operator_id from response
+		var noGrantOperatorID string
+		for _, part := range strings.Split(bindOutput, ",") {
+			if strings.Contains(part, "operator_id") {
+				start := strings.Index(part, `:`) + 1
+				noGrantOperatorID = strings.Trim(strings.TrimSpace(part[start:]), `"{}`)
+			}
+		}
+		if noGrantOperatorID == "" {
+			t.Fatalf("Bind response missing operator_id: %s", bindOutput)
+		}
+		logOK(t, fmt.Sprintf("No-grant operator bound: operator_id=%s", noGrantOperatorID))
+
+		// Step 17: Verify auth check fails (no grant created)
+		logStep(t, 17, "Verifying authorization check fails without grant...")
+
+		checkJSON := fmt.Sprintf(`{
+			"operator_id": "%s",
+			"ca_id": "%s"
+		}`, noGrantOperatorID, caName)
+
+		checkCmd := fmt.Sprintf(`curl -s -X POST http://127.0.0.1:18080/api/v1/authorizations/check -H "Content-Type: application/json" -d '%s'`, checkJSON)
+		checkOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c", checkCmd)
+		if err != nil {
+			t.Fatalf("Failed to check authorization: %v", err)
+		}
+
+		if !strings.Contains(checkOutput, `"authorized":false`) {
+			t.Fatalf("Authorization check should have failed: expected authorized=false, got: %s", checkOutput)
+		}
+		if !strings.Contains(checkOutput, `"reason"`) {
+			t.Logf("Warning: Authorization denial missing reason field: %s", checkOutput)
+		}
+		logOK(t, fmt.Sprintf("Authorization correctly denied: %s", strings.TrimSpace(checkOutput)))
+
+		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Scenario 2 - Authorization failure without grant"))
+	})
+
+	// ===== SCENARIO 3: INVALID INVITE CODE =====
+
+	t.Run("Scenario3_InvalidInviteCode", func(t *testing.T) {
+		t.Log("Scenario 3: Invalid invite code")
+
+		// Step 18: Attempt bind with garbage invite code
+		logStep(t, 18, "Attempting bind with invalid invite code...")
+
+		testPublicKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJTa5xOvvKPh8rO5lDXm0G8dLJHBUGYT0NxXTTZ9R1Z2 invalid@example.com"
+
+		bindJSON := fmt.Sprintf(`{
+			"invite_code": "INVALID-CODE-1234-5678",
+			"public_key": "%s",
+			"platform": "linux",
+			"secure_element": "software",
+			"device_fingerprint": "test-fp-invalid-%s",
+			"device_name": "invalid-km-%s"
+		}`, testPublicKey, testID, testID)
+
+		// Use -w to get HTTP status code along with response
+		bindCmd := fmt.Sprintf(`curl -s -w "\nHTTP_STATUS:%%{http_code}" -X POST http://127.0.0.1:18080/api/v1/keymakers/bind -H "Content-Type: application/json" -d '%s'`, bindJSON)
+		bindOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c", bindCmd)
+		if err != nil {
+			t.Fatalf("curl command failed: %v", err)
+		}
+
+		// Parse response and status code
+		parts := strings.Split(bindOutput, "HTTP_STATUS:")
+		responseBody := strings.TrimSpace(parts[0])
+		httpStatus := ""
+		if len(parts) > 1 {
+			httpStatus = strings.TrimSpace(parts[1])
+		}
+
+		// Verify HTTP 400 response
+		if httpStatus != "400" && httpStatus != "401" {
+			t.Errorf("%s Expected HTTP 400 or 401, got: %s. Response: %s", errFmt("x"), httpStatus, responseBody)
+		} else {
+			logOK(t, fmt.Sprintf("Got expected HTTP status: %s", httpStatus))
+		}
+
+		// Verify error message mentions invalid code
+		if !strings.Contains(responseBody, "invalid") && !strings.Contains(responseBody, "unknown") && !strings.Contains(responseBody, "error") {
+			t.Errorf("%s Error message should mention invalid/unknown code: %s", errFmt("x"), responseBody)
+		} else {
+			logOK(t, fmt.Sprintf("Error message: %s", responseBody))
+		}
+
+		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Scenario 3 - Invalid invite code rejection"))
+	})
+
+	fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Operator Onboarding E2E test (all scenarios)"))
 }
