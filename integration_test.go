@@ -474,7 +474,8 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	logOK(t, "Sentry daemon started and enrolled")
 
 	// Step 5: Push credential directly to aegis localapi
-	// Note: bluectl ssh-ca commands don't exist yet, so we push directly to localapi
+	// Note: km ssh-ca exists but requires full operator auth flow (invite, init, grant).
+	// This test bypasses that to focus on transport/credential delivery, not operator workflow.
 	logStep(t, 5, "Pushing SSH CA credential via aegis localapi...")
 
 	// Clear logs before push to capture fresh markers
