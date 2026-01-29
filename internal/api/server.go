@@ -107,11 +107,11 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/authorizations/{id}", s.handleDeleteAuthorization)
 	mux.HandleFunc("POST /api/v1/authorizations/check", s.handleCheckAuthorization)
 
-	// SSH CA registration routes (auth required)
-	mux.HandleFunc("POST /api/v1/ssh-cas", s.AuthMiddleware(s.handleCreateSSHCA))
+	// SSH CA registration routes
+	mux.HandleFunc("POST /api/v1/ssh-cas", s.handleCreateSSHCA)
 
-	// Credential push routes (auth required)
-	mux.HandleFunc("POST /api/v1/push", s.AuthMiddleware(s.handlePush))
+	// Credential push routes
+	mux.HandleFunc("POST /api/v1/push", s.handlePush)
 
 	// Trust routes
 	mux.HandleFunc("POST /api/v1/trust", s.handleCreateTrust)

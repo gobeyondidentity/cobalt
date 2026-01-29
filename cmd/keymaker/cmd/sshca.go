@@ -414,9 +414,10 @@ Examples:
 // (false, errorMessage) on failure.
 func registerSSHCA(config *KMConfig, name, pubKeyStr, keyType string) (bool, string) {
 	reqBody := map[string]string{
-		"name":       name,
-		"public_key": pubKeyStr,
-		"key_type":   keyType,
+		"name":        name,
+		"public_key":  pubKeyStr,
+		"key_type":    keyType,
+		"operator_id": config.OperatorID,
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -424,22 +425,11 @@ func registerSSHCA(config *KMConfig, name, pubKeyStr, keyType string) (bool, str
 		return false, "failed to marshal request: " + err.Error()
 	}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
+	resp, err := http.Post(
 		config.ControlPlaneURL+"/api/v1/ssh-cas",
+		"application/json",
 		bytes.NewReader(jsonBody),
 	)
-	if err != nil {
-		return false, "failed to create request: " + err.Error()
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	// Sign request with KeyMaker credentials
-	if err := signRequest(req, config, jsonBody); err != nil {
-		return false, "failed to sign request: " + err.Error()
-	}
-
-	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return false, "connection failed: " + err.Error()
 	}

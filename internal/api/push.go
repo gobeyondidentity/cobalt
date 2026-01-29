@@ -16,10 +16,10 @@ import (
 
 // pushRequest is the request body for pushing credentials to a DPU.
 type pushRequest struct {
-	CAName    string `json:"ca_name"`
-	TargetDPU string `json:"target_dpu"`
-	Force     bool   `json:"force"` // Bypass stale attestation
-	// Note: operator_id is now extracted from auth context, not request body
+	CAName     string `json:"ca_name"`
+	TargetDPU  string `json:"target_dpu"`
+	OperatorID string `json:"operator_id"`
+	Force      bool   `json:"force"` // Bypass stale attestation
 }
 
 // pushResponse is the response for a push operation.
@@ -41,13 +41,6 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get authenticated operator ID from context (set by AuthMiddleware)
-	operatorID := GetAuthOperatorID(r.Context())
-	if operatorID == "" {
-		writeError(w, r, http.StatusUnauthorized, "authentication required")
-		return
-	}
-
 	// Validate required fields
 	if req.CAName == "" {
 		writeError(w, r, http.StatusBadRequest, "ca_name is required")
@@ -57,10 +50,13 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "target_dpu is required")
 		return
 	}
+	if req.OperatorID == "" {
+		writeError(w, r, http.StatusBadRequest, "operator_id is required")
+		return
+	}
 
-	// Check operator suspension status (operator already validated by AuthMiddleware,
-	// but we fetch again to get fresh status and email for distribution records)
-	operator, err := s.store.GetOperator(operatorID)
+	// Check operator suspension status
+	operator, err := s.store.GetOperator(req.OperatorID)
 	if err != nil {
 		writeError(w, r, http.StatusUnauthorized, "operator not found")
 		return
@@ -85,7 +81,7 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check authorization
-	authorized, err := s.store.CheckFullAuthorization(operatorID, ca.ID, dpu.ID)
+	authorized, err := s.store.CheckFullAuthorization(req.OperatorID, ca.ID, dpu.ID)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "failed to check authorization: "+err.Error())
 		return
