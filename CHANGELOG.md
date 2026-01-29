@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.9] - 2026-01-28
 
+### Breaking Changes
+- **bluectl Requires Server Mode**: Local SQLite mode removed. All commands now require `--server` flag or `BLUECTL_SERVER` environment variable pointing to a running nexus instance.
+
 ### Added
 - **TCP Transport for Tmfifo**: Rewrote PTY-based transport to use TCP sockets (cleaner protocol, more reliable, better debugging)
 - **Sentry `--hostname` Flag**: Overrides system hostname for test isolation
