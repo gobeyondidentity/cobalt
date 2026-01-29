@@ -3835,8 +3835,37 @@ func TestOperatorOnboardingE2E(t *testing.T) {
 		}
 		logOK(t, "Aegis started with TMFIFO listener")
 
-		// Step 3: Start sentry daemon on qa-host
-		logStep(t, 3, "Starting sentry daemon on qa-host...")
+		// Step 3: Create tenant
+		// NOTE: Must create tenant and register DPU BEFORE starting sentry,
+		// otherwise sentry enrollment fails (aegis rejects unregistered DPUs)
+		logStep(t, 3, "Creating tenant...")
+		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"tenant", "add", tenantName, "--server", "http://localhost:18080")
+		if err != nil {
+			t.Fatalf("Failed to create tenant: %v", err)
+		}
+		logOK(t, fmt.Sprintf("Created tenant '%s'", tenantName))
+
+		// Step 4: Register DPU and assign to tenant
+		logStep(t, 4, "Registering DPU...")
+		// Remove stale DPU registration if exists
+		cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "remove", dpuName, "--server", "http://localhost:18080")
+
+		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"dpu", "add", fmt.Sprintf("%s:18051", dpuIP), "--name", dpuName, "--server", "http://localhost:18080")
+		if err != nil {
+			t.Fatalf("Failed to register DPU: %v", err)
+		}
+
+		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"tenant", "assign", tenantName, dpuName, "--server", "http://localhost:18080")
+		if err != nil {
+			t.Fatalf("Failed to assign DPU to tenant: %v", err)
+		}
+		logOK(t, fmt.Sprintf("DPU '%s' registered and assigned to tenant", dpuName))
+
+		// Step 5: Start sentry daemon on qa-host (now that DPU is registered)
+		logStep(t, 5, "Starting sentry daemon on qa-host...")
 		cfg.killProcess(ctx, cfg.HostVM, "sentry")
 		_, err = cfg.multipassExec(ctx, cfg.HostVM, "bash", "-c",
 			fmt.Sprintf("sudo setsid /home/ubuntu/sentry --hostname %s --force-tmfifo --tmfifo-addr=%s:9444 > /tmp/sentry.log 2>&1 < /dev/null &", testHostname, dpuIP))
@@ -3854,33 +3883,6 @@ func TestOperatorOnboardingE2E(t *testing.T) {
 			t.Fatalf("%s Sentry did not complete enrollment", errFmt("x"))
 		}
 		logOK(t, "Sentry daemon started and enrolled")
-
-		// Step 4: Create tenant
-		logStep(t, 4, "Creating tenant...")
-		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-			"tenant", "add", tenantName, "--server", "http://localhost:18080")
-		if err != nil {
-			t.Fatalf("Failed to create tenant: %v", err)
-		}
-		logOK(t, fmt.Sprintf("Created tenant '%s'", tenantName))
-
-		// Step 5: Register DPU and assign to tenant
-		logStep(t, 5, "Registering DPU...")
-		// Remove stale DPU registration if exists
-		cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "remove", dpuName, "--server", "http://localhost:18080")
-
-		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-			"dpu", "add", fmt.Sprintf("%s:18051", dpuIP), "--name", dpuName, "--server", "http://localhost:18080")
-		if err != nil {
-			t.Fatalf("Failed to register DPU: %v", err)
-		}
-
-		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-			"tenant", "assign", tenantName, dpuName, "--server", "http://localhost:18080")
-		if err != nil {
-			t.Fatalf("Failed to assign DPU to tenant: %v", err)
-		}
-		logOK(t, fmt.Sprintf("DPU '%s' registered and assigned to tenant", dpuName))
 
 		// Step 6: Create invite code
 		logStep(t, 6, "Creating invite code...")
