@@ -85,8 +85,20 @@ type Server struct {
 	credentialQueue []*QueuedCredential
 	credentialMu    sync.RWMutex
 
+	// pendingAcks tracks credential pushes waiting for acknowledgment.
+	// Key is the message ID, value is a channel that receives the ack result.
+	pendingAcks   map[string]chan *CredentialAckResult
+	pendingAcksMu sync.Mutex
+
 	// store is the SQLite store for state persistence (optional)
 	store *store.Store
+}
+
+// CredentialAckResult contains the result of a credential installation from sentry.
+type CredentialAckResult struct {
+	Success       bool
+	InstalledPath string
+	Error         string
 }
 
 // NewServer creates a new local API server.
@@ -114,7 +126,8 @@ func NewServer(cfg *Config) (*Server, error) {
 			baseURL:    strings.TrimSuffix(cfg.ControlPlaneURL, "/"),
 			httpClient: httpClient,
 		},
-		store: cfg.Store,
+		store:       cfg.Store,
+		pendingAcks: make(map[string]chan *CredentialAckResult),
 	}
 
 	// Restore state from store if available
@@ -384,8 +397,12 @@ func (s *Server) GetActiveTransport() transport.Transport {
 	return s.activeTransport
 }
 
+// credentialAckTimeout is how long to wait for a CREDENTIAL_ACK from sentry.
+const credentialAckTimeout = 10 * time.Second
+
 // PushCredential sends a credential to the paired Host Agent.
 // Uses the active transport if available, otherwise queues for Host Agent retrieval on next poll.
+// When using transport, waits for CREDENTIAL_ACK to confirm installation.
 func (s *Server) PushCredential(ctx context.Context, credType, credName string, data []byte) (*CredentialPushResult, error) {
 	log.Printf("[CRED-DELIVERY] localapi: pushing credential type=%s name=%s", credType, credName)
 
@@ -409,13 +426,9 @@ func (s *Server) PushCredential(ctx context.Context, credType, credName string, 
 
 	if activeTransport != nil && isAuthenticated {
 		log.Printf("[CRED-DELIVERY] localapi: using active transport (%s) for push", activeTransport.Type())
-		err := s.pushCredentialViaTransport(activeTransport, credType, credName, data)
+		result, err := s.pushCredentialViaTransportSync(ctx, activeTransport, credType, credName, data)
 		if err == nil {
-			log.Printf("[CRED-DELIVERY] localapi: credential sent via transport successfully")
-			return &CredentialPushResult{
-				Success: true,
-				Message: fmt.Sprintf("Credential '%s' sent to host via %s transport. Awaiting installation ack.", credName, activeTransport.Type()),
-			}, nil
+			return result, nil
 		}
 		// Transport push failed, fall through to queue
 		log.Printf("[CRED-DELIVERY] localapi: transport push failed, queueing for retrieval: %v", err)
@@ -427,8 +440,9 @@ func (s *Server) PushCredential(ctx context.Context, credType, credName string, 
 	return s.queueCredentialForHost(hostname, credType, credName, data)
 }
 
-// pushCredentialViaTransport sends a credential push message over the transport.
-func (s *Server) pushCredentialViaTransport(t transport.Transport, credType, credName string, data []byte) error {
+// pushCredentialViaTransportSync sends a credential push message over the transport
+// and waits for the CREDENTIAL_ACK from sentry to confirm installation.
+func (s *Server) pushCredentialViaTransportSync(ctx context.Context, t transport.Transport, credType, credName string, data []byte) (*CredentialPushResult, error) {
 	log.Printf("[CRED-DELIVERY] localapi: sending CREDENTIAL_PUSH message via %s transport", t.Type())
 
 	payload, err := json.Marshal(map[string]interface{}{
@@ -437,20 +451,92 @@ func (s *Server) pushCredentialViaTransport(t transport.Transport, credType, cre
 		"data":            data,
 	})
 	if err != nil {
-		return fmt.Errorf("localapi: marshal credential payload: %w", err)
+		return nil, fmt.Errorf("localapi: marshal credential payload: %w", err)
 	}
 
+	msgID := generateNonce()
 	msg := &transport.Message{
 		Type:    transport.MessageCredentialPush,
 		Payload: payload,
-		ID:      generateNonce(),
+		ID:      msgID,
 	}
 
+	// Register for ack before sending to avoid race
+	ackCh := make(chan *CredentialAckResult, 1)
+	s.pendingAcksMu.Lock()
+	s.pendingAcks[msgID] = ackCh
+	s.pendingAcksMu.Unlock()
+
+	// Clean up on exit
+	defer func() {
+		s.pendingAcksMu.Lock()
+		delete(s.pendingAcks, msgID)
+		s.pendingAcksMu.Unlock()
+	}()
+
+	// Send the message
 	if err := t.Send(msg); err != nil {
-		return fmt.Errorf("localapi: transport send failed: %w", err)
+		return nil, fmt.Errorf("localapi: transport send failed: %w", err)
 	}
 
-	return nil
+	log.Printf("[CRED-DELIVERY] localapi: credential sent, waiting for ack (msgID=%s)", msgID)
+
+	// Wait for ack with timeout
+	timeout := credentialAckTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining < timeout {
+			timeout = remaining
+		}
+	}
+
+	select {
+	case ack := <-ackCh:
+		if ack.Success {
+			log.Printf("[CRED-DELIVERY] localapi: credential installed at %s", ack.InstalledPath)
+			return &CredentialPushResult{
+				Success:       true,
+				Message:       fmt.Sprintf("Credential installed at %s", ack.InstalledPath),
+				InstalledPath: ack.InstalledPath,
+				SshdReloaded:  true, // Sentry always reloads sshd on success
+			}, nil
+		}
+		log.Printf("[CRED-DELIVERY] localapi: credential installation failed: %s", ack.Error)
+		return &CredentialPushResult{
+			Success: false,
+			Message: fmt.Sprintf("Credential installation failed: %s", ack.Error),
+		}, nil
+	case <-time.After(timeout):
+		log.Printf("[CRED-DELIVERY] localapi: timeout waiting for ack (msgID=%s)", msgID)
+		return nil, fmt.Errorf("localapi: timeout waiting for credential ack")
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// HandleCredentialAck processes a CREDENTIAL_ACK message from sentry.
+// This should be called by the transport message handler when an ack is received.
+func (s *Server) HandleCredentialAck(msgID string, success bool, installedPath, errMsg string) {
+	s.pendingAcksMu.Lock()
+	ackCh, exists := s.pendingAcks[msgID]
+	s.pendingAcksMu.Unlock()
+
+	if !exists {
+		log.Printf("[CRED-DELIVERY] localapi: received ack for unknown msgID=%s (may have timed out)", msgID)
+		return
+	}
+
+	// Non-blocking send in case the waiter already timed out
+	select {
+	case ackCh <- &CredentialAckResult{
+		Success:       success,
+		InstalledPath: installedPath,
+		Error:         errMsg,
+	}:
+		log.Printf("[CRED-DELIVERY] localapi: ack delivered to waiter (msgID=%s)", msgID)
+	default:
+		log.Printf("[CRED-DELIVERY] localapi: ack channel full or closed (msgID=%s)", msgID)
+	}
 }
 
 // generateNonce creates a random nonce for message replay protection.

@@ -347,7 +347,7 @@ func handleTransportMessage(ctx context.Context, msg *transport.Message, localSe
 	case transport.MessagePostureReport:
 		return handlePostureReport(ctx, msg)
 	case transport.MessageCredentialAck:
-		handleCredentialAck(msg)
+		handleCredentialAck(msg, localServer)
 		return nil
 	default:
 		log.Printf("transport: unknown message type: %s", msg.Type)
@@ -433,7 +433,7 @@ func handlePostureReport(ctx context.Context, msg *transport.Message) *transport
 }
 
 // handleCredentialAck processes CREDENTIAL_ACK messages from the Host Agent.
-func handleCredentialAck(msg *transport.Message) {
+func handleCredentialAck(msg *transport.Message, localServer *localapi.Server) {
 	var payload struct {
 		Success       bool   `json:"success"`
 		InstalledPath string `json:"installed_path,omitempty"`
@@ -443,6 +443,9 @@ func handleCredentialAck(msg *transport.Message) {
 		log.Printf("transport: invalid credential ack payload: %v", err)
 		return
 	}
+
+	// Deliver ack to waiting credential pusher
+	localServer.HandleCredentialAck(msg.ID, payload.Success, payload.InstalledPath, payload.Error)
 
 	if payload.Success {
 		log.Printf("transport: credential installed at %s", payload.InstalledPath)

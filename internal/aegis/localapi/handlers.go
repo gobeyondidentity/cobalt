@@ -296,7 +296,8 @@ func (s *Server) handleCredentialPush(w http.ResponseWriter, r *http.Request) {
 	// Try active transport first if available
 	activeTransport := s.GetActiveTransport()
 	if activeTransport != nil {
-		if err := s.pushCredentialViaTransport(activeTransport, req.CredentialType, req.CredentialName, req.Data); err != nil {
+		result, err := s.pushCredentialViaTransportSync(r.Context(), activeTransport, req.CredentialType, req.CredentialName, req.Data)
+		if err != nil {
 			log.Printf("Local API: transport credential push failed: %v", err)
 			s.writeJSON(w, http.StatusOK, CredentialPushResponse{
 				Success: false,
@@ -305,10 +306,10 @@ func (s *Server) handleCredentialPush(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Transport send is async; we can't wait for the ack in a synchronous HTTP response
-		log.Printf("Local API: credential pushed via %s transport", activeTransport.Type())
+		log.Printf("Local API: credential pushed via %s transport, installed=%s", activeTransport.Type(), result.InstalledPath)
 		s.writeJSON(w, http.StatusOK, CredentialPushResponse{
-			Success: true,
+			Success:       result.Success,
+			InstalledPath: result.InstalledPath,
 		})
 		return
 	}
