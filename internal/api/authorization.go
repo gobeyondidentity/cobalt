@@ -191,6 +191,17 @@ func (s *Server) handleCheckAuthorization(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Check operator suspension status
+	operator, err := s.store.GetOperator(req.OperatorID)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "operator not found")
+		return
+	}
+	if operator.Status == "suspended" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "operator suspended"})
+		return
+	}
+
 	// Check KeyMaker revocation status if keymaker_id is provided
 	if req.KeyMakerID != "" {
 		km, err := s.store.GetKeyMaker(req.KeyMakerID)
@@ -205,7 +216,6 @@ func (s *Server) handleCheckAuthorization(w http.ResponseWriter, r *http.Request
 	}
 
 	var authorized bool
-	var err error
 
 	if req.DeviceID != "" {
 		// Full authorization check (CA + device)

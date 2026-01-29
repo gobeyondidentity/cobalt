@@ -910,6 +910,111 @@ func TestCheckAuthorization_ActiveKeyMaker(t *testing.T) {
 	}
 }
 
+// TestCheckAuthorization_SuspendedOperator tests that suspended operators are rejected.
+func TestCheckAuthorization_SuspendedOperator(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant first
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create authorization granting access
+	authID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(authID, operatorID, tenantID, []string{"ca-prod"}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// Suspend the operator
+	if err := server.store.UpdateOperatorStatus(operatorID, "suspended"); err != nil {
+		t.Fatalf("failed to suspend operator: %v", err)
+	}
+
+	// Check authorization with suspended operator
+	body := CheckAuthorizationRequest{
+		OperatorID: operatorID,
+		CAID:       "ca-prod",
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/api/v1/authorizations/check", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	// Should return 403 Forbidden
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected status 403 for suspended operator, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify error message
+	var errResp struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+	if errResp.Error != "operator suspended" {
+		t.Errorf("expected error 'operator suspended', got '%s'", errResp.Error)
+	}
+}
+
+// TestCheckAuthorization_ActiveOperator tests that active operators pass the suspension check.
+func TestCheckAuthorization_ActiveOperator(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant first
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator (default status is active)
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create authorization granting access
+	authID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(authID, operatorID, tenantID, []string{"ca-prod"}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// Check authorization with active operator
+	body := CheckAuthorizationRequest{
+		OperatorID: operatorID,
+		CAID:       "ca-prod",
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/api/v1/authorizations/check", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	// Should return 200 OK
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200 for active operator, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result CheckAuthorizationResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if !result.Authorized {
+		t.Errorf("expected authorized=true, got false. Reason: %s", result.Reason)
+	}
+}
+
 // TestListAuthorizations_IncludesNames tests that list response includes names.
 func TestListAuthorizations_IncludesNames(t *testing.T) {
 	server, mux := setupTestServer(t)
