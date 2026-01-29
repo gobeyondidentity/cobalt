@@ -57,6 +57,9 @@ func TestNewHostTransport_MockOverridesHardware(t *testing.T) {
 }
 
 func TestNewHostTransport_NoTransportAvailable(t *testing.T) {
+	if HasTmfifoInterface() {
+		t.Skip("Test assumes no hardware; tmfifo_net0 interface detected")
+	}
 	// No mock, no tmfifo socket, no invite code
 	cfg := &Config{
 		TmfifoSocketPath: "/nonexistent/socket",
@@ -73,6 +76,9 @@ func TestNewHostTransport_NoTransportAvailable(t *testing.T) {
 }
 
 func TestNewHostTransport_NilConfig(t *testing.T) {
+	if HasTmfifoInterface() {
+		t.Skip("Test assumes no hardware; tmfifo_net0 interface detected")
+	}
 	// Should handle nil config gracefully
 	transport, err := NewHostTransport(nil)
 	if err == nil {
@@ -85,6 +91,9 @@ func TestNewHostTransport_NilConfig(t *testing.T) {
 }
 
 func TestNewHostTransport_NetworkRequiresDPUAddr(t *testing.T) {
+	if HasTmfifoInterface() {
+		t.Skip("Test assumes no hardware; tmfifo_net0 interface detected")
+	}
 	// Only invite code, no DPU address - should error
 	cfg := &Config{
 		InviteCode:       "test-invite",
@@ -115,6 +124,9 @@ func TestNewHostTransport_NetworkRequiresDPUAddr(t *testing.T) {
 }
 
 func TestNewHostTransport_ForceTmfifo(t *testing.T) {
+	if HasTmfifoInterface() {
+		t.Skip("Test assumes no hardware; tmfifo_net0 interface detected")
+	}
 	// ForceTmfifo with nonexistent socket should error
 	cfg := &Config{
 		ForceTmfifo:      true,
