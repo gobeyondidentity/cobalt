@@ -8,6 +8,7 @@ import (
 	cryptoRand "crypto/rand"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -20,6 +21,7 @@ import (
 	"github.com/nmelo/secure-infra/internal/aegis"
 	"github.com/nmelo/secure-infra/internal/aegis/localapi"
 	"github.com/nmelo/secure-infra/internal/version"
+	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/nmelo/secure-infra/pkg/transport"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -42,6 +44,9 @@ var (
 	docaPCIAddr    = flag.String("doca-pci-addr", "", "PCI address of DOCA device on DPU (e.g., \"03:00.0\")")
 	docaRepPCIAddr = flag.String("doca-rep-pci-addr", "", "Representor PCI address for host connection")
 	docaServerName = flag.String("doca-server-name", "secure-infra", "ComCh server name for host communication")
+
+	// State persistence
+	dbPath = flag.String("db-path", "/var/lib/aegis/aegis.db", "Path to SQLite database for state persistence")
 )
 
 func main() {
@@ -176,6 +181,14 @@ func main() {
 func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Server) (*localapi.Server, error) {
 	log.Printf("Starting local API for Host Agent communication...")
 
+	// Initialize state persistence store
+	// When local-api is enabled, the store is mandatory for state persistence
+	stateStore, err := store.Open(*dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open state store at %s: %w", *dbPath, err)
+	}
+	log.Printf("State persistence enabled: %s", *dbPath)
+
 	localCfg := &localapi.Config{
 		ListenAddr:       cfg.LocalAPIAddr,
 		ControlPlaneURL:  cfg.ControlPlaneURL,
@@ -184,6 +197,7 @@ func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Se
 		DPUSerial:        cfg.DPUSerial,
 		AllowedHostnames: cfg.AllowedHostnames,
 		AllowTmfifoNet:   *allowTmfifoNet,
+		Store:            stateStore,
 		AttestationFetcher: func(ctx context.Context) (*localapi.AttestationInfo, error) {
 			return fetchAttestation(ctx, agentServer)
 		},
@@ -191,10 +205,12 @@ func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Se
 
 	server, err := localapi.NewServer(localCfg)
 	if err != nil {
+		stateStore.Close()
 		return nil, err
 	}
 
 	if err := server.Start(); err != nil {
+		stateStore.Close()
 		return nil, err
 	}
 

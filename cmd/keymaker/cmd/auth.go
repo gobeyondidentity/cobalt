@@ -13,9 +13,10 @@ import (
 
 // AuthorizationCheckRequest is sent to the server to check authorization.
 type AuthorizationCheckRequest struct {
-	OperatorID string `json:"operator_id"`
-	CAID       string `json:"ca_id"`
-	DeviceID   string `json:"device_id,omitempty"`
+	OperatorID  string `json:"operator_id"`
+	CAID        string `json:"ca_id"`
+	DeviceID    string `json:"device_id,omitempty"`
+	KeyMakerID  string `json:"keymaker_id,omitempty"`
 }
 
 // AuthorizationCheckResponse is returned from the server.
@@ -98,8 +99,9 @@ func checkAuthorization(caName, deviceName string) error {
 
 	// Now use caInfo.ID and deviceID for the authorization check
 	reqBody := AuthorizationCheckRequest{
-		OperatorID: config.OperatorID,
-		CAID:       caInfo.ID,
+		OperatorID:  config.OperatorID,
+		CAID:        caInfo.ID,
+		KeyMakerID:  config.KeyMakerID,
 	}
 	if deviceID != "" {
 		reqBody.DeviceID = deviceID
@@ -130,6 +132,10 @@ func checkAuthorization(caName, deviceName string) error {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
+			// Handle device revoked error specially
+			if errResp.Error == "device revoked" {
+				return &DeviceRevokedError{}
+			}
 			return clierror.InternalError(fmt.Errorf("authorization check failed: %s", errResp.Error))
 		}
 		return clierror.InternalError(fmt.Errorf("authorization check failed: HTTP %d", resp.StatusCode))
@@ -206,4 +212,11 @@ func (e *AuthorizationError) Error() string {
 		return fmt.Sprintf("Error: Not authorized for device '%s'\nHint: Contact your tenant admin for access.", e.Resource)
 	}
 	return fmt.Sprintf("Error: Not authorized for CA '%s'\nHint: Contact your tenant admin for access.", e.Resource)
+}
+
+// DeviceRevokedError indicates the KeyMaker has been revoked and cannot perform operations.
+type DeviceRevokedError struct{}
+
+func (e *DeviceRevokedError) Error() string {
+	return "Error: This device has been revoked.\nHint: Contact your tenant admin to re-enroll this device."
 }

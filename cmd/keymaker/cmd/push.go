@@ -1,23 +1,23 @@
 package cmd
 
 import (
-	"context"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
-	"time"
 
-	"github.com/nmelo/secure-infra/pkg/attestation"
-	"github.com/nmelo/secure-infra/pkg/audit"
 	"github.com/nmelo/secure-infra/pkg/clierror"
-	"github.com/nmelo/secure-infra/pkg/grpcclient"
-	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/spf13/cobra"
 )
 
-// operatorContext holds the operator identity for audit records.
-type operatorContext struct {
-	OperatorID    string
-	OperatorEmail string
+// pushHTTPClient is the HTTP client used for push requests. Package-level for testing.
+var pushHTTPClient HTTPClient = http.DefaultClient
+
+// HTTPClient interface for mocking HTTP requests in tests.
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
 }
 
 func init() {
@@ -65,320 +65,184 @@ Examples:
 			return clierror.TokenExpired()
 		}
 
-		operatorCtx := &operatorContext{
-			OperatorID:    config.OperatorID,
-			OperatorEmail: config.OperatorEmail,
-		}
+		fmt.Printf("Pushing CA '%s' to %s...\n", caName, targetDPU)
 
-		// Check authorization before distributing (CA + device)
-		if err := checkAuthorization(caName, targetDPU); err != nil {
-			if authErr, ok := err.(*AuthorizationError); ok {
-				if authErr.Type == "ca" {
-					return clierror.NotAuthorized(fmt.Sprintf("CA '%s'", authErr.Resource))
-				}
-				return clierror.NotAuthorized(fmt.Sprintf("device '%s'", authErr.Resource))
-			}
-			// Connection error to server
-			return clierror.ConnectionFailed("server")
-		}
-
-		// Verify SSH CA exists and get it
-		ca, err := dpuStore.GetSSHCA(caName)
+		// Call server push endpoint
+		resp, err := callPushAPI(config, caName, targetDPU, force)
 		if err != nil {
-			return clierror.CANotFound(caName)
+			return err
 		}
 
-		// Verify target DPU exists
-		dpu, err := dpuStore.Get(targetDPU)
-		if err != nil {
-			return clierror.DeviceNotFound(targetDPU)
-		}
-
-		// Create gate and audit logger
-		gate := attestation.NewGate(dpuStore)
-		auditLogger := audit.NewLogger(dpuStore)
-
-		fmt.Printf("Pushing CA '%s' to %s...\n", caName, dpu.Name)
-
-		// Check attestation gate with auto-refresh
-		decision, refreshed, err := gate.CanDistributeWithAutoRefresh(
-			cmd.Context(),
-			dpu,
-			"auto:distribution",
-			operatorCtx.OperatorEmail,
-		)
-		if err != nil {
-			return clierror.AttestationUnavailable()
-		}
-
-		// Handle gate decision
-		if decision.Allowed {
-			// Log audit entry for successful gate check
-			logAuditEntry(auditLogger, operatorCtx, dpu.Name, caName, "allowed", "false", decision)
-
-			age := "unknown"
-			if decision.Attestation != nil {
-				age = formatAge(decision.Attestation.Age())
+		// Display attestation status
+		if resp.AttestationStatus != "" {
+			if resp.Success {
+				fmt.Printf("  Attestation: %s (%s ago)\n\n", resp.AttestationStatus, resp.AttestationAge)
+			} else if resp.AttestationStatus == "failed" {
+				fmt.Printf("x Attestation failed: device failed integrity verification\n\n")
+			} else if strings.Contains(resp.Message, "stale") {
+				fmt.Printf("x Attestation stale (%s ago)\n\n", resp.AttestationAge)
+			} else {
+				fmt.Printf("x Attestation %s\n\n", resp.AttestationStatus)
 			}
-
-			if refreshed {
-				fmt.Printf("  Attestation stale. Refreshed successfully.\n")
-			}
-			fmt.Printf("  Attestation: verified (%s ago)\n\n", age)
-
-			// Proceed with push
-			return executeDistribution(cmd.Context(), dpu, ca, decision, false, "", operatorCtx)
 		}
 
-		// Gate blocked
-		// Check if this is a failed attestation (hard block, no force allowed)
-		if decision.IsAttestationFailed() {
-			logAuditEntry(auditLogger, operatorCtx, dpu.Name, caName, "blocked", "false", decision)
-			recordBlockedDistribution(dpu.Name, caName, decision, operatorCtx)
-
-			if refreshed {
-				fmt.Printf("  Attestation stale. Refresh failed.\n")
+		// Handle failure
+		if !resp.Success {
+			fmt.Printf("Push blocked: %s\n", resp.Message)
+			if strings.Contains(resp.Message, "stale") {
+				fmt.Printf("Hint: Use --force to bypass (audited)\n")
+			} else if strings.Contains(resp.Message, "failed") {
+				fmt.Printf("Contact your infrastructure team. This event has been logged.\n")
 			}
-			fmt.Printf("x Attestation failed: device failed integrity verification\n\n")
-			fmt.Printf("Push blocked: device failed attestation.\n")
-			fmt.Printf("Contact your infrastructure team. This event has been logged.\n")
-			return clierror.AttestationFailed("device failed integrity verification")
+			// Error already returned from callPushAPI
+			return nil
 		}
 
-		// Stale or unavailable attestation (force may be allowed)
-		if force {
-			// Log audit entry for forced bypass
-			logAuditEntry(auditLogger, operatorCtx, dpu.Name, caName, "forced", "true", decision)
-
-			age := "unknown"
-			if decision.Attestation != nil {
-				age = formatAge(decision.Attestation.Age())
-			}
-
-			if refreshed {
-				fmt.Printf("  Attestation refresh attempted but unavailable.\n")
-			}
-			fmt.Printf("! Attestation stale (%s ago)\n", age)
-			fmt.Printf("Warning: Forcing push despite %s (logged)\n\n", decision.Reason)
-
-			// Proceed with forced distribution
-			return executeDistribution(cmd.Context(), dpu, ca, decision, true, decision.Reason, operatorCtx)
-		}
-
-		// Blocked, no force
-		logAuditEntry(auditLogger, operatorCtx, dpu.Name, caName, "blocked", "false", decision)
-		recordBlockedDistribution(dpu.Name, caName, decision, operatorCtx)
-
-		if refreshed {
-			fmt.Printf("  Attestation refresh attempted but unavailable.\n")
-		}
-
-		if decision.Attestation != nil {
-			age := formatAge(decision.Attestation.Age())
-			fmt.Printf("x Attestation stale (%s ago)\n\n", age)
+		// Success output per ADR-006 format
+		if resp.InstalledPath != "" {
+			fmt.Printf("CA installed at %s\n", resp.InstalledPath)
 		} else {
-			fmt.Printf("x Attestation unavailable\n\n")
+			fmt.Printf("CA installed.\n")
+		}
+		if resp.SSHDReloaded {
+			fmt.Printf("sshd reloaded.\n")
 		}
 
-		fmt.Printf("Push blocked: %s\n", decision.Reason)
-		fmt.Printf("Hint: Use --force to bypass (audited)\n")
-
-		// Return appropriate error based on reason
-		if strings.HasPrefix(decision.Reason, "stale:") || strings.Contains(decision.Reason, "stale") {
-			age := "unknown"
-			if decision.Attestation != nil {
-				age = decision.Attestation.Age().String()
-			}
-			return clierror.AttestationStale(age)
-		}
-		return clierror.AttestationUnavailable()
+		return nil
 	},
 }
 
-// executeDistribution performs the actual gRPC call to push the credential.
-func executeDistribution(ctx context.Context, dpu *store.DPU, ca *store.SSHCA, decision *attestation.GateDecision, forced bool, forceReason string, opCtx *operatorContext) error {
-	// Connect to DPU agent
-	client, err := grpcclient.NewClient(dpu.Address())
+// pushRequest is the request body for pushing credentials to a DPU.
+type pushRequest struct {
+	CAName     string `json:"ca_name"`
+	TargetDPU  string `json:"target_dpu"`
+	OperatorID string `json:"operator_id"`
+	Force      bool   `json:"force"`
+}
+
+// pushResponse is the response from the push API.
+type pushResponse struct {
+	Success           bool   `json:"success"`
+	InstalledPath     string `json:"installed_path,omitempty"`
+	SSHDReloaded      bool   `json:"sshd_reloaded"`
+	AttestationStatus string `json:"attestation_status"`
+	AttestationAge    string `json:"attestation_age,omitempty"`
+	Message           string `json:"message,omitempty"`
+}
+
+// callPushAPI calls the server push endpoint and handles the response.
+func callPushAPI(config *KMConfig, caName, targetDPU string, force bool) (*pushResponse, error) {
+	reqBody := pushRequest{
+		CAName:     caName,
+		TargetDPU:  targetDPU,
+		OperatorID: config.OperatorID,
+		Force:      force,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		recordFailedDistribution(dpu.Name, ca.Name, decision, fmt.Sprintf("connection failed: %v", err), opCtx)
-		return clierror.ConnectionFailed(dpu.Address())
+		return nil, clierror.InternalError(fmt.Errorf("failed to marshal push request: %w", err))
 	}
-	defer client.Close()
 
-	// Call DistributeCredential RPC
-	resp, err := client.DistributeCredential(ctx, "ssh-ca", ca.Name, ca.PublicKey)
+	req, err := http.NewRequest(
+		http.MethodPost,
+		config.ControlPlaneURL+"/api/v1/push",
+		bytes.NewReader(jsonBody),
+	)
 	if err != nil {
-		recordFailedDistribution(dpu.Name, ca.Name, decision, fmt.Sprintf("RPC failed: %v", err), opCtx)
-		return clierror.ConnectionFailed(dpu.Address())
+		return nil, clierror.InternalError(fmt.Errorf("failed to create push request: %w", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := pushHTTPClient.Do(req)
+	if err != nil {
+		return nil, clierror.ConnectionFailed("server")
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, clierror.InternalError(fmt.Errorf("failed to read push response: %w", err))
 	}
 
-	if !resp.Success {
-		recordFailedDistribution(dpu.Name, ca.Name, decision, resp.Message, opCtx)
-		fmt.Printf("x Push failed: %s\n", resp.Message)
-		return clierror.InternalError(fmt.Errorf("agent rejected push: %s", resp.Message))
+	// Handle error status codes
+	if resp.StatusCode != http.StatusOK {
+		return handlePushError(resp.StatusCode, body, caName, targetDPU)
 	}
 
-	// Success output per ADR-006 format
-	if resp.InstalledPath != "" {
-		fmt.Printf("CA installed at %s\n", resp.InstalledPath)
-	} else {
-		fmt.Printf("CA installed.\n")
-	}
-	if resp.SshdReloaded {
-		fmt.Printf("sshd reloaded.\n")
+	// Parse successful response
+	var pushResp pushResponse
+	if err := json.Unmarshal(body, &pushResp); err != nil {
+		return nil, clierror.InternalError(fmt.Errorf("failed to parse push response: %w", err))
 	}
 
-	// Record successful distribution
-	recordSuccessDistribution(dpu.Name, ca.Name, decision, resp.InstalledPath, forced, forceReason, opCtx)
-
-	return nil
+	return &pushResp, nil
 }
 
-// logAuditEntry creates an audit log entry for the distribution action.
-func logAuditEntry(auditLogger *audit.Logger, opCtx *operatorContext, dpuName, caName, decision, forced string, gateDecision *attestation.GateDecision) {
-	logEntry := audit.AuditEntry{
-		Action:   "credential.distribute.ssh-ca",
-		Target:   dpuName,
-		Decision: decision,
-		Details: map[string]string{
-			"ca_name":        caName,
-			"forced":         forced,
-			"operator_id":    opCtx.OperatorID,
-			"operator_email": opCtx.OperatorEmail,
-		},
+// handlePushError maps HTTP error codes to appropriate CLI errors.
+func handlePushError(statusCode int, body []byte, caName, targetDPU string) (*pushResponse, error) {
+	// Try to parse error response
+	var errResp struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	json.Unmarshal(body, &errResp) // Ignore parse errors, use status code
+
+	// Also try to parse as pushResponse (for 412 responses)
+	var pushResp pushResponse
+	if json.Unmarshal(body, &pushResp) == nil && pushResp.Message != "" {
+		errResp.Error = pushResp.Message
+		errResp.Message = pushResp.Message
 	}
 
-	if gateDecision.Attestation != nil {
-		logEntry.AttestationSnapshot = &audit.AttestationSnapshot{
-			DPUName:       gateDecision.Attestation.DPUName,
-			Status:        string(gateDecision.Attestation.Status),
-			LastValidated: gateDecision.Attestation.LastValidated,
-			Age:           gateDecision.Attestation.Age(),
+	errMsg := errResp.Error
+	if errMsg == "" {
+		errMsg = errResp.Message
+	}
+
+	switch statusCode {
+	case http.StatusBadRequest:
+		return nil, clierror.InternalError(fmt.Errorf("invalid request: %s", errMsg))
+
+	case http.StatusUnauthorized, http.StatusForbidden:
+		if strings.Contains(errMsg, "device") || strings.Contains(errMsg, "DPU") {
+			return nil, clierror.NotAuthorized(fmt.Sprintf("device '%s'", targetDPU))
 		}
-	} else if decision == "blocked" || decision == "forced" {
-		logEntry.AttestationSnapshot = &audit.AttestationSnapshot{
-			Status: "none",
+		return nil, clierror.NotAuthorized(fmt.Sprintf("CA '%s'", caName))
+
+	case http.StatusNotFound:
+		if strings.Contains(errMsg, "CA") || strings.Contains(errMsg, "ca") {
+			return nil, clierror.CANotFound(caName)
 		}
-	}
+		if strings.Contains(errMsg, "DPU") || strings.Contains(errMsg, "dpu") || strings.Contains(errMsg, "device") {
+			return nil, clierror.DeviceNotFound(targetDPU)
+		}
+		if strings.Contains(errMsg, "operator") {
+			return nil, clierror.OperatorNotFound(errMsg)
+		}
+		// Default to device not found for 404
+		return nil, clierror.DeviceNotFound(targetDPU)
 
-	if gateDecision.Reason != "" && (decision == "blocked" || decision == "forced") {
-		logEntry.Details["block_reason"] = gateDecision.Reason
-	}
+	case http.StatusPreconditionFailed:
+		// Parse the pushResponse for attestation details
+		if pushResp.Message != "" {
+			if strings.Contains(pushResp.Message, "failed") {
+				return &pushResp, clierror.AttestationFailed("device failed integrity verification")
+			}
+			// Stale attestation
+			age := pushResp.AttestationAge
+			if age == "" {
+				age = "unknown"
+			}
+			return &pushResp, clierror.AttestationStale(age)
+		}
+		return nil, clierror.AttestationUnavailable()
 
-	if err := auditLogger.Log(logEntry); err != nil {
-		fmt.Printf("Warning: failed to write audit entry: %v\n", err)
+	case http.StatusServiceUnavailable:
+		return nil, clierror.ConnectionFailed(targetDPU)
+
+	default:
+		return nil, clierror.InternalError(fmt.Errorf("server error (HTTP %d): %s", statusCode, errMsg))
 	}
 }
 
-// recordSuccessDistribution records a successful distribution in history.
-func recordSuccessDistribution(dpuName, caName string, decision *attestation.GateDecision, installedPath string, forced bool, forceReason string, opCtx *operatorContext) {
-	var outcome store.DistributionOutcome
-	if forced {
-		outcome = store.DistributionOutcomeForced
-	} else {
-		outcome = store.DistributionOutcomeSuccess
-	}
-
-	d := &store.Distribution{
-		DPUName:        dpuName,
-		CredentialType: "ssh-ca",
-		CredentialName: caName,
-		Outcome:        outcome,
-		InstalledPath:  strPtr(installedPath),
-		OperatorID:     opCtx.OperatorID,
-		OperatorEmail:  opCtx.OperatorEmail,
-	}
-
-	if decision.Attestation != nil {
-		status := string(decision.Attestation.Status)
-		ageSecs := int(decision.Attestation.Age().Seconds())
-		d.AttestationStatus = &status
-		d.AttestationAgeSecs = &ageSecs
-	}
-
-	if forced && forceReason != "" {
-		d.ErrorMessage = strPtr(fmt.Sprintf("forced: %s", forceReason))
-		d.ForcedBy = strPtr(opCtx.OperatorEmail)
-	}
-
-	if err := dpuStore.RecordDistribution(d); err != nil {
-		fmt.Printf("Warning: failed to record distribution: %v\n", err)
-	}
-}
-
-// recordBlockedDistribution records a blocked distribution in history.
-func recordBlockedDistribution(dpuName, caName string, decision *attestation.GateDecision, opCtx *operatorContext) {
-	var outcome store.DistributionOutcome
-	if decision.Attestation == nil {
-		outcome = store.DistributionOutcomeBlockedFailed
-	} else {
-		outcome = store.DistributionOutcomeBlockedStale
-	}
-
-	d := &store.Distribution{
-		DPUName:        dpuName,
-		CredentialType: "ssh-ca",
-		CredentialName: caName,
-		Outcome:        outcome,
-		ErrorMessage:   strPtr(decision.Reason),
-		BlockedReason:  strPtr(decision.Reason),
-		OperatorID:     opCtx.OperatorID,
-		OperatorEmail:  opCtx.OperatorEmail,
-	}
-
-	if decision.Attestation != nil {
-		status := string(decision.Attestation.Status)
-		ageSecs := int(decision.Attestation.Age().Seconds())
-		d.AttestationStatus = &status
-		d.AttestationAgeSecs = &ageSecs
-	}
-
-	if err := dpuStore.RecordDistribution(d); err != nil {
-		fmt.Printf("Warning: failed to record distribution: %v\n", err)
-	}
-}
-
-// recordFailedDistribution records a failed distribution in history.
-func recordFailedDistribution(dpuName, caName string, decision *attestation.GateDecision, errorMsg string, opCtx *operatorContext) {
-	d := &store.Distribution{
-		DPUName:        dpuName,
-		CredentialType: "ssh-ca",
-		CredentialName: caName,
-		Outcome:        store.DistributionOutcomeSuccess, // Still attempted, but failed at RPC level
-		ErrorMessage:   strPtr(errorMsg),
-		OperatorID:     opCtx.OperatorID,
-		OperatorEmail:  opCtx.OperatorEmail,
-	}
-
-	if decision.Attestation != nil {
-		status := string(decision.Attestation.Status)
-		ageSecs := int(decision.Attestation.Age().Seconds())
-		d.AttestationStatus = &status
-		d.AttestationAgeSecs = &ageSecs
-	}
-
-	if err := dpuStore.RecordDistribution(d); err != nil {
-		fmt.Printf("Warning: failed to record distribution: %v\n", err)
-	}
-}
-
-// strPtr returns a pointer to a string.
-func strPtr(s string) *string {
-	return &s
-}
-
-// formatAge formats a duration into a human-readable age string.
-func formatAge(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	}
-	hours := int(d.Hours())
-	minutes := int(d.Minutes()) % 60
-	if minutes == 0 {
-		return fmt.Sprintf("%dh", hours)
-	}
-	return fmt.Sprintf("%dh%dm", hours, minutes)
-}

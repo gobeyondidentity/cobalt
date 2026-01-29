@@ -306,6 +306,28 @@ func (s *Store) ListKeyMakersByOperator(operatorID string) ([]*KeyMaker, error) 
 	return keymakers, rows.Err()
 }
 
+// ListAllKeyMakers returns all KeyMakers regardless of status, ordered by bound_at DESC.
+func (s *Store) ListAllKeyMakers() ([]*KeyMaker, error) {
+	rows, err := s.db.Query(
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status
+		 FROM keymakers ORDER BY bound_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list keymakers: %w", err)
+	}
+	defer rows.Close()
+
+	var keymakers []*KeyMaker
+	for rows.Next() {
+		km, err := s.scanKeyMakerRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		keymakers = append(keymakers, km)
+	}
+	return keymakers, rows.Err()
+}
+
 // UpdateKeyMakerLastSeen updates the last seen timestamp for a KeyMaker.
 func (s *Store) UpdateKeyMakerLastSeen(id string) error {
 	now := time.Now().Unix()
@@ -580,4 +602,59 @@ func GenerateInviteCode(prefix string) string {
 func HashInviteCode(code string) string {
 	hash := sha256.Sum256([]byte(code))
 	return hex.EncodeToString(hash[:])
+}
+
+// DeleteOperator deletes an operator by ID.
+// Returns error if operator has dependencies (keymakers, authorizations).
+// Tenant memberships are removed automatically.
+func (s *Store) DeleteOperator(id string) error {
+	// Check for keymakers
+	keymakers, err := s.ListKeyMakersByOperator(id)
+	if err != nil {
+		return fmt.Errorf("failed to check keymakers: %w", err)
+	}
+	if len(keymakers) > 0 {
+		return fmt.Errorf("operator has %d keymaker(s) that must be removed first", len(keymakers))
+	}
+
+	// Check for authorizations
+	auths, err := s.ListAuthorizationsByOperator(id)
+	if err != nil {
+		return fmt.Errorf("failed to check authorizations: %w", err)
+	}
+	if len(auths) > 0 {
+		return fmt.Errorf("operator has %d authorization(s) that must be revoked first", len(auths))
+	}
+
+	// Remove all tenant memberships first
+	_, err = s.db.Exec(`DELETE FROM operator_tenants WHERE operator_id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("failed to remove tenant memberships: %w", err)
+	}
+
+	// Delete operator
+	result, err := s.db.Exec(`DELETE FROM operators WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete operator: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("operator not found: %s", id)
+	}
+	return nil
+}
+
+// DeleteInviteCode deletes an invite code by ID.
+func (s *Store) DeleteInviteCode(id string) error {
+	result, err := s.db.Exec(`DELETE FROM invite_codes WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete invite code: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("invite code not found: %s", id)
+	}
+	return nil
 }

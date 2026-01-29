@@ -37,12 +37,14 @@ func main() {
 	certDir := flag.String("cert-dir", "/etc/ssh", "Directory for SSH host certificates")
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	forceTmfifo := flag.Bool("force-tmfifo", false, "Fail if tmfifo is not available (no network fallback)")
+	tmfifoAddr := flag.String("tmfifo-addr", "", "DPU address for tmfifo TCP (default 192.168.100.2:9444)")
 	forceNetwork := flag.Bool("force-network", false, "Use network enrollment even if tmfifo is available")
 	forceComCh := flag.Bool("force-comch", false, "Force DOCA ComCh transport (requires BlueField PCIe connection)")
 	docaPCIAddr := flag.String("doca-pci-addr", "", "PCI address of BlueField device (e.g., \"0000:01:00.0\")")
 	docaServerName := flag.String("doca-server-name", "secure-infra", "ComCh server name to connect to")
 	authKeyPath := flag.String("auth-key", "/etc/secureinfra/host-agent.key", "Path to host authentication key")
 	pollInterval := flag.Duration("poll-interval", 30*time.Second, "Credential polling interval (HTTP transport only)")
+	hostnameFlag := flag.String("hostname", "", "Override hostname (for testing)")
 	flag.Parse()
 
 	if *showVersion {
@@ -53,6 +55,9 @@ func main() {
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
+	}
+	if *hostnameFlag != "" {
+		hostname = *hostnameFlag
 	}
 
 	log.Printf("Sentry v%s starting...", version.Version)
@@ -70,7 +75,7 @@ func main() {
 
 	// Build transport configuration
 	transportCfg := &transport.Config{
-		TmfifoPath:     "", // Use default
+		TmfifoDPUAddr:  *tmfifoAddr, // TCP address for tmfifo (auto-detects 192.168.100.2:9444 if empty)
 		DPUAddr:        *dpuAgent,
 		Hostname:       hostname,
 		ForceTmfifo:    *forceTmfifo,

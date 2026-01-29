@@ -1,16 +1,19 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nmelo/secure-infra/pkg/clierror"
 	"github.com/nmelo/secure-infra/pkg/sshca"
 	"github.com/nmelo/secure-infra/pkg/store"
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
@@ -118,8 +121,18 @@ Examples:
 			return err
 		}
 
+		// Try to register CA with the nexus server
+		// Registration failure is non-fatal - the CA is usable locally
+		var registered bool
+		var registrationWarning string
+
+		config, configErr := loadConfig()
+		if configErr == nil {
+			registered, registrationWarning = registerSSHCA(config, name, pubKeyStr, keyType)
+		}
+
 		if outputFormat == "json" || outputFormat == "yaml" {
-			return formatOutput(map[string]any{
+			output := map[string]any{
 				"status": "created",
 				"ssh_ca": map[string]any{
 					"id":         id,
@@ -127,10 +140,24 @@ Examples:
 					"type":       keyType,
 					"public_key": strings.TrimSpace(pubKeyStr),
 				},
-			})
+			}
+			if registered {
+				output["registered"] = true
+			}
+			if registrationWarning != "" {
+				output["registration_warning"] = registrationWarning
+			}
+			return formatOutput(output)
 		}
 
-		fmt.Printf("SSH CA '%s' created.\n", name)
+		if registered {
+			fmt.Printf("SSH CA '%s' created. Registered with server.\n", name)
+		} else if registrationWarning != "" {
+			fmt.Printf("SSH CA '%s' created.\n", name)
+			fmt.Printf("Warning: Failed to register with server: %s\n", registrationWarning)
+		} else {
+			fmt.Printf("SSH CA '%s' created.\n", name)
+		}
 		return nil
 	},
 }
@@ -380,4 +407,47 @@ Examples:
 		fmt.Printf("SSH CA '%s' deleted.\n", name)
 		return nil
 	},
+}
+
+// registerSSHCA attempts to register an SSH CA with the nexus server.
+// Returns (true, "") on success, (false, "") on conflict (already registered), and
+// (false, errorMessage) on failure.
+func registerSSHCA(config *KMConfig, name, pubKeyStr, keyType string) (bool, string) {
+	reqBody := map[string]string{
+		"name":        name,
+		"public_key":  pubKeyStr,
+		"key_type":    keyType,
+		"operator_id": config.OperatorID,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return false, "failed to marshal request: " + err.Error()
+	}
+
+	resp, err := http.Post(
+		config.ControlPlaneURL+"/api/v1/ssh-cas",
+		"application/json",
+		bytes.NewReader(jsonBody),
+	)
+	if err != nil {
+		return false, "connection failed: " + err.Error()
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusCreated:
+		return true, ""
+	case http.StatusConflict:
+		// CA already registered on server - not an error
+		return false, ""
+	default:
+		var errResp struct {
+			Error string `json:"error"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&errResp) == nil && errResp.Error != "" {
+			return false, errResp.Error
+		}
+		return false, fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
 }

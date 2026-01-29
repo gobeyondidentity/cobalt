@@ -3,6 +3,7 @@ package store
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -105,6 +106,48 @@ func TestGetTenantDependencies(t *testing.T) {
 		assert.True(t, deps.HasAny())
 	})
 
+	t.Run("WithPendingInvites", func(t *testing.T) {
+		// Create a pending invite code for the tenant
+		invite := &InviteCode{
+			ID:            "inv_test1",
+			CodeHash:      "abc123hash",
+			OperatorEmail: "newuser@example.com",
+			TenantID:      tenantID,
+			Role:          "operator",
+			CreatedBy:     "admin@example.com",
+			ExpiresAt:     time.Now().Add(24 * time.Hour),
+			Status:        "pending",
+		}
+		err := s.CreateInviteCode(invite)
+		require.NoError(t, err)
+
+		deps, err := s.GetTenantDependencies(tenantID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, deps.Invites)
+		assert.True(t, deps.HasAny())
+	})
+
+	t.Run("UsedInvitesNotCounted", func(t *testing.T) {
+		// Create a used invite code (should not be counted)
+		usedInvite := &InviteCode{
+			ID:            "inv_used",
+			CodeHash:      "usedhash123",
+			OperatorEmail: "useduser@example.com",
+			TenantID:      tenantID,
+			Role:          "operator",
+			CreatedBy:     "admin@example.com",
+			ExpiresAt:     time.Now().Add(24 * time.Hour),
+			Status:        "used",
+		}
+		err := s.CreateInviteCode(usedInvite)
+		require.NoError(t, err)
+
+		deps, err := s.GetTenantDependencies(tenantID)
+		require.NoError(t, err)
+		// Should still be 1 from previous test, not 2
+		assert.Equal(t, 1, deps.Invites)
+	})
+
 	t.Run("AllDependencies", func(t *testing.T) {
 		// Verify all dependencies are collected
 		deps, err := s.GetTenantDependencies(tenantID)
@@ -114,6 +157,7 @@ func TestGetTenantDependencies(t *testing.T) {
 		assert.Len(t, deps.Operators, 2)
 		assert.Len(t, deps.CAs, 1)
 		assert.Equal(t, 1, deps.TrustRelationships)
+		assert.Equal(t, 1, deps.Invites) // Only pending invites
 		assert.True(t, deps.HasAny())
 	})
 
@@ -124,6 +168,7 @@ func TestGetTenantDependencies(t *testing.T) {
 		assert.Empty(t, deps.Operators)
 		assert.Empty(t, deps.CAs)
 		assert.Equal(t, 0, deps.TrustRelationships)
+		assert.Equal(t, 0, deps.Invites)
 		assert.False(t, deps.HasAny())
 	})
 }
@@ -169,12 +214,20 @@ func TestTenantDependenciesHasAny(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "OnlyInvites",
+			deps: TenantDependencies{
+				Invites: 1,
+			},
+			expected: true,
+		},
+		{
 			name: "AllEmpty",
 			deps: TenantDependencies{
 				DPUs:               []string{},
 				Operators:          []string{},
 				CAs:                []string{},
 				TrustRelationships: 0,
+				Invites:            0,
 			},
 			expected: false,
 		},

@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -60,8 +61,20 @@ func (s *Server) handleBindKeyMaker(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 3: Validate invite status and expiration
-	if invite.Status != "pending" {
+	switch invite.Status {
+	case "pending":
+		// fall through to expiration check
+	case "used":
 		writeError(w, r, http.StatusBadRequest, "invite code has already been used")
+		return
+	case "revoked":
+		writeError(w, r, http.StatusBadRequest, "invite code has been revoked")
+		return
+	case "expired":
+		writeError(w, r, http.StatusBadRequest, "invite code has expired")
+		return
+	default:
+		writeError(w, r, http.StatusBadRequest, "invalid invite code")
 		return
 	}
 
@@ -291,4 +304,257 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 	response.Operator.Status = operator.Status
 
 	writeJSON(w, http.StatusCreated, response)
+}
+
+// ----- Operator Management Types -----
+
+// operatorResponse is the response for operator endpoints.
+type operatorResponse struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// updateOperatorStatusRequest is the request body for updating operator status.
+type updateOperatorStatusRequest struct {
+	Status string `json:"status"` // "active" or "suspended"
+}
+
+func operatorToResponse(op *store.Operator) operatorResponse {
+	return operatorResponse{
+		ID:        op.ID,
+		Email:     op.Email,
+		Status:    op.Status,
+		CreatedAt: op.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+// handleListOperators handles GET /api/v1/operators
+// Supports optional ?tenant=<name> query parameter to filter by tenant.
+func (s *Server) handleListOperators(w http.ResponseWriter, r *http.Request) {
+	tenantName := r.URL.Query().Get("tenant")
+
+	var operators []*store.Operator
+	var err error
+
+	if tenantName != "" {
+		// Resolve tenant name to ID
+		tenant, terr := s.store.GetTenant(tenantName)
+		if terr != nil {
+			writeError(w, r, http.StatusNotFound, fmt.Sprintf("tenant not found: %s", tenantName))
+			return
+		}
+		operators, err = s.store.ListOperatorsByTenant(tenant.ID)
+	} else {
+		operators, err = s.store.ListOperators()
+	}
+
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to list operators: "+err.Error())
+		return
+	}
+
+	result := make([]operatorResponse, 0, len(operators))
+	for _, op := range operators {
+		result = append(result, operatorToResponse(op))
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handleGetOperator handles GET /api/v1/operators/{email}
+func (s *Server) handleGetOperator(w http.ResponseWriter, r *http.Request) {
+	email := r.PathValue("email")
+
+	operator, err := s.store.GetOperatorByEmail(email)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "Operator not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, operatorToResponse(operator))
+}
+
+// handleUpdateOperatorStatus handles PATCH /api/v1/operators/{email}/status
+func (s *Server) handleUpdateOperatorStatus(w http.ResponseWriter, r *http.Request) {
+	email := r.PathValue("email")
+
+	// Look up operator by email
+	operator, err := s.store.GetOperatorByEmail(email)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "Operator not found")
+		return
+	}
+
+	var req updateOperatorStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		return
+	}
+
+	// Validate status
+	if req.Status != "active" && req.Status != "suspended" {
+		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid status: %s (must be 'active' or 'suspended')", req.Status))
+		return
+	}
+
+	// Update status
+	if err := s.store.UpdateOperatorStatus(operator.ID, req.Status); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to update operator status: "+err.Error())
+		return
+	}
+
+	// Fetch updated operator
+	operator, _ = s.store.GetOperatorByEmail(email)
+	writeJSON(w, http.StatusOK, operatorToResponse(operator))
+}
+
+// handleDeleteOperator handles DELETE /api/v1/operators/{email}
+func (s *Server) handleDeleteOperator(w http.ResponseWriter, r *http.Request) {
+	email := r.PathValue("email")
+
+	// Look up operator by email
+	operator, err := s.store.GetOperatorByEmail(email)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "Operator not found")
+		return
+	}
+
+	// Delete operator (store method handles dependency checks)
+	if err := s.store.DeleteOperator(operator.ID); err != nil {
+		if strings.Contains(err.Error(), "keymaker") || strings.Contains(err.Error(), "authorization") {
+			writeError(w, r, http.StatusConflict, err.Error())
+			return
+		}
+		writeError(w, r, http.StatusInternalServerError, "Failed to delete operator: "+err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleDeleteInvite handles DELETE /api/v1/invites/{code}
+func (s *Server) handleDeleteInvite(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+
+	// Hash the code and lookup
+	codeHash := store.HashInviteCode(code)
+	invite, err := s.store.GetInviteCodeByHash(codeHash)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "Invite code not found")
+		return
+	}
+
+	// Delete invite
+	if err := s.store.DeleteInviteCode(invite.ID); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to delete invite: "+err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ----- KeyMaker Management Types -----
+
+// KeyMakerResponse is the response for keymaker endpoints.
+type KeyMakerResponse struct {
+	ID            string  `json:"id"`
+	OperatorID    string  `json:"operator_id"`
+	OperatorEmail string  `json:"operator_email"`
+	Name          string  `json:"name"`
+	Platform      string  `json:"platform"`
+	SecureElement string  `json:"secure_element"`
+	BoundAt       string  `json:"bound_at"`
+	LastSeen      *string `json:"last_seen,omitempty"`
+	Status        string  `json:"status"`
+}
+
+// keymakerToResponse converts a store.KeyMaker to an API response.
+// It resolves the operator email from the operator ID.
+func (s *Server) keymakerToResponse(km *store.KeyMaker) KeyMakerResponse {
+	resp := KeyMakerResponse{
+		ID:            km.ID,
+		OperatorID:    km.OperatorID,
+		Name:          km.Name,
+		Platform:      km.Platform,
+		SecureElement: km.SecureElement,
+		BoundAt:       km.BoundAt.Format(time.RFC3339),
+		Status:        km.Status,
+	}
+
+	// Resolve operator email (graceful degradation: use ID if lookup fails)
+	if op, err := s.store.GetOperator(km.OperatorID); err == nil {
+		resp.OperatorEmail = op.Email
+	} else {
+		resp.OperatorEmail = km.OperatorID
+	}
+
+	if km.LastSeen != nil {
+		t := km.LastSeen.Format(time.RFC3339)
+		resp.LastSeen = &t
+	}
+	return resp
+}
+
+// handleListKeyMakers handles GET /api/v1/keymakers
+// Supports optional ?operator_id= query parameter to filter by operator.
+func (s *Server) handleListKeyMakers(w http.ResponseWriter, r *http.Request) {
+	operatorID := r.URL.Query().Get("operator_id")
+
+	var keymakers []*store.KeyMaker
+	var err error
+
+	if operatorID != "" {
+		keymakers, err = s.store.ListKeyMakersByOperator(operatorID)
+	} else {
+		keymakers, err = s.store.ListAllKeyMakers()
+	}
+
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to list keymakers: "+err.Error())
+		return
+	}
+
+	result := make([]KeyMakerResponse, 0, len(keymakers))
+	for _, km := range keymakers {
+		result = append(result, s.keymakerToResponse(km))
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handleGetKeyMaker handles GET /api/v1/keymakers/{id}
+func (s *Server) handleGetKeyMaker(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	km, err := s.store.GetKeyMaker(id)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "KeyMaker not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, s.keymakerToResponse(km))
+}
+
+// handleRevokeKeyMaker handles DELETE /api/v1/keymakers/{id}
+func (s *Server) handleRevokeKeyMaker(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	// Check if keymaker exists first
+	km, err := s.store.GetKeyMaker(id)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "KeyMaker not found")
+		return
+	}
+
+	// Revoke the keymaker
+	if err := s.store.RevokeKeyMaker(id); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to revoke keymaker: "+err.Error())
+		return
+	}
+
+	log.Printf("KeyMaker revoked: id=%s operator_id=%s name=%s", km.ID, km.OperatorID, km.Name)
+
+	w.WriteHeader(http.StatusNoContent)
 }

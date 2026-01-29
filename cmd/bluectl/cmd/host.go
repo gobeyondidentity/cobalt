@@ -3,9 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 	"text/tabwriter"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -45,89 +43,30 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tenantFilter, _ := cmd.Flags().GetString("tenant")
 
-		var tenantID string
-		if tenantFilter != "" {
-			tenant, err := dpuStore.GetTenant(tenantFilter)
-			if err != nil {
-				return fmt.Errorf("tenant not found: %s", tenantFilter)
-			}
-			tenantID = tenant.ID
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
 		}
 
-		// Get all agent hosts (optionally filtered by tenant)
-		hosts, err := dpuStore.ListAgentHosts(tenantID)
+		client := NewNexusClient(serverURL)
+		hosts, err := client.ListAgentHosts(cmd.Context(), tenantFilter)
 		if err != nil {
 			return fmt.Errorf("failed to list hosts: %w", err)
 		}
 
-		// Build a map of DPU name to host for display
-		type hostDisplay struct {
-			DPUName        string
-			Hostname       string
-			LastSeen       string
-			SecureBoot     string
-			DiskEncryption string
-		}
-
-		var displays []hostDisplay
-		for _, h := range hosts {
-			d := hostDisplay{
-				DPUName:        h.DPUName,
-				Hostname:       h.Hostname,
-				LastSeen:       formatRelativeTime(h.LastSeenAt),
-				SecureBoot:     "-",
-				DiskEncryption: "-",
-			}
-
-			// Get posture if available
-			posture, err := dpuStore.GetAgentHostPosture(h.ID)
-			if err == nil && posture != nil {
-				if posture.SecureBoot != nil {
-					if *posture.SecureBoot {
-						d.SecureBoot = "enabled"
-					} else {
-						d.SecureBoot = "disabled"
-					}
-				}
-				if posture.DiskEncryption != "" {
-					d.DiskEncryption = strings.ToUpper(posture.DiskEncryption)
-				}
-			}
-			displays = append(displays, d)
-		}
-
 		if outputFormat != "table" {
-			// For JSON/YAML output, include full host and posture data
-			type hostWithPosture struct {
-				Host    interface{} `json:"host" yaml:"host"`
-				Posture interface{} `json:"posture,omitempty" yaml:"posture,omitempty"`
-			}
-			var output []hostWithPosture
-			for _, h := range hosts {
-				hwp := hostWithPosture{Host: h}
-				posture, err := dpuStore.GetAgentHostPosture(h.ID)
-				if err == nil && posture != nil {
-					hwp.Posture = posture
-				}
-				output = append(output, hwp)
-			}
-			return formatOutput(output)
+			return formatOutput(hosts)
 		}
 
-		if len(displays) == 0 {
+		if len(hosts) == 0 {
 			fmt.Println("No host agents registered.")
 			return nil
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "DPU\tHOSTNAME\tLAST SEEN\tSECURE BOOT\tDISK ENC")
-		for _, d := range displays {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-				d.DPUName,
-				d.Hostname,
-				d.LastSeen,
-				d.SecureBoot,
-				d.DiskEncryption)
+		fmt.Fprintln(w, "DPU\tHOSTNAME\tLAST SEEN")
+		for _, h := range hosts {
+			fmt.Fprintf(w, "%s\t%s\t%s\n", h.DPUName, h.Hostname, h.LastSeenAt)
 		}
 		w.Flush()
 		return nil
@@ -150,89 +89,71 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dpuName := args[0]
 
-		// Look up host by DPU name
-		host, err := dpuStore.GetAgentHostByDPU(dpuName)
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("no host agent found for DPU '%s'", dpuName)
+			return err
 		}
 
-		// Get posture
-		posture, err := dpuStore.GetAgentHostPosture(host.ID)
+		client := NewNexusClient(serverURL)
+		posture, err := client.GetHostPostureByDPU(cmd.Context(), dpuName)
 		if err != nil {
-			return fmt.Errorf("no posture data for host '%s': %w", host.Hostname, err)
+			if err == ErrNoPostureData {
+				fmt.Printf("No posture data available for DPU '%s'.\n", dpuName)
+				fmt.Println("The host may not have registered yet or has not reported posture.")
+				return nil
+			}
+			return fmt.Errorf("failed to get host posture: %w", err)
 		}
 
 		if outputFormat != "table" {
-			return formatOutput(map[string]interface{}{
-				"host":    host,
-				"posture": posture,
-			})
+			return formatOutput(posture)
 		}
 
-		// Display header
-		fmt.Printf("Host: %s\n", host.Hostname)
-		fmt.Printf("Paired with: %s\n", host.DPUName)
-		fmt.Printf("Last Update: %s\n", formatRelativeTime(posture.CollectedAt))
-		fmt.Println()
+		// Table output with formatted labels
+		fmt.Printf("Host posture for DPU '%s':\n", dpuName)
 
-		// Display posture
-		fmt.Println("Posture:")
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-
-		// Secure Boot
-		secureBoot := "unknown"
+		// Format boolean values as enabled/disabled or yes/no
+		secureBootStr := "unknown"
 		if posture.SecureBoot != nil {
 			if *posture.SecureBoot {
-				secureBoot = "enabled"
+				secureBootStr = "enabled"
 			} else {
-				secureBoot = "disabled"
+				secureBootStr = "disabled"
 			}
 		}
-		fmt.Fprintf(w, "  Secure Boot:\t%s\n", secureBoot)
 
-		// Disk Encryption
-		diskEnc := "unknown"
-		if posture.DiskEncryption != "" {
-			diskEnc = strings.ToUpper(posture.DiskEncryption)
-		}
-		fmt.Fprintf(w, "  Disk Encryption:\t%s\n", diskEnc)
-
-		// OS Version
-		osVersion := "unknown"
-		if posture.OSVersion != "" {
-			osVersion = posture.OSVersion
-		}
-		fmt.Fprintf(w, "  OS Version:\t%s\n", osVersion)
-
-		// Kernel
-		kernel := "unknown"
-		if posture.KernelVersion != "" {
-			kernel = posture.KernelVersion
-		}
-		fmt.Fprintf(w, "  Kernel:\t%s\n", kernel)
-
-		// TPM
-		tpm := "unknown"
+		tpmPresentStr := "unknown"
 		if posture.TPMPresent != nil {
 			if *posture.TPMPresent {
-				tpm = "present"
+				tpmPresentStr = "yes"
 			} else {
-				tpm = "not present"
+				tpmPresentStr = "no"
 			}
 		}
-		fmt.Fprintf(w, "  TPM:\t%s\n", tpm)
 
-		// Posture Hash (truncate for display)
-		hash := posture.PostureHash
-		if len(hash) > 12 {
-			hash = hash[:12] + "..."
+		diskEncryption := posture.DiskEncryption
+		if diskEncryption == "" {
+			diskEncryption = "none"
 		}
-		if hash == "" {
-			hash = "none"
-		}
-		fmt.Fprintf(w, "  Posture Hash:\t%s\n", hash)
 
-		w.Flush()
+		osVersion := posture.OSVersion
+		if osVersion == "" {
+			osVersion = "unknown"
+		}
+
+		kernelVersion := posture.KernelVersion
+		if kernelVersion == "" {
+			kernelVersion = "unknown"
+		}
+
+		fmt.Printf("  Secure Boot:     %s\n", secureBootStr)
+		fmt.Printf("  Disk Encryption: %s\n", diskEncryption)
+		fmt.Printf("  OS Version:      %s\n", osVersion)
+		fmt.Printf("  Kernel Version:  %s\n", kernelVersion)
+		fmt.Printf("  TPM Present:     %s\n", tpmPresentStr)
+		fmt.Printf("  Posture Hash:    %s\n", posture.PostureHash)
+		fmt.Printf("  Last Updated:    %s\n", posture.CollectedAt)
+
 		return nil
 	},
 }
@@ -250,13 +171,13 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		hostID := args[0]
 
-		// Verify host exists
-		_, err := dpuStore.GetAgentHost(hostID)
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("host not found: %s", hostID)
+			return err
 		}
 
-		if err := dpuStore.DeleteAgentHost(hostID); err != nil {
+		client := NewNexusClient(serverURL)
+		if err := client.DeleteAgentHost(cmd.Context(), hostID); err != nil {
 			return fmt.Errorf("failed to delete host: %w", err)
 		}
 
@@ -286,117 +207,21 @@ func runHostHealth(cmd *cobra.Command, args []string) error {
 	dpuName := args[0]
 	verbose, _ := cmd.Flags().GetBool("verbose")
 
-	// Look up host by DPU name
-	host, err := dpuStore.GetAgentHostByDPU(dpuName)
+	serverURL, err := requireServer()
 	if err != nil {
-		return fmt.Errorf("no host agent found for DPU '%s'", dpuName)
+		return err
 	}
+	_ = serverURL // Will be used when API is fully implemented
 
-	// Get posture for additional health signals
-	posture, _ := dpuStore.GetAgentHostPosture(host.ID)
-
-	// Determine health status based on last seen
-	status := determineHealthStatus(host.LastSeenAt)
-
-	if outputFormat != "table" {
-		output := map[string]interface{}{
-			"host":     host.Hostname,
-			"dpuName":  host.DPUName,
-			"status":   status,
-			"lastSeen": host.LastSeenAt,
-		}
-		if posture != nil {
-			output["lastPosture"] = posture.CollectedAt
-		}
-		return formatOutput(output)
+	// For now, print informational message since host health requires
+	// looking up host by DPU and checking cached health info
+	fmt.Printf("Host health for DPU '%s':\n", dpuName)
+	if verbose {
+		fmt.Println("(verbose mode)")
 	}
-
-	// Display header
-	fmt.Printf("Host: %s (paired with %s)\n", host.Hostname, host.DPUName)
-	fmt.Printf("Status: %s\n", status)
-	fmt.Printf("Last Seen: %s\n", formatRelativeTime(host.LastSeenAt))
-
-	if posture != nil {
-		fmt.Printf("Last Posture: %s\n", formatRelativeTime(posture.CollectedAt))
-	}
-
-	if verbose && posture != nil {
-		fmt.Println()
-		fmt.Println("Posture Summary:")
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-
-		// Secure Boot
-		secureBoot := "unknown"
-		if posture.SecureBoot != nil {
-			if *posture.SecureBoot {
-				secureBoot = "enabled"
-			} else {
-				secureBoot = "disabled"
-			}
-		}
-		fmt.Fprintf(w, "  Secure Boot:\t%s\n", secureBoot)
-
-		// Disk Encryption
-		diskEnc := "unknown"
-		if posture.DiskEncryption != "" {
-			diskEnc = strings.ToUpper(posture.DiskEncryption)
-		}
-		fmt.Fprintf(w, "  Disk Encryption:\t%s\n", diskEnc)
-
-		// OS Version
-		if posture.OSVersion != "" {
-			fmt.Fprintf(w, "  OS Version:\t%s\n", posture.OSVersion)
-		}
-
-		// TPM
-		if posture.TPMPresent != nil {
-			tpm := "not present"
-			if *posture.TPMPresent {
-				tpm = "present"
-			}
-			fmt.Fprintf(w, "  TPM:\t%s\n", tpm)
-		}
-
-		w.Flush()
-	}
-
+	fmt.Println()
+	fmt.Println("Note: Host health via API not yet fully implemented.")
+	fmt.Println("Use 'bluectl host list' to see hosts and their last seen times.")
 	return nil
 }
 
-// determineHealthStatus returns a health status based on last seen time.
-func determineHealthStatus(lastSeen time.Time) string {
-	if lastSeen.IsZero() {
-		return "unknown"
-	}
-
-	since := time.Since(lastSeen)
-	switch {
-	case since < 2*time.Minute:
-		return "healthy"
-	case since < 10*time.Minute:
-		return "degraded"
-	default:
-		return "offline"
-	}
-}
-
-// formatRelativeTime formats a time as a human-readable relative duration.
-func formatRelativeTime(t time.Time) string {
-	if t.IsZero() {
-		return "-"
-	}
-	d := time.Since(t)
-	if d < 0 {
-		return "just now"
-	}
-	if d < time.Minute {
-		return "just now"
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	}
-	if d < 24*time.Hour {
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	}
-	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-}

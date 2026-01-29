@@ -25,7 +25,13 @@ Examples:
   bluectl health bf3-lab -o json`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dpu, err := dpuStore.Get(args[0])
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+		nexusClient := NewNexusClient(serverURL)
+
+		dpu, err := nexusClient.GetDPU(cmd.Context(), args[0])
 		if err != nil {
 			return err
 		}
@@ -33,16 +39,15 @@ Examples:
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		client, err := grpcclient.NewClient(dpu.Address())
+		grpcAddr := fmt.Sprintf("%s:%d", dpu.Host, dpu.Port)
+		client, err := grpcclient.NewClient(grpcAddr)
 		if err != nil {
-			dpuStore.UpdateStatus(dpu.ID, "offline")
 			return fmt.Errorf("failed to connect: %w", err)
 		}
 		defer client.Close()
 
 		resp, err := client.HealthCheck(ctx)
 		if err != nil {
-			dpuStore.UpdateStatus(dpu.ID, "unhealthy")
 			return fmt.Errorf("health check failed: %w", err)
 		}
 
@@ -72,12 +77,6 @@ Examples:
 				fmt.Fprintf(w, "%s\t%s\t%s\n", name, compStatus, comp.Message)
 			}
 			w.Flush()
-		}
-
-		if resp.Healthy {
-			dpuStore.UpdateStatus(dpu.ID, "healthy")
-		} else {
-			dpuStore.UpdateStatus(dpu.ID, "unhealthy")
 		}
 
 		return nil

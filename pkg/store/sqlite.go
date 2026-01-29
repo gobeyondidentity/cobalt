@@ -399,6 +399,18 @@ func (s *Store) migrate() error {
 		collected_at INTEGER NOT NULL,
 		FOREIGN KEY (host_id) REFERENCES agent_hosts(id) ON DELETE CASCADE
 	);
+
+	-- Credential Queue (aegis state persistence: queued credentials awaiting delivery)
+	CREATE TABLE IF NOT EXISTS credential_queue (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		dpu_name TEXT NOT NULL,
+		cred_type TEXT NOT NULL,
+		cred_name TEXT NOT NULL,
+		data BLOB NOT NULL,
+		queued_at INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_credential_queue_dpu ON credential_queue(dpu_name);
+	CREATE INDEX IF NOT EXISTS idx_credential_queue_queued ON credential_queue(queued_at);
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
@@ -547,6 +559,28 @@ func (s *Store) UpdateStatus(idOrName, status string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("DPU not found: %s", idOrName)
+	}
+	return nil
+}
+
+// SetDPULabels updates the labels for a DPU.
+func (s *Store) SetDPULabels(idOrName string, labels map[string]string) error {
+	labelsJSON, err := json.Marshal(labels)
+	if err != nil {
+		return fmt.Errorf("failed to marshal labels: %w", err)
+	}
+
+	result, err := s.db.Exec(
+		`UPDATE dpus SET labels = ? WHERE id = ? OR name = ?`,
+		string(labelsJSON), idOrName, idOrName,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to set DPU labels: %w", err)
 	}
 
 	rows, _ := result.RowsAffected()
@@ -769,11 +803,12 @@ type TenantDependencies struct {
 	Operators          []string // Operator emails in tenant
 	CAs                []string // SSH CA names in tenant
 	TrustRelationships int      // Count of trust relationships
+	Invites            int      // Count of pending invite codes
 }
 
 // HasAny returns true if the tenant has any dependencies.
 func (d *TenantDependencies) HasAny() bool {
-	return len(d.DPUs) > 0 || len(d.Operators) > 0 || len(d.CAs) > 0 || d.TrustRelationships > 0
+	return len(d.DPUs) > 0 || len(d.Operators) > 0 || len(d.CAs) > 0 || d.TrustRelationships > 0 || d.Invites > 0
 }
 
 // GetTenantDependencies returns all entities that reference the given tenant.
@@ -848,6 +883,14 @@ func (s *Store) GetTenantDependencies(tenantID string) (*TenantDependencies, err
 		return nil, fmt.Errorf("failed to count trust relationships: %w", err)
 	}
 	deps.TrustRelationships = trustCount
+
+	// Query pending invite codes count
+	var inviteCount int
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM invite_codes WHERE tenant_id = ? AND status = 'pending'`, tenantID).Scan(&inviteCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count invites: %w", err)
+	}
+	deps.Invites = inviteCount
 
 	return deps, nil
 }

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/nmelo/secure-infra/pkg/clierror"
-	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -15,53 +15,55 @@ import (
 var (
 	// Global flags
 	outputFormat string
-	dbPath       string
-	insecure     bool
-
-	// Shared store instance
-	dpuStore *store.Store
 )
+
+// colorizedUsageTemplate is a custom usage template that colorizes subcommand names in cyan.
+// fatih/color handles NO_COLOR env var automatically.
+const colorizedUsageTemplate = `Usage:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
+
+Aliases:
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
+
+Examples:
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
+
+Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{cyan (rpad .Name .NamePadding)}} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
+
+{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+  {{cyan (rpad .Name .NamePadding)}} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
+
+Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+  {{cyan (rpad .Name .NamePadding)}} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+
+Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
+`
 
 var rootCmd = &cobra.Command{
 	Use:   "bluectl",
-	Short: "Fabric Console CLI for DPU management",
+	Short: "🧊 Fabric Console CLI for DPU management",
 	Long: `bluectl is a command-line interface for managing NVIDIA BlueField DPUs.
 
 It provides commands to register DPUs, query system information,
 view OVS flows, and check attestation status.`,
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Skip store initialization for completion commands
+		// Skip for completion commands
 		if cmd.Name() == "completion" || cmd.Name() == "help" {
 			return nil
 		}
-
-		// Initialize store
-		path := dbPath
-		if path == "" {
-			path = store.DefaultPath()
-		}
-
-		var err error
-		dpuStore, err = store.Open(path)
-		if err != nil {
-			return fmt.Errorf("failed to open database: %w", err)
-		}
-
-		// Handle insecure mode flag (only meaningful if user explicitly requests it)
-		if insecure {
-			store.SetInsecureMode(true)
-			fmt.Fprintln(os.Stderr, "WARNING: Operating in insecure mode. Private keys are NOT encrypted.")
-		}
-		// Note: With auto-generation, IsEncryptionEnabled() is always true
-		// unless there's a file system error. The encryption key auto-generates
-		// at ~/.local/share/bluectl/key on first run.
 		return nil
-	},
-	PersistentPostRun: func(cmd *cobra.Command, args []string) {
-		if dpuStore != nil {
-			dpuStore.Close()
-		}
 	},
 }
 
@@ -113,15 +115,28 @@ PowerShell:
 }
 
 func init() {
+	// Add cyan template function for colorizing subcommand names
+	cyan := color.New(color.FgCyan).SprintFunc()
+	cobra.AddTemplateFunc("cyan", cyan)
+
+	rootCmd.SetUsageTemplate(colorizedUsageTemplate)
 	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "Output format: table, json, yaml")
-	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.local/share/bluectl/dpus.db)")
-	rootCmd.PersistentFlags().BoolVar(&insecure, "insecure", false, "Allow plaintext key storage (INSECURE: use only for development)")
 	rootCmd.AddCommand(completionCmd)
 }
 
 // Execute runs the root command.
 func Execute() error {
 	return rootCmd.Execute()
+}
+
+// requireServer returns the server URL or an error if no server is configured.
+// Use this at the start of commands that require server mode.
+func requireServer() (string, error) {
+	serverURL := GetServer()
+	if serverURL == "" {
+		return "", fmt.Errorf("server connection required\n\nConfigure with: bluectl config set-server <url>\nOr use:        bluectl --server <url> <command>")
+	}
+	return serverURL, nil
 }
 
 // formatOutput handles output formatting based on the --output flag.

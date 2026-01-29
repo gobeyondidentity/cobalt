@@ -7,7 +7,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/nmelo/secure-infra/pkg/clierror"
 	"github.com/nmelo/secure-infra/pkg/grpcclient"
 	"github.com/spf13/cobra"
@@ -43,44 +42,11 @@ var dpuListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List registered DPUs",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Use remote Nexus server if configured
-		if serverURL := GetServer(); serverURL != "" {
-			return listDPUsRemote(cmd.Context(), serverURL)
-		}
-
-		dpus, err := dpuStore.List()
+		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-
-		// Return empty array for JSON/YAML when no DPUs
-		if outputFormat != "table" {
-			if len(dpus) == 0 {
-				fmt.Println("[]")
-				return nil
-			}
-			return formatOutput(dpus)
-		}
-
-		if len(dpus) == 0 {
-			fmt.Println("No DPUs registered. Use 'bluectl dpu add' to register one.")
-			return nil
-		}
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tHOST\tPORT\tSTATUS*\tLAST SEEN")
-		for _, dpu := range dpus {
-			lastSeen := "never"
-			if dpu.LastSeen != nil {
-				lastSeen = dpu.LastSeen.Format(time.RFC3339)
-			}
-			fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
-				dpu.Name, dpu.Host, dpu.Port, dpu.Status, lastSeen)
-		}
-		w.Flush()
-		fmt.Println()
-		fmt.Println("* Status reflects last known state. Use 'bluectl dpu health <name>' for live status.")
-		return nil
+		return listDPUsRemote(cmd.Context(), serverURL)
 	},
 }
 
@@ -153,100 +119,11 @@ Examples:
 		name, _ := cmd.Flags().GetString("name")
 		offline, _ := cmd.Flags().GetBool("offline")
 
-		// Use remote Nexus server if configured
-		if serverURL := GetServer(); serverURL != "" {
-			return addDPURemote(cmd.Context(), serverURL, name, host, port, offline)
-		}
-
-		// Check for duplicate address:port - idempotent: return success if exists
-		existing, err := dpuStore.GetDPUByAddress(host, port)
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("failed to check for duplicates: %w", err)
+			return err
 		}
-		if existing != nil {
-			if outputFormat == "json" || outputFormat == "yaml" {
-				return formatOutput(map[string]any{
-					"status": "already_exists",
-					"dpu":    existing,
-				})
-			}
-			fmt.Printf("DPU already exists at %s:%d: %s\n", host, port, existing.Name)
-			return nil
-		}
-
-		// Check connectivity BEFORE adding (unless --offline)
-		var status string
-		if offline {
-			if name == "" {
-				return fmt.Errorf("--name is required when using --offline (cannot retrieve hostname from agent)")
-			}
-			status = "offline"
-			fmt.Printf("Skipping connectivity check (--offline)\n")
-		} else {
-			fmt.Printf("Checking connectivity to %s:%d...\n", host, port)
-
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			client, err := grpcclient.NewClient(fmt.Sprintf("%s:%d", host, port))
-			if err != nil {
-				return fmt.Errorf("cannot connect to DPU agent at %s:%d: %w\n\nUse --offline --name <name> to add without connectivity check", host, port, err)
-			}
-			defer client.Close()
-
-			// Get system info to display identity and use hostname as default name
-			info, err := client.GetSystemInfo(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to get DPU system info at %s:%d: %w\n\nUse --offline --name <name> to add without connectivity check", host, port, err)
-			}
-
-			// Display DPU identity for user verification
-			fmt.Println("Connected to DPU:")
-			fmt.Printf("  Hostname: %s\n", info.Hostname)
-			fmt.Printf("  Serial:   %s\n", info.SerialNumber)
-			fmt.Printf("  Model:    %s\n", info.Model)
-
-			// Health check
-			if _, err := client.HealthCheck(ctx); err != nil {
-				return fmt.Errorf("DPU agent health check failed at %s:%d: %w\n\nUse --offline --name <name> to add without connectivity check", host, port, err)
-			}
-
-			status = "healthy"
-			fmt.Println("Connection verified: agent is healthy")
-
-			// Use hostname as default name if not provided
-			if name == "" {
-				name = info.Hostname
-			}
-		}
-
-		// Validate we have a name
-		if name == "" {
-			return fmt.Errorf("could not determine DPU name: agent returned empty hostname. Use --name to specify one")
-		}
-
-		// Now add the DPU
-		id := uuid.New().String()[:8]
-		if err := dpuStore.Add(id, name, host, port); err != nil {
-			return fmt.Errorf("failed to add DPU: %w", err)
-		}
-		dpuStore.UpdateStatus(id, status)
-
-		// Get the created DPU for output
-		created, _ := dpuStore.Get(name)
-
-		if outputFormat == "json" || outputFormat == "yaml" {
-			return formatOutput(map[string]any{
-				"status": "created",
-				"dpu":    created,
-			})
-		}
-
-		fmt.Printf("Added DPU '%s' at %s:%d.\n", name, host, port)
-		fmt.Println()
-		fmt.Printf("Next: Assign to a tenant with 'bluectl tenant assign <tenant> %s'\n", name)
-
-		return nil
+		return addDPURemote(cmd.Context(), serverURL, name, host, port, offline)
 	},
 }
 
@@ -305,16 +182,11 @@ var dpuRemoveCmd = &cobra.Command{
 	Short: "Remove a registered DPU",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Use remote Nexus server if configured
-		if serverURL := GetServer(); serverURL != "" {
-			return removeDPURemote(cmd.Context(), serverURL, args[0])
-		}
-
-		if err := dpuStore.Remove(args[0]); err != nil {
+		serverURL, err := requireServer()
+		if err != nil {
 			return err
 		}
-		fmt.Printf("Removed DPU '%s'\n", args[0])
-		return nil
+		return removeDPURemote(cmd.Context(), serverURL, args[0])
 	},
 }
 
@@ -333,7 +205,13 @@ var dpuInfoCmd = &cobra.Command{
 	Short:   "Show DPU system information",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dpu, err := dpuStore.Get(args[0])
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+
+		client := NewNexusClient(serverURL)
+		dpu, err := client.GetDPU(cmd.Context(), args[0])
 		if err != nil {
 			return clierror.DeviceNotFound(args[0])
 		}
@@ -341,13 +219,13 @@ var dpuInfoCmd = &cobra.Command{
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		client, err := grpcclient.NewClient(dpu.Address())
+		grpcClient, err := grpcclient.NewClient(fmt.Sprintf("%s:%d", dpu.Host, dpu.Port))
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
-		defer client.Close()
+		defer grpcClient.Close()
 
-		info, err := client.GetSystemInfo(ctx)
+		info, err := grpcClient.GetSystemInfo(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get system info: %w", err)
 		}
@@ -368,9 +246,6 @@ var dpuInfoCmd = &cobra.Command{
 		fmt.Fprintf(w, "Memory:\t%d GB\n", info.MemoryGb)
 		fmt.Fprintf(w, "Uptime:\t%s\n", formatDuration(info.UptimeSeconds))
 		w.Flush()
-
-		// Update status
-		dpuStore.UpdateStatus(dpu.ID, "healthy")
 
 		return nil
 	},
@@ -409,20 +284,26 @@ Examples:
 func runDPUHealth(cmd *cobra.Command, args []string) error {
 	verbose, _ := cmd.Flags().GetBool("verbose")
 
-	dpu, err := dpuStore.Get(args[0])
+	serverURL, err := requireServer()
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("DPU: %s (%s)\n", dpu.Name, dpu.Address())
+	client := NewNexusClient(serverURL)
+	dpu, err := client.GetDPU(cmd.Context(), args[0])
+	if err != nil {
+		return fmt.Errorf("DPU not found: %s", args[0])
+	}
+
+	dpuAddr := fmt.Sprintf("%s:%d", dpu.Host, dpu.Port)
+	fmt.Printf("DPU: %s (%s)\n", dpu.Name, dpuAddr)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	start := time.Now()
-	client, err := grpcclient.NewClient(dpu.Address())
+	grpcClient, err := grpcclient.NewClient(dpuAddr)
 	if err != nil {
-		dpuStore.UpdateStatus(dpu.ID, "offline")
 		fmt.Println("Status: offline")
 		fmt.Printf("Error: %v\n", err)
 		fmt.Println()
@@ -432,13 +313,12 @@ func runDPUHealth(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  - Try: ping %s\n", dpu.Host)
 		return nil
 	}
-	defer client.Close()
+	defer grpcClient.Close()
 
-	resp, err := client.HealthCheck(ctx)
+	resp, err := grpcClient.HealthCheck(ctx)
 	latency := time.Since(start)
 
 	if err != nil {
-		dpuStore.UpdateStatus(dpu.ID, "unhealthy")
 		fmt.Println("Status: unhealthy")
 		fmt.Printf("Error: %v\n", err)
 		fmt.Println()
@@ -453,7 +333,6 @@ func runDPUHealth(cmd *cobra.Command, args []string) error {
 	if !resp.Healthy {
 		status = "unhealthy"
 	}
-	dpuStore.UpdateStatus(dpu.ID, status)
 
 	fmt.Printf("Status: %s\n", status)
 	fmt.Printf("Latency: %dms\n", latency.Milliseconds())
@@ -494,21 +373,10 @@ Examples:
 		dpuName := args[0]
 		tenantName, _ := cmd.Flags().GetString("tenant")
 
-		tenant, err := dpuStore.GetTenant(tenantName)
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("tenant not found: %s", tenantName)
+			return err
 		}
-
-		dpu, err := dpuStore.Get(dpuName)
-		if err != nil {
-			return fmt.Errorf("DPU not found: %s", dpuName)
-		}
-
-		if err := dpuStore.AssignDPUToTenant(dpu.ID, tenant.ID); err != nil {
-			return fmt.Errorf("failed to assign DPU: %w", err)
-		}
-
-		fmt.Printf("Assigned DPU '%s' to tenant '%s'\n", dpu.Name, tenant.Name)
-		return nil
+		return assignDPURemote(cmd.Context(), serverURL, tenantName, dpuName)
 	},
 }

@@ -123,6 +123,22 @@ const (
 // ProtocolVersion is the current protocol version for message envelopes.
 const ProtocolVersion uint8 = 1
 
+// Tmfifo TCP transport constants.
+// The tmfifo_net0 interface is a network interface (not a character device) that provides
+// IP connectivity between the BlueField DPU ARM cores and the host x86 system.
+// We use TCP sockets over this interface for reliable message delivery.
+const (
+	// TmfifoListenPort is the TCP port aegis listens on for tmfifo connections.
+	TmfifoListenPort = 9444
+
+	// TmfifoDefaultDPUAddr is the default DPU address for tmfifo TCP connections.
+	// This is the standard IP assigned to the DPU side of the tmfifo_net0 interface.
+	TmfifoDefaultDPUAddr = "192.168.100.2:9444"
+
+	// TmfifoInterfaceName is the network interface name for tmfifo communication.
+	TmfifoInterfaceName = "tmfifo_net0"
+)
+
 // Message is the wire format for transport protocol messages.
 // All communication between DPU Agent and Host Agent uses this envelope.
 type Message struct {

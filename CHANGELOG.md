@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-01-28
+
+### Breaking Changes
+- **bluectl Requires Server Mode**: Local SQLite mode removed. All commands now require `--server` flag or `BLUECTL_SERVER` environment variable pointing to a running nexus instance.
+
+### Added
+- **TCP Transport for Tmfifo**: Rewrote PTY-based transport to use TCP sockets (cleaner protocol, more reliable, better debugging)
+- **Sentry `--hostname` Flag**: Overrides system hostname for test isolation
+- **Sentry `--tmfifo-addr` Flag**: Explicit address configuration with auto-detect default
+- **CLI Management Commands**: `operator remove` and `invite remove` for cleanup operations
+- **Server Endpoints**: REST API for operator and invite management (`/api/v1/operators`, `/api/v1/invites`)
+- **CLI Help Styling**: Colors and emojis in help output for improved readability
+- **Aegis State Persistence**: DPU agent state now survives restarts
+- **Sentry Auto-Reconnection**: Host agent automatically reconnects when aegis restarts
+- **DOCA ComCh Hardware Test Harness**: Test infrastructure for real BlueField-3 hardware validation
+- **Integration Test Suite**: 12+ new test scenarios covering:
+  - DPU registration flows (positive and negative cases)
+  - Multi-tenant enrollment isolation
+  - Tenant and invite lifecycle management
+  - Credential delivery end-to-end
+  - Nexus restart persistence
+  - Sentry restart re-enrollment
+  - State sync consistency
+  - Attestation rejection cases
+- **Unit Test Coverage**: aegis core 43.8%, tmfifo transport 84.8%, attestation package 27.7%
+- **Credential Delivery Logging**: `[CRED-DELIVERY]` markers for tracing credential flow
+
+### Fixed
+- **Sentry Reconnection Protocol**: Now tracks transport auth state correctly (prevents stale connection issues)
+- **ClearActiveTransport Race**: Now requires transport parameter to prevent race conditions
+- **Tenant Delete**: Checks all dependencies (operators, DPUs) before allowing deletion
+- **Tenant Remove by Name**: 404 error when using name instead of ID now resolved
+- **Invite Code Error Messages**: Expired and revoked states now show distinct, helpful messages
+- **ForceTmfifo**: Now honors explicit `--tmfifo-addr` flag instead of always using default
+- **Tmfifo Device Detection**: Correct path detection on real BlueField-3 hardware
+- **Server Mode Enforcement**: `operator remove` and `invite remove` require server mode
+- **Tmfifo Log Messages**: Now include address for debugging
+
+### Changed
+- **Build Scripts**: `doca-build` and `qa-remote-build` use `git pull` instead of `rsync` (simpler, more reliable)
+- **Integration Tests**: Updated for server-only bluectl CLI pattern (all management via REST API)
+
 ## [0.6.8] - 2026-01-28
 
 ### Fixed

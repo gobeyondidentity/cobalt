@@ -1,3 +1,28 @@
+// Package transport provides communication abstractions for Host-DPU communication.
+//
+// # Tmfifo Transport Architecture
+//
+// The tmfifo_net0 interface is a NETWORK INTERFACE, not a character device.
+// Previous implementations incorrectly attempted to open /dev/tmfifo_net0 as a file,
+// which only worked in tests because socat creates a Unix socket at that path.
+//
+// On real BlueField hardware, tmfifo_net0 appears as a standard network interface
+// (like eth0) with IP addresses assigned to both the DPU and host sides:
+//   - DPU side: typically 192.168.100.2
+//   - Host side: typically 192.168.100.1
+//
+// This implementation uses TCP sockets over the tmfifo_net0 interface:
+//   - DPU (aegis) listens on 0.0.0.0:9444
+//   - Host (sentry) connects to the DPU address (default 192.168.100.2:9444)
+//
+// # Transport Selection Priority
+//
+//  1. DOCA Comch (future, already stubbed) - highest performance
+//  2. Tmfifo TCP (this implementation) - when tmfifo_net0 interface exists
+//  3. Emulated socket (testing) - when Unix socket file exists at configured path
+//  4. Network fallback (existing) - for non-BlueField deployments
+//
+// See ADR-005 and ADR-007 for architectural decisions.
 package transport
 
 import (
@@ -8,6 +33,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -16,61 +42,87 @@ import (
 const (
 	// maxMessageSize limits the size of incoming messages over tmfifo.
 	maxMessageSize = 64 * 1024 // 64KB
+
+	// tcpDialTimeout is the timeout for TCP connection attempts.
+	tcpDialTimeout = 10 * time.Second
 )
 
 var (
-	// ErrTmfifoDeviceNotFound indicates the tmfifo device does not exist.
-	ErrTmfifoDeviceNotFound = errors.New("tmfifo device not found")
+	// ErrTmfifoDeviceNotFound indicates the tmfifo interface/socket does not exist.
+	ErrTmfifoDeviceNotFound = errors.New("tmfifo interface or socket not found")
 
-	// ErrTmfifoAlreadyConnected indicates the device already has an active connection.
-	ErrTmfifoAlreadyConnected = errors.New("tmfifo device already has active connection")
+	// ErrTmfifoAlreadyConnected indicates the transport already has an active connection.
+	ErrTmfifoAlreadyConnected = errors.New("tmfifo transport already has active connection")
 )
 
-// TmfifoNetTransport implements Transport using the tmfifo_net0 device.
-// This transport wraps the BlueField tmfifo character device for
-// bidirectional communication between DPU and host.
+// TmfifoNetTransport implements Transport using TCP over the tmfifo_net0 interface.
+// This transport uses TCP sockets for bidirectional communication between DPU and host.
+// For test compatibility, it also supports Unix domain sockets when a socket file exists.
 type TmfifoNetTransport struct {
-	device     *os.File
-	devicePath string
+	conn       net.Conn
+	dpuAddr    string // TCP address for tmfifo (e.g., "192.168.100.2:9444")
+	socketPath string // Unix socket path for testing (e.g., "/tmp/tmfifo.sock")
 	reader     *bufio.Reader
 
-	connected bool
-	closed    bool
-	mu        sync.Mutex
+	useUnixSocket bool // true if using Unix socket (test mode)
+	connected     bool
+	closed        bool
+	mu            sync.Mutex
 }
 
-// newTmfifoNetTransportFromDevice creates a transport wrapping an already-opened device.
+// newTmfifoNetTransportFromConn creates a transport wrapping an already-established connection.
 // Used internally by TmfifoNetListener.Accept().
-func newTmfifoNetTransportFromDevice(device *os.File, devicePath string) *TmfifoNetTransport {
+func newTmfifoNetTransportFromConn(conn net.Conn) *TmfifoNetTransport {
 	return &TmfifoNetTransport{
-		device:     device,
-		devicePath: devicePath,
-		reader:     bufio.NewReaderSize(device, maxMessageSize),
-		connected:  true, // Already connected when created by listener
+		conn:      conn,
+		reader:    bufio.NewReaderSize(conn, maxMessageSize),
+		connected: true,
 	}
 }
 
-// NewTmfifoNetTransport creates a client-side transport using the tmfifo_net0 device.
-// Call Connect() to open the device before use.
-func NewTmfifoNetTransport(devicePath string) (Transport, error) {
-	if devicePath == "" {
-		devicePath = DefaultTmfifoPath
-	}
-
-	// Verify device exists
-	if _, err := os.Stat(devicePath); os.IsNotExist(err) {
-		return nil, ErrTmfifoDeviceNotFound
+// NewTmfifoNetTransport creates a client-side transport for tmfifo communication.
+// It detects whether to use TCP (real hardware) or Unix socket (test emulation).
+//
+// Parameters:
+//   - dpuAddr: TCP address of the DPU (e.g., "192.168.100.2:9444"). If empty, uses default.
+//   - socketPath: Path for Unix socket emulation (test mode). If empty, uses TCP only.
+//
+// Call Connect() to establish the connection before use.
+func NewTmfifoNetTransport(dpuAddr string) (Transport, error) {
+	if dpuAddr == "" {
+		dpuAddr = TmfifoDefaultDPUAddr
 	}
 
 	return &TmfifoNetTransport{
-		devicePath: devicePath,
+		dpuAddr: dpuAddr,
 	}, nil
 }
 
-// Connect opens the tmfifo device for communication.
+// NewTmfifoNetTransportWithSocket creates a transport that prefers Unix socket if available.
+// This is used for test compatibility with socat emulation.
+func NewTmfifoNetTransportWithSocket(dpuAddr, socketPath string) (Transport, error) {
+	if dpuAddr == "" {
+		dpuAddr = TmfifoDefaultDPUAddr
+	}
+
+	t := &TmfifoNetTransport{
+		dpuAddr:    dpuAddr,
+		socketPath: socketPath,
+	}
+
+	// Check if Unix socket exists (test mode)
+	if socketPath != "" && isUnixSocket(socketPath) {
+		t.useUnixSocket = true
+		log.Printf("tmfifo: detected Unix socket at %s (test mode)", socketPath)
+	}
+
+	return t, nil
+}
+
+// Connect establishes the tmfifo connection.
 // For server-side transports returned by Accept(), this is a no-op.
-// For client-side transports, this opens the device.
-func (t *TmfifoNetTransport) Connect(_ context.Context) error {
+// For client-side transports, this dials either TCP or Unix socket.
+func (t *TmfifoNetTransport) Connect(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -81,20 +133,35 @@ func (t *TmfifoNetTransport) Connect(_ context.Context) error {
 		return nil // Already connected
 	}
 
-	// Client-side: open the device
-	device, err := os.OpenFile(t.devicePath, os.O_RDWR, 0600)
-	if err != nil {
-		return fmt.Errorf("open tmfifo device: %w", err)
+	var conn net.Conn
+	var err error
+	var dialer net.Dialer
+	dialer.Timeout = tcpDialTimeout
+
+	if t.useUnixSocket && t.socketPath != "" {
+		// Unix socket mode (testing with socat)
+		conn, err = dialer.DialContext(ctx, "unix", t.socketPath)
+		if err != nil {
+			return fmt.Errorf("connect to tmfifo Unix socket %s: %w", t.socketPath, err)
+		}
+		log.Printf("tmfifo: connected via Unix socket %s", t.socketPath)
+	} else {
+		// TCP mode (real hardware)
+		conn, err = dialer.DialContext(ctx, "tcp", t.dpuAddr)
+		if err != nil {
+			return fmt.Errorf("connect to tmfifo TCP %s: %w", t.dpuAddr, err)
+		}
+		log.Printf("tmfifo: connected via TCP to %s", t.dpuAddr)
 	}
-	t.device = device
-	t.reader = bufio.NewReaderSize(device, maxMessageSize)
+
+	t.conn = conn
+	t.reader = bufio.NewReaderSize(conn, maxMessageSize)
 	t.connected = true
 
-	log.Printf("tmfifo: connected to %s", t.devicePath)
 	return nil
 }
 
-// Send transmits a message over the tmfifo device.
+// Send transmits a message over the tmfifo connection.
 // Messages are JSON-encoded and newline-delimited.
 func (t *TmfifoNetTransport) Send(msg *Message) error {
 	t.mu.Lock()
@@ -114,7 +181,7 @@ func (t *TmfifoNetTransport) Send(msg *Message) error {
 
 	// Write message with newline delimiter
 	data = append(data, '\n')
-	if _, err := t.device.Write(data); err != nil {
+	if _, err := t.conn.Write(data); err != nil {
 		return fmt.Errorf("write to tmfifo: %w", err)
 	}
 
@@ -122,8 +189,8 @@ func (t *TmfifoNetTransport) Send(msg *Message) error {
 	return nil
 }
 
-// Recv blocks until a message is received from the tmfifo device.
-// Returns io.EOF if the device is closed.
+// Recv blocks until a message is received from the tmfifo connection.
+// Returns io.EOF if the connection is closed.
 func (t *TmfifoNetTransport) Recv() (*Message, error) {
 	t.mu.Lock()
 	if t.closed {
@@ -140,7 +207,7 @@ func (t *TmfifoNetTransport) Recv() (*Message, error) {
 	// Read until newline (message delimiter)
 	line, err := reader.ReadBytes('\n')
 	if err != nil {
-		if err == io.EOF || errors.Is(err, os.ErrClosed) {
+		if err == io.EOF || errors.Is(err, os.ErrClosed) || errors.Is(err, net.ErrClosed) {
 			return nil, io.EOF
 		}
 		return nil, fmt.Errorf("read from tmfifo: %w", err)
@@ -159,7 +226,7 @@ func (t *TmfifoNetTransport) Recv() (*Message, error) {
 	return &msg, nil
 }
 
-// Close terminates the transport and releases the device.
+// Close terminates the transport and releases the connection.
 func (t *TmfifoNetTransport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -171,11 +238,11 @@ func (t *TmfifoNetTransport) Close() error {
 	t.closed = true
 	t.connected = false
 
-	if t.device != nil {
-		if err := t.device.Close(); err != nil {
-			return fmt.Errorf("close tmfifo device: %w", err)
+	if t.conn != nil {
+		if err := t.conn.Close(); err != nil {
+			return fmt.Errorf("close tmfifo connection: %w", err)
 		}
-		t.device = nil
+		t.conn = nil
 	}
 
 	log.Printf("tmfifo: transport closed")
@@ -191,7 +258,7 @@ func (t *TmfifoNetTransport) Reset() {
 
 	t.closed = false
 	t.connected = false
-	t.device = nil
+	t.conn = nil
 	t.reader = nil
 
 	log.Printf("tmfifo: transport reset for reconnection")
@@ -202,119 +269,94 @@ func (t *TmfifoNetTransport) Type() TransportType {
 	return TransportTmfifoNet
 }
 
-// TmfifoNetListener implements TransportListener for the tmfifo_net0 device.
-// Since tmfifo is a single bidirectional device (not connection-oriented),
-// Accept() returns a transport wrapping the device and blocks subsequent
-// Accept calls until the current transport is closed.
+// TmfifoNetListener implements TransportListener for the tmfifo TCP transport.
+// It listens on a TCP port for connections from host agents.
+// For test compatibility, it also supports Unix domain sockets.
 type TmfifoNetListener struct {
-	devicePath string
+	listener   net.Listener
+	listenAddr string // TCP listen address (e.g., ":9444" or "0.0.0.0:9444")
+	socketPath string // Unix socket path for testing
 
-	currentTransport *TmfifoNetTransport
-	closed           bool
-	mu               sync.Mutex
-
-	// acceptCh allows Accept() to wait for the previous transport to close
-	acceptCh chan struct{}
+	useUnixSocket bool
+	closed        bool
+	mu            sync.Mutex
 }
 
-// NewTmfifoNetListener creates a listener for the tmfifo_net0 device.
-// The device path defaults to /dev/tmfifo_net0 if empty.
-func NewTmfifoNetListener(devicePath string) (*TmfifoNetListener, error) {
-	if devicePath == "" {
-		devicePath = DefaultTmfifoPath
+// NewTmfifoNetListener creates a TCP listener for tmfifo connections.
+// The listener binds to the specified address and waits for host agent connections.
+func NewTmfifoNetListener(listenAddr string) (*TmfifoNetListener, error) {
+	if listenAddr == "" {
+		listenAddr = fmt.Sprintf(":%d", TmfifoListenPort)
 	}
 
-	// Verify device exists
-	if _, err := os.Stat(devicePath); os.IsNotExist(err) {
-		return nil, ErrTmfifoDeviceNotFound
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return nil, fmt.Errorf("listen on %s: %w", listenAddr, err)
 	}
 
-	l := &TmfifoNetListener{
-		devicePath: devicePath,
-		acceptCh:   make(chan struct{}, 1),
-	}
+	log.Printf("tmfifo: listening on TCP %s", listenAddr)
 
-	// Signal that Accept can proceed initially
-	l.acceptCh <- struct{}{}
-
-	return l, nil
+	return &TmfifoNetListener{
+		listener:   listener,
+		listenAddr: listenAddr,
+	}, nil
 }
 
-// Accept opens the tmfifo device and returns a Transport for communication.
-// Since tmfifo is a single device, only one transport can be active at a time.
-// Accept blocks if a transport is already active, until it is closed.
+// NewTmfifoNetListenerWithSocket creates a listener that uses Unix socket if path provided.
+// This is used for test compatibility with socat emulation.
+func NewTmfifoNetListenerWithSocket(listenAddr, socketPath string) (*TmfifoNetListener, error) {
+	if socketPath != "" {
+		// Unix socket mode (testing)
+		// Remove existing socket file if present
+		os.Remove(socketPath)
+
+		listener, err := net.Listen("unix", socketPath)
+		if err != nil {
+			return nil, fmt.Errorf("listen on Unix socket %s: %w", socketPath, err)
+		}
+
+		log.Printf("tmfifo: listening on Unix socket %s (test mode)", socketPath)
+
+		return &TmfifoNetListener{
+			listener:      listener,
+			socketPath:    socketPath,
+			useUnixSocket: true,
+		}, nil
+	}
+
+	// TCP mode
+	return NewTmfifoNetListener(listenAddr)
+}
+
+// Accept blocks until a new connection is received.
+// Returns a Transport for communicating with the connected host agent.
 func (l *TmfifoNetListener) Accept() (Transport, error) {
-	// Wait for permission to accept (i.e., no active transport)
-	<-l.acceptCh
-
 	l.mu.Lock()
 	if l.closed {
 		l.mu.Unlock()
 		return nil, errors.New("listener closed")
 	}
-	devicePath := l.devicePath
+	listener := l.listener
 	l.mu.Unlock()
 
-	// Open device for read/write
-	device, err := os.OpenFile(devicePath, os.O_RDWR, 0600)
+	conn, err := listener.Accept()
 	if err != nil {
-		// Put the accept token back so future Accept calls can try
-		l.acceptCh <- struct{}{}
-		return nil, fmt.Errorf("open tmfifo device: %w", err)
-	}
-
-	transport := newTmfifoNetTransportFromDevice(device, devicePath)
-
-	l.mu.Lock()
-	l.currentTransport = transport
-	l.mu.Unlock()
-
-	log.Printf("tmfifo: accepted connection on %s", devicePath)
-
-	// Start goroutine to watch for transport close and release accept token
-	go l.watchTransportClose(transport)
-
-	return transport, nil
-}
-
-// watchTransportClose monitors a transport and releases the accept token when closed.
-func (l *TmfifoNetListener) watchTransportClose(t *TmfifoNetTransport) {
-	// Poll for transport closure
-	for {
-		t.mu.Lock()
-		closed := t.closed
-		t.mu.Unlock()
-
-		if closed {
-			break
-		}
-
-		// Check listener closure
 		l.mu.Lock()
-		listenerClosed := l.closed
+		closed := l.closed
 		l.mu.Unlock()
-
-		if listenerClosed {
-			return
+		if closed {
+			return nil, errors.New("listener closed")
 		}
-
-		// Small sleep to avoid busy loop
-		time.Sleep(100 * time.Millisecond)
+		return nil, fmt.Errorf("accept tmfifo connection: %w", err)
 	}
 
-	l.mu.Lock()
-	l.currentTransport = nil
-	// Release accept token if listener not closed
-	if !l.closed {
-		select {
-		case l.acceptCh <- struct{}{}:
-		default:
-		}
-	}
-	l.mu.Unlock()
+	remoteAddr := conn.RemoteAddr().String()
+	log.Printf("tmfifo: accepted connection from %s", remoteAddr)
+
+	return newTmfifoNetTransportFromConn(conn), nil
 }
 
-// Close stops the listener and closes any active transport.
+// Close stops the listener and releases resources.
 func (l *TmfifoNetListener) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -325,13 +367,16 @@ func (l *TmfifoNetListener) Close() error {
 
 	l.closed = true
 
-	// Close any active transport
-	if l.currentTransport != nil {
-		l.currentTransport.Close()
-		l.currentTransport = nil
+	if l.listener != nil {
+		if err := l.listener.Close(); err != nil {
+			return fmt.Errorf("close tmfifo listener: %w", err)
+		}
 	}
 
-	close(l.acceptCh)
+	// Clean up Unix socket file if used
+	if l.useUnixSocket && l.socketPath != "" {
+		os.Remove(l.socketPath)
+	}
 
 	log.Printf("tmfifo: listener closed")
 	return nil
@@ -340,4 +385,33 @@ func (l *TmfifoNetListener) Close() error {
 // Type returns TransportTmfifoNet.
 func (l *TmfifoNetListener) Type() TransportType {
 	return TransportTmfifoNet
+}
+
+// isUnixSocket checks if the path exists and is a Unix domain socket.
+func isUnixSocket(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeSocket != 0
+}
+
+// hasTmfifoInterface checks if the tmfifo_net0 network interface exists.
+func hasTmfifoInterface() bool {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, iface := range ifaces {
+		if iface.Name == TmfifoInterfaceName {
+			return true
+		}
+	}
+	return false
+}
+
+// HasTmfifoInterface returns true if the tmfifo_net0 network interface exists.
+// This is the primary indicator that we're running on BlueField hardware.
+func HasTmfifoInterface() bool {
+	return hasTmfifoInterface()
 }

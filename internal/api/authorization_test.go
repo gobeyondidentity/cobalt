@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nmelo/secure-infra/pkg/store"
 )
 
 // TestCreateAuthorization_Success tests successful authorization creation.
@@ -767,6 +768,145 @@ func TestAuthorizationResponse_GracefulDegradation(t *testing.T) {
 	}
 	if len(result.DeviceNames) != 1 || result.DeviceNames[0] != unknownDeviceID {
 		t.Errorf("expected device_names to fall back to [%s], got %v", unknownDeviceID, result.DeviceNames)
+	}
+}
+
+// TestCheckAuthorization_RevokedKeyMaker tests that revoked KeyMakers are rejected.
+func TestCheckAuthorization_RevokedKeyMaker(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant first
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create a KeyMaker
+	keymakerID := "km_" + uuid.New().String()[:8]
+	km := &store.KeyMaker{
+		ID:                keymakerID,
+		OperatorID:        operatorID,
+		Name:              "test-keymaker",
+		Platform:          "darwin",
+		SecureElement:     "software",
+		DeviceFingerprint: "fp123",
+		PublicKey:         "ssh-ed25519 AAAA...",
+		Status:            "active",
+	}
+	if err := server.store.CreateKeyMaker(km); err != nil {
+		t.Fatalf("failed to create keymaker: %v", err)
+	}
+
+	// Create authorization granting access
+	authID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(authID, operatorID, tenantID, []string{"ca-prod"}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// Revoke the KeyMaker
+	if err := server.store.RevokeKeyMaker(keymakerID); err != nil {
+		t.Fatalf("failed to revoke keymaker: %v", err)
+	}
+
+	// Check authorization with revoked keymaker_id
+	body := CheckAuthorizationRequest{
+		OperatorID: operatorID,
+		CAID:       "ca-prod",
+		KeyMakerID: keymakerID,
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/api/v1/authorizations/check", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	// Should return 401 Unauthorized
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401 for revoked keymaker, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify error message
+	var errResp struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+	if errResp.Error != "device revoked" {
+		t.Errorf("expected error 'device revoked', got '%s'", errResp.Error)
+	}
+}
+
+// TestCheckAuthorization_ActiveKeyMaker tests that active KeyMakers pass the revocation check.
+func TestCheckAuthorization_ActiveKeyMaker(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant first
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create a KeyMaker (active)
+	keymakerID := "km_" + uuid.New().String()[:8]
+	km := &store.KeyMaker{
+		ID:                keymakerID,
+		OperatorID:        operatorID,
+		Name:              "test-keymaker",
+		Platform:          "darwin",
+		SecureElement:     "software",
+		DeviceFingerprint: "fp123",
+		PublicKey:         "ssh-ed25519 AAAA...",
+		Status:            "active",
+	}
+	if err := server.store.CreateKeyMaker(km); err != nil {
+		t.Fatalf("failed to create keymaker: %v", err)
+	}
+
+	// Create authorization granting access
+	authID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(authID, operatorID, tenantID, []string{"ca-prod"}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization: %v", err)
+	}
+
+	// Check authorization with active keymaker_id
+	body := CheckAuthorizationRequest{
+		OperatorID: operatorID,
+		CAID:       "ca-prod",
+		KeyMakerID: keymakerID,
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/api/v1/authorizations/check", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	// Should return 200 OK (pass the revocation check and proceed to authorization check)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200 for active keymaker, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result CheckAuthorizationResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if !result.Authorized {
+		t.Errorf("expected authorized=true, got false. Reason: %s", result.Reason)
 	}
 }
 

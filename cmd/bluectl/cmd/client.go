@@ -427,3 +427,661 @@ func (c *NexusClient) InviteOperator(ctx context.Context, email, tenantName, rol
 
 	return &result, nil
 }
+
+// RemoveOperator removes an operator from the Nexus server.
+func (c *NexusClient) RemoveOperator(ctx context.Context, email string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/operators/"+email, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// RemoveInviteCode removes/revokes an invite code on the Nexus server.
+func (c *NexusClient) RemoveInviteCode(ctx context.Context, code string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/invites/"+code, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// operatorResponse matches the API response for operator operations.
+type operatorResponse struct {
+	ID         string `json:"id"`
+	Email      string `json:"email"`
+	TenantID   string `json:"tenant_id"`
+	TenantName string `json:"tenant_name"`
+	Role       string `json:"role"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
+// updateOperatorStatusRequest is the request body for updating operator status.
+type updateOperatorStatusRequest struct {
+	Status string `json:"status"`
+}
+
+// ListOperators retrieves all operators from the Nexus server, optionally filtered by tenant.
+func (c *NexusClient) ListOperators(ctx context.Context, tenant string) ([]operatorResponse, error) {
+	url := c.baseURL + "/api/v1/operators"
+	if tenant != "" {
+		url += "?tenant=" + tenant
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var operators []operatorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&operators); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return operators, nil
+}
+
+// GetOperator retrieves an operator by email from the Nexus server.
+func (c *NexusClient) GetOperator(ctx context.Context, email string) (*operatorResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/operators/"+email, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("operator not found: %s", email)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var operator operatorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&operator); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &operator, nil
+}
+
+// UpdateOperatorStatus updates the status of an operator (active or suspended).
+func (c *NexusClient) UpdateOperatorStatus(ctx context.Context, email, status string) error {
+	reqBody := updateOperatorStatusRequest{
+		Status: status,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/v1/operators/"+email+"/status", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// GetDPU retrieves a DPU by name or ID from the Nexus server.
+func (c *NexusClient) GetDPU(ctx context.Context, nameOrID string) (*dpuResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/dpus/"+nameOrID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("DPU not found: %s", nameOrID)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var dpu dpuResponse
+	if err := json.NewDecoder(resp.Body).Decode(&dpu); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &dpu, nil
+}
+
+// ----- Trust Methods -----
+
+// createTrustRequest is the request body for creating a trust relationship.
+type createTrustRequest struct {
+	SourceHost    string `json:"source_host"`
+	TargetHost    string `json:"target_host"`
+	TrustType     string `json:"trust_type"`
+	Bidirectional bool   `json:"bidirectional"`
+	Force         bool   `json:"force"`
+}
+
+// trustResponse matches the API response for trust operations.
+type trustResponse struct {
+	ID            string `json:"id"`
+	SourceHost    string `json:"source_host"`
+	TargetHost    string `json:"target_host"`
+	SourceDPUID   string `json:"source_dpu_id"`
+	TargetDPUID   string `json:"target_dpu_id"`
+	TenantID      string `json:"tenant_id"`
+	TrustType     string `json:"trust_type"`
+	Bidirectional bool   `json:"bidirectional"`
+	Status        string `json:"status"`
+	CreatedAt     string `json:"created_at"`
+}
+
+// CreateTrust creates a trust relationship between two hosts on the Nexus server.
+func (c *NexusClient) CreateTrust(ctx context.Context, req createTrustRequest) (*trustResponse, error) {
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/trust", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var trust trustResponse
+	if err := json.NewDecoder(resp.Body).Decode(&trust); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &trust, nil
+}
+
+// ListTrust retrieves all trust relationships from the Nexus server, optionally filtered by tenant.
+func (c *NexusClient) ListTrust(ctx context.Context, tenant string) ([]trustResponse, error) {
+	url := c.baseURL + "/api/v1/trust"
+	if tenant != "" {
+		url += "?tenant=" + tenant
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var trusts []trustResponse
+	if err := json.NewDecoder(resp.Body).Decode(&trusts); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return trusts, nil
+}
+
+// DeleteTrust removes a trust relationship from the Nexus server.
+func (c *NexusClient) DeleteTrust(ctx context.Context, id string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/trust/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// ----- Agent Host Methods -----
+
+// agentHostResponse matches the API response for agent host operations.
+type agentHostResponse struct {
+	ID         string `json:"id"`
+	DPUName    string `json:"dpu_name"`
+	Hostname   string `json:"hostname"`
+	LastSeenAt string `json:"last_seen_at"`
+}
+
+// ListAgentHosts retrieves all agent hosts from the Nexus server, optionally filtered by tenant.
+func (c *NexusClient) ListAgentHosts(ctx context.Context, tenant string) ([]agentHostResponse, error) {
+	url := c.baseURL + "/api/v1/hosts"
+	if tenant != "" {
+		url += "?tenant=" + tenant
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	// API returns wrapped response: {"hosts": [...]}
+	var wrapper struct {
+		Hosts []agentHostResponse `json:"hosts"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return wrapper.Hosts, nil
+}
+
+// GetAgentHost retrieves an agent host by ID from the Nexus server.
+func (c *NexusClient) GetAgentHost(ctx context.Context, id string) (*agentHostResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/hosts/"+id, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("agent host not found: %s", id)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var host agentHostResponse
+	if err := json.NewDecoder(resp.Body).Decode(&host); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &host, nil
+}
+
+// DeleteAgentHost removes an agent host from the Nexus server.
+func (c *NexusClient) DeleteAgentHost(ctx context.Context, id string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/hosts/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// ----- SSH CA Methods -----
+
+// sshCAResponse matches the API response for SSH CA operations.
+type sshCAResponse struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	KeyType       string `json:"keyType"`
+	PublicKey     string `json:"publicKey,omitempty"`
+	CreatedAt     string `json:"createdAt"`
+	Distributions int    `json:"distributions"`
+}
+
+// ListSSHCAs retrieves all SSH CAs from the Nexus server.
+func (c *NexusClient) ListSSHCAs(ctx context.Context) ([]sshCAResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/credentials/ssh-cas", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var cas []sshCAResponse
+	if err := json.NewDecoder(resp.Body).Decode(&cas); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return cas, nil
+}
+
+// GetSSHCA retrieves an SSH CA by name from the Nexus server.
+func (c *NexusClient) GetSSHCA(ctx context.Context, name string) (*sshCAResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/credentials/ssh-cas/"+name, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("SSH CA not found: %s", name)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ca sshCAResponse
+	if err := json.NewDecoder(resp.Body).Decode(&ca); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &ca, nil
+}
+
+// ----- Authorization Methods -----
+
+// grantAuthorizationRequest is the request body for granting authorization.
+type grantAuthorizationRequest struct {
+	OperatorEmail string   `json:"operator_email"`
+	TenantID      string   `json:"tenant_id"`
+	CAIDs         []string `json:"ca_ids"`
+	DeviceIDs     []string `json:"device_ids"`
+}
+
+// authorizationResponse matches the API response for authorization operations.
+type authorizationResponse struct {
+	ID          string   `json:"id"`
+	OperatorID  string   `json:"operator_id"`
+	TenantID    string   `json:"tenant_id"`
+	CAIDs       []string `json:"ca_ids"`
+	CANames     []string `json:"ca_names"`
+	DeviceIDs   []string `json:"device_ids"`
+	DeviceNames []string `json:"device_names"`
+	CreatedAt   string   `json:"created_at"`
+	CreatedBy   string   `json:"created_by"`
+}
+
+// GrantAuthorization creates an authorization for an operator to access CAs and devices.
+func (c *NexusClient) GrantAuthorization(ctx context.Context, email, tenantID string, caIDs, deviceIDs []string) (*authorizationResponse, error) {
+	reqBody := grantAuthorizationRequest{
+		OperatorEmail: email,
+		TenantID:      tenantID,
+		CAIDs:         caIDs,
+		DeviceIDs:     deviceIDs,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/authorizations", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var auth authorizationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&auth); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &auth, nil
+}
+
+// ----- KeyMaker Methods -----
+
+// keymakerResponse matches the API response for KeyMaker operations.
+type keymakerResponse struct {
+	ID            string  `json:"id"`
+	OperatorID    string  `json:"operator_id"`
+	OperatorEmail string  `json:"operator_email"`
+	Name          string  `json:"name"`
+	Platform      string  `json:"platform"`
+	SecureElement string  `json:"secure_element"`
+	BoundAt       string  `json:"bound_at"`
+	LastSeen      *string `json:"last_seen,omitempty"`
+	Status        string  `json:"status"`
+}
+
+// ListKeyMakers retrieves all KeyMakers from the Nexus server, optionally filtered by operator.
+func (c *NexusClient) ListKeyMakers(ctx context.Context, operatorID string) ([]keymakerResponse, error) {
+	url := c.baseURL + "/api/v1/keymakers"
+	if operatorID != "" {
+		url += "?operator_id=" + operatorID
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var keymakers []keymakerResponse
+	if err := json.NewDecoder(resp.Body).Decode(&keymakers); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return keymakers, nil
+}
+
+// GetKeyMaker retrieves a KeyMaker by ID from the Nexus server.
+func (c *NexusClient) GetKeyMaker(ctx context.Context, id string) (*keymakerResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/keymakers/"+id, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("KeyMaker not found: %s", id)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var km keymakerResponse
+	if err := json.NewDecoder(resp.Body).Decode(&km); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &km, nil
+}
+
+// RevokeKeyMaker revokes a KeyMaker by ID.
+func (c *NexusClient) RevokeKeyMaker(ctx context.Context, id string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/keymakers/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// ----- Host Posture Methods -----
+
+// postureResponse matches the API response for host posture.
+type postureResponse struct {
+	SecureBoot     *bool  `json:"secure_boot"`
+	DiskEncryption string `json:"disk_encryption"`
+	OSVersion      string `json:"os_version"`
+	KernelVersion  string `json:"kernel_version"`
+	TPMPresent     *bool  `json:"tpm_present"`
+	PostureHash    string `json:"posture_hash"`
+	CollectedAt    string `json:"collected_at"`
+}
+
+// ErrNoPostureData indicates no posture data is available for the host.
+var ErrNoPostureData = fmt.Errorf("no posture data available")
+
+// GetHostPostureByDPU retrieves the posture data for the host paired with a DPU.
+func (c *NexusClient) GetHostPostureByDPU(ctx context.Context, dpuName string) (*postureResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/hosts/"+dpuName+"/posture", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNoPostureData
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var posture postureResponse
+	if err := json.NewDecoder(resp.Body).Decode(&posture); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &posture, nil
+}

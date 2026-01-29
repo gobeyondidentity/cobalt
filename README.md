@@ -1,6 +1,6 @@
 # Secure Infrastructure
 
-**v0.6.8** | [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
+**v0.6.9** | [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 ![Demo](assets/demo-v2.gif)
 
@@ -65,9 +65,9 @@ sudo yum install bluectl km
 ### Docker
 
 ```bash
-docker pull ghcr.io/gobeyondidentity/nexus:0.6.8   # Control plane
-docker pull ghcr.io/gobeyondidentity/sentry:0.6.8  # Host agent
-docker pull ghcr.io/gobeyondidentity/aegis:0.6.8   # DPU agent
+docker pull ghcr.io/gobeyondidentity/nexus:0.6.9   # Control plane
+docker pull ghcr.io/gobeyondidentity/sentry:0.6.9  # Host agent
+docker pull ghcr.io/gobeyondidentity/aegis:0.6.9   # DPU agent
 ```
 
 For local development with Docker Compose, see [Local Dev: Docker](docs/guides/local-dev-docker.md).

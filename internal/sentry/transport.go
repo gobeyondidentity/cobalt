@@ -24,10 +24,13 @@ type TmfifoTransport struct {
 }
 
 // NewTmfifoTransport creates a new tmfifo transport.
-// The devicePath defaults to /dev/tmfifo_net0 if empty.
+// If devicePath is empty, auto-detects from known tmfifo device paths.
 func NewTmfifoTransport(devicePath string) *TmfifoTransport {
 	if devicePath == "" {
-		devicePath = DefaultTmfifoPath
+		devicePath, _ = DetectTmfifo()
+		if devicePath == "" {
+			devicePath = DefaultTmfifoPath // fallback for error reporting
+		}
 	}
 	return &TmfifoTransport{
 		devicePath: devicePath,

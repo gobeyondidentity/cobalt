@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -17,8 +18,15 @@ import (
 )
 
 const (
-	// DefaultTmfifoPath is the default tmfifo device path on the host side.
-	DefaultTmfifoPath = "/dev/tmfifo_net0"
+	// DefaultTmfifoDPUAddr is the default DPU address for tmfifo TCP connections.
+	// This is the standard IP assigned to the DPU side of the tmfifo_net0 interface.
+	DefaultTmfifoDPUAddr = "192.168.100.2:9444"
+
+	// TmfifoInterfaceName is the network interface name for tmfifo communication.
+	TmfifoInterfaceName = "tmfifo_net0"
+
+	// tmfifoDialTimeout is the timeout for TCP connection attempts.
+	tmfifoDialTimeout = 10 * time.Second
 
 	// tmfifoReadTimeout is the timeout for reading from tmfifo.
 	tmfifoReadTimeout = 30 * time.Second
@@ -27,11 +35,20 @@ const (
 	maxMessageSize = 64 * 1024 // 64KB
 )
 
+// Deprecated: DefaultTmfifoPath is deprecated. Use DefaultTmfifoDPUAddr instead.
+// tmfifo_net0 is a network interface, not a device file.
+const DefaultTmfifoPath = "/dev/tmfifo_net0"
+
 // TmfifoClient handles communication with the DPU Agent over tmfifo.
+// It uses TCP sockets over the tmfifo_net0 network interface for real hardware,
+// or Unix domain sockets for test emulation.
 type TmfifoClient struct {
-	devicePath string
-	device     *os.File
-	deviceMu   sync.Mutex
+	dpuAddr    string   // TCP address of DPU (e.g., "192.168.100.2:9444")
+	socketPath string   // Unix socket path for testing
+	conn       net.Conn // Active connection
+	connMu     sync.Mutex
+
+	useUnixSocket bool // true if using Unix socket (test mode)
 
 	credInstaller *CredentialInstaller
 	hostname      string
@@ -40,52 +57,125 @@ type TmfifoClient struct {
 	wg     sync.WaitGroup
 }
 
-// NewTmfifoClient creates a new tmfifo client.
-func NewTmfifoClient(devicePath, hostname string) *TmfifoClient {
-	if devicePath == "" {
-		devicePath = DefaultTmfifoPath
+// NewTmfifoClient creates a new tmfifo client using TCP over the tmfifo_net0 interface.
+func NewTmfifoClient(dpuAddr, hostname string) *TmfifoClient {
+	if dpuAddr == "" {
+		dpuAddr = DefaultTmfifoDPUAddr
 	}
 	return &TmfifoClient{
-		devicePath:    devicePath,
+		dpuAddr:       dpuAddr,
 		hostname:      hostname,
 		credInstaller: NewCredentialInstaller(),
 		stopCh:        make(chan struct{}),
 	}
 }
 
-// DetectTmfifo checks if the tmfifo device exists.
-// Returns the device path and true if available.
+// NewTmfifoClientWithSocket creates a tmfifo client that uses Unix socket for testing.
+func NewTmfifoClientWithSocket(dpuAddr, socketPath, hostname string) *TmfifoClient {
+	if dpuAddr == "" {
+		dpuAddr = DefaultTmfifoDPUAddr
+	}
+	client := &TmfifoClient{
+		dpuAddr:       dpuAddr,
+		socketPath:    socketPath,
+		hostname:      hostname,
+		credInstaller: NewCredentialInstaller(),
+		stopCh:        make(chan struct{}),
+	}
+
+	// Check if Unix socket exists
+	if socketPath != "" && isUnixSocket(socketPath) {
+		client.useUnixSocket = true
+		log.Printf("tmfifo: detected Unix socket at %s (test mode)", socketPath)
+	}
+
+	return client
+}
+
+// hasTmfifoInterface checks if the tmfifo_net0 network interface exists.
+func hasTmfifoInterface() bool {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, iface := range ifaces {
+		if iface.Name == TmfifoInterfaceName {
+			return true
+		}
+	}
+	return false
+}
+
+// isUnixSocket checks if the path exists and is a Unix domain socket.
+func isUnixSocket(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeSocket != 0
+}
+
+// DetectTmfifo checks if tmfifo transport is available.
+// Returns true if either the tmfifo_net0 interface exists or a Unix socket is available.
 func DetectTmfifo() (string, bool) {
-	path := DefaultTmfifoPath
-	if _, err := os.Stat(path); err == nil {
-		return path, true
+	if hasTmfifoInterface() {
+		return TmfifoInterfaceName, true
 	}
 	return "", false
 }
 
-// Open opens the tmfifo device for communication.
-func (c *TmfifoClient) Open() error {
-	c.deviceMu.Lock()
-	defer c.deviceMu.Unlock()
+// DetectTmfifoWithSocket checks for tmfifo availability including Unix socket fallback.
+func DetectTmfifoWithSocket(socketPath string) (string, bool) {
+	// Check for real interface first
+	if hasTmfifoInterface() {
+		return TmfifoInterfaceName, true
+	}
+	// Check for Unix socket (test mode)
+	if socketPath != "" && isUnixSocket(socketPath) {
+		return socketPath, true
+	}
+	return "", false
+}
 
-	if c.device != nil {
+// Open establishes the tmfifo connection.
+func (c *TmfifoClient) Open() error {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	if c.conn != nil {
 		return nil // Already open
 	}
 
-	f, err := os.OpenFile(c.devicePath, os.O_RDWR, 0600)
-	if err != nil {
-		return fmt.Errorf("open tmfifo device %s: %w", c.devicePath, err)
+	var conn net.Conn
+	var err error
+	dialer := net.Dialer{Timeout: tmfifoDialTimeout}
+
+	if c.useUnixSocket && c.socketPath != "" {
+		// Unix socket mode (testing)
+		conn, err = dialer.Dial("unix", c.socketPath)
+		if err != nil {
+			return fmt.Errorf("connect to tmfifo Unix socket %s: %w", c.socketPath, err)
+		}
+		log.Printf("tmfifo: connected via Unix socket %s", c.socketPath)
+	} else {
+		// TCP mode (real hardware)
+		conn, err = dialer.Dial("tcp", c.dpuAddr)
+		if err != nil {
+			return fmt.Errorf("connect to tmfifo TCP %s: %w", c.dpuAddr, err)
+		}
+		log.Printf("tmfifo: connected via TCP to %s", c.dpuAddr)
 	}
-	c.device = f
+
+	c.conn = conn
 	return nil
 }
 
-// Close closes the tmfifo device.
+// Close closes the tmfifo connection.
 func (c *TmfifoClient) Close() error {
-	c.deviceMu.Lock()
-	defer c.deviceMu.Unlock()
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
 
-	if c.device == nil {
+	if c.conn == nil {
 		return nil
 	}
 
@@ -93,8 +183,8 @@ func (c *TmfifoClient) Close() error {
 	close(c.stopCh)
 	c.wg.Wait()
 
-	err := c.device.Close()
-	c.device = nil
+	err := c.conn.Close()
+	c.conn = nil
 	return err
 }
 
@@ -118,7 +208,7 @@ func (c *TmfifoClient) Enroll(posture json.RawMessage) (hostID string, dpuName s
 	req := tmfifo.Message{
 		Type:    tmfifo.TypeEnrollRequest,
 		Payload: payloadBytes,
-		ID:   generateNonce(),
+		ID:      generateNonce(),
 	}
 
 	// Send request
@@ -150,11 +240,15 @@ func (c *TmfifoClient) Enroll(posture json.RawMessage) (hostID string, dpuName s
 
 // ReportPosture sends a posture report to the DPU Agent.
 func (c *TmfifoClient) ReportPosture(posture json.RawMessage) error {
-	if c.device == nil {
+	c.connMu.Lock()
+	conn := c.conn
+	c.connMu.Unlock()
+
+	if conn == nil {
 		return fmt.Errorf("tmfifo not open")
 	}
 
-	return c.reportPostureWithReader(posture, c.device, c.device)
+	return c.reportPostureWithReader(posture, conn, conn)
 }
 
 // reportPostureWithReader is the internal implementation that allows injection of reader/writer for testing.
@@ -291,7 +385,11 @@ func (c *TmfifoClient) sendCredentialAckWithWriter(success bool, installedPath, 
 
 // StartListener starts a goroutine to listen for incoming messages (CREDENTIAL_PUSH).
 func (c *TmfifoClient) StartListener() error {
-	if c.device == nil {
+	c.connMu.Lock()
+	conn := c.conn
+	c.connMu.Unlock()
+
+	if conn == nil {
 		return fmt.Errorf("tmfifo not open")
 	}
 
@@ -306,7 +404,15 @@ func (c *TmfifoClient) StartListener() error {
 func (c *TmfifoClient) listenLoop() {
 	defer c.wg.Done()
 
-	reader := bufio.NewReaderSize(c.device, maxMessageSize)
+	c.connMu.Lock()
+	conn := c.conn
+	c.connMu.Unlock()
+
+	if conn == nil {
+		return
+	}
+
+	reader := bufio.NewReaderSize(conn, maxMessageSize)
 
 	for {
 		select {
@@ -411,18 +517,18 @@ func (c *TmfifoClient) sendCredentialAck(success bool, installedPath, errMsg str
 	msg := tmfifo.Message{
 		Type:    tmfifo.TypeCredentialAck,
 		Payload: payloadBytes,
-		ID:   generateNonce(),
+		ID:      generateNonce(),
 	}
 
 	return c.sendMessage(&msg)
 }
 
-// sendMessage writes a message to the tmfifo device.
+// sendMessage writes a message to the tmfifo connection.
 func (c *TmfifoClient) sendMessage(msg *tmfifo.Message) error {
-	c.deviceMu.Lock()
-	defer c.deviceMu.Unlock()
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
 
-	if c.device == nil {
+	if c.conn == nil {
 		return fmt.Errorf("tmfifo not open")
 	}
 
@@ -434,23 +540,24 @@ func (c *TmfifoClient) sendMessage(msg *tmfifo.Message) error {
 	// Append newline delimiter
 	data = append(data, '\n')
 
-	if _, err := c.device.Write(data); err != nil {
+	if _, err := c.conn.Write(data); err != nil {
 		return fmt.Errorf("write to tmfifo: %w", err)
 	}
 
 	return nil
 }
 
-// readMessage reads a single message from the tmfifo device.
+// readMessage reads a single message from the tmfifo connection.
 func (c *TmfifoClient) readMessage() (*tmfifo.Message, error) {
-	c.deviceMu.Lock()
-	defer c.deviceMu.Unlock()
+	c.connMu.Lock()
+	conn := c.conn
+	c.connMu.Unlock()
 
-	if c.device == nil {
+	if conn == nil {
 		return nil, fmt.Errorf("tmfifo not open")
 	}
 
-	reader := bufio.NewReader(c.device)
+	reader := bufio.NewReader(conn)
 	line, err := reader.ReadBytes('\n')
 	if err != nil {
 		return nil, fmt.Errorf("read from tmfifo: %w", err)

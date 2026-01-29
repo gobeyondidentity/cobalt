@@ -718,29 +718,27 @@ qa-doca-build:
 	@echo "Checking BlueField connectivity..."
 	@$(BLUEFIELD_SSH) "echo 'Connected to BlueField'" || (echo "ERROR: Cannot reach BlueField at $(BLUEFIELD_IP)" && exit 1)
 	@echo ""
-	@echo "Syncing source to BlueField..."
-	@rsync -az --delete --exclude='.git' --exclude='bin/' --exclude='qa-workspace/' \
-		-e "ssh -o StrictHostKeyChecking=no" \
-		. $(BLUEFIELD_USER)@$(BLUEFIELD_IP):$(BLUEFIELD_REMOTE_DIR)/
+	@echo "Fetching latest main on BlueField..."
+	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR) && git fetch origin && git checkout origin/main"
 	@echo ""
 	@echo "Building with -tags doca..."
-	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR) && go build -tags doca -o bin/aegis-doca ./cmd/aegis" 2>&1 || \
+	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR)/eng && go build -tags doca -o bin/aegis-doca ./cmd/aegis" 2>&1 || \
 		(echo ""; echo "NOTE: Build may fail if DOCA SDK not installed or implementation incomplete"; exit 1)
-	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR) && go build -tags doca -o bin/sentry-doca ./cmd/sentry" 2>&1 || true
+	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR)/eng && go build -tags doca -o bin/sentry-doca ./cmd/sentry" 2>&1 || true
 	@echo ""
 	@echo "=== DOCA build complete ==="
-	@$(BLUEFIELD_SSH) "ls -la $(BLUEFIELD_REMOTE_DIR)/bin/*-doca 2>/dev/null" || echo "No DOCA binaries built"
+	@$(BLUEFIELD_SSH) "ls -la $(BLUEFIELD_REMOTE_DIR)/eng/bin/*-doca 2>/dev/null" || echo "No DOCA binaries built"
 
 # Deploy DOCA-enabled binaries (after qa-doca-build)
 qa-doca-deploy:
 	@echo "=== Deploying DOCA binaries on BlueField ==="
-	@$(BLUEFIELD_SSH) "test -f $(BLUEFIELD_REMOTE_DIR)/bin/aegis-doca" || \
+	@$(BLUEFIELD_SSH) "test -f $(BLUEFIELD_REMOTE_DIR)/eng/bin/aegis-doca" || \
 		(echo "ERROR: No DOCA binaries found. Run 'make qa-doca-build' first." && exit 1)
-	@$(BLUEFIELD_SSH) "sudo cp $(BLUEFIELD_REMOTE_DIR)/bin/aegis-doca /usr/local/bin/aegis-doca && \
+	@$(BLUEFIELD_SSH) "sudo cp $(BLUEFIELD_REMOTE_DIR)/eng/bin/aegis-doca /usr/local/bin/aegis-doca && \
 		sudo chmod +x /usr/local/bin/aegis-doca"
 	@echo "✓ Deployed aegis-doca to /usr/local/bin/"
-	@$(BLUEFIELD_SSH) "test -f $(BLUEFIELD_REMOTE_DIR)/bin/sentry-doca" && \
-		$(BLUEFIELD_SSH) "sudo cp $(BLUEFIELD_REMOTE_DIR)/bin/sentry-doca /usr/local/bin/sentry-doca && \
+	@$(BLUEFIELD_SSH) "test -f $(BLUEFIELD_REMOTE_DIR)/eng/bin/sentry-doca" && \
+		$(BLUEFIELD_SSH) "sudo cp $(BLUEFIELD_REMOTE_DIR)/eng/bin/sentry-doca /usr/local/bin/sentry-doca && \
 			sudo chmod +x /usr/local/bin/sentry-doca" && \
 		echo "✓ Deployed sentry-doca to /usr/local/bin/" || true
 
@@ -762,10 +760,10 @@ qa-test-transport-doca:
 		echo "⚠ DOCA Comch headers not found at /opt/mellanox/doca/include/"
 	@echo ""
 	@echo "Step 3: Run transport unit tests with DOCA tag..."
-	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR) && go test -tags doca -v ./pkg/transport/... -run 'DOCA|Comch' 2>&1" | tee /tmp/qa-doca-test.log || true
+	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR)/eng && go test -tags doca -v ./pkg/transport/... -run 'DOCA|Comch' 2>&1" | tee /tmp/qa-doca-test.log || true
 	@echo ""
 	@echo "Step 4: Test DOCAComchTransport initialization..."
-	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR) && go test -tags doca -v ./pkg/transport/... -run 'TestDOCA' 2>&1" | tee -a /tmp/qa-doca-test.log || true
+	@$(BLUEFIELD_SSH) "cd $(BLUEFIELD_REMOTE_DIR)/eng && go test -tags doca -v ./pkg/transport/... -run 'TestDOCA' 2>&1" | tee -a /tmp/qa-doca-test.log || true
 	@echo ""
 	@if grep -q "not yet implemented" /tmp/qa-doca-test.log; then \
 		echo "=== DOCA transport builds but implementation incomplete ==="; \
@@ -775,6 +773,126 @@ qa-test-transport-doca:
 	else \
 		echo "=== DOCA transport test status: check output above ==="; \
 	fi
+
+# =============================================================================
+# DOCA ComCh Hardware Testing
+# Tests from workbench (localhost or 192.168.1.235) against BF3 DPU (192.168.1.204)
+# =============================================================================
+
+.PHONY: qa-hardware-build qa-hardware-setup qa-hardware-cleanup qa-hardware-test qa-hardware-help
+
+# BlueField-3 DPU for hardware testing
+HW_BF3_IP := 192.168.1.204
+HW_BF3_USER := ubuntu
+HW_BF3_SSH := ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no $(HW_BF3_USER)@$(HW_BF3_IP)
+
+# Build binaries with DOCA tags for both local and BF3
+qa-hardware-build: $(BIN_DIR)
+	@echo "=== Building binaries for DOCA ComCh hardware testing ==="
+	@echo ""
+	@echo "Building aegis for ARM64 (BlueField-3)..."
+	@GOOS=linux GOARCH=arm64 go build -tags doca -ldflags "$(LDFLAGS)" -o $(AEGIS_ARM64) ./cmd/aegis
+	@echo "  $(AEGIS_ARM64)"
+	@echo ""
+	@echo "Building sentry for local platform..."
+	@go build -tags doca -ldflags "$(LDFLAGS)" -o $(SENTRY) ./cmd/sentry
+	@echo "  $(SENTRY)"
+	@echo ""
+	@echo "Building nexus for local platform..."
+	@go build -ldflags "$(LDFLAGS)" -o $(NEXUS) ./cmd/nexus
+	@echo "  $(NEXUS)"
+	@echo ""
+	@echo "Building bluectl for local platform..."
+	@go build -ldflags "$(LDFLAGS)" -o $(BLUECTL) ./cmd/bluectl
+	@echo "  $(BLUECTL)"
+	@echo ""
+	@echo "=== Hardware build complete ==="
+
+# Deploy aegis to BF3, verify connectivity
+qa-hardware-setup:
+	@echo "=== Setting up BF3 for hardware testing ==="
+	@echo ""
+	@echo "Verifying SSH connectivity to BF3 ($(HW_BF3_IP))..."
+	@$(HW_BF3_SSH) "echo 'Connected to BF3'" || (echo "ERROR: Cannot reach BF3 at $(HW_BF3_IP)" && exit 1)
+	@echo "  SSH connection OK"
+	@echo ""
+	@echo "Copying aegis-arm64 to BF3..."
+	@scp -o ConnectTimeout=5 -o StrictHostKeyChecking=no $(AEGIS_ARM64) $(HW_BF3_USER)@$(HW_BF3_IP):~/aegis
+	@$(HW_BF3_SSH) "chmod +x ~/aegis"
+	@echo "  Deployed to ~/aegis"
+	@echo ""
+	@echo "=== Setup complete ==="
+	@echo ""
+	@echo "To verify DOCA availability on BF3, SSH and check:"
+	@echo "  $(HW_BF3_SSH)"
+	@echo "  dpkg -l | grep doca"
+	@echo "  ls /dev/doca_comch*"
+	@echo "  lspci | grep -i mellanox"
+
+# Kill processes on BF3 and local
+qa-hardware-cleanup:
+	@echo "=== Cleaning up hardware test processes ==="
+	@echo ""
+	@echo "Killing aegis on BF3..."
+	-$(HW_BF3_SSH) "pkill -9 aegis" 2>/dev/null || true
+	@echo "  Done"
+	@echo ""
+	@echo "Killing local nexus and sentry..."
+	-pkill -9 nexus 2>/dev/null || true
+	-pkill -9 sentry 2>/dev/null || true
+	@echo "  Done"
+	@echo ""
+	@echo "=== Cleanup complete ==="
+
+# Run full hardware test suite
+qa-hardware-test:
+	@echo "=== DOCA ComCh Hardware Test Suite ==="
+	@echo ""
+	@echo "Environment variables:"
+	@echo "  BF3_IP=$(HW_BF3_IP) (override with BF3_IP=x.x.x.x)"
+	@echo "  BF3_USER=$(HW_BF3_USER) (override with BF3_USER=xxx)"
+	@echo "  DOCA_PCI_ADDR=03:00.0 (default, override with DOCA_PCI_ADDR=xx:xx.x)"
+	@echo "  DOCA_REP_PCI_ADDR=01:00.0 (default, override with DOCA_REP_PCI_ADDR=xx:xx.x)"
+	@echo "  DOCA_SERVER_NAME=secure-infra (default, override with DOCA_SERVER_NAME=xxx)"
+	@echo ""
+	@echo "Running hardware tests..."
+	@echo ""
+	BF3_IP=$(HW_BF3_IP) BF3_USER=$(HW_BF3_USER) \
+		go test -tags=hardware -v -timeout 10m ./... -run 'TestDOCA.*'
+
+# Print usage instructions
+qa-hardware-help:
+	@echo "DOCA ComCh Hardware Testing"
+	@echo "==========================="
+	@echo ""
+	@echo "Tests DOCA ComCh transport between workbench and BlueField-3 DPU."
+	@echo ""
+	@echo "Targets:"
+	@echo "  make qa-hardware-build    Build binaries with DOCA tags"
+	@echo "  make qa-hardware-setup    Deploy aegis to BF3, verify connectivity"
+	@echo "  make qa-hardware-cleanup  Kill processes on BF3 and local"
+	@echo "  make qa-hardware-test     Run full hardware test suite"
+	@echo "  make qa-hardware-help     Show this help"
+	@echo ""
+	@echo "Environment Variables (with defaults):"
+	@echo "  BF3_IP              BlueField-3 IP address (default: $(HW_BF3_IP))"
+	@echo "  BF3_USER            SSH user for BF3 (default: $(HW_BF3_USER))"
+	@echo "  DOCA_PCI_ADDR       PCI address for DOCA device (default: 03:00.0)"
+	@echo "  DOCA_REP_PCI_ADDR   PCI address for DOCA representor (default: 01:00.0)"
+	@echo "  DOCA_SERVER_NAME    DOCA ComCh server name (default: secure-infra)"
+	@echo ""
+	@echo "Example Usage:"
+	@echo "  # Full workflow"
+	@echo "  make qa-hardware-build"
+	@echo "  make qa-hardware-setup"
+	@echo "  make qa-hardware-test"
+	@echo "  make qa-hardware-cleanup"
+	@echo ""
+	@echo "  # Override BF3 IP"
+	@echo "  make qa-hardware-test BF3_IP=192.168.1.205"
+	@echo ""
+	@echo "  # Override PCI addresses"
+	@echo "  DOCA_PCI_ADDR=04:00.0 DOCA_REP_PCI_ADDR=02:00.0 make qa-hardware-test"
 
 # =============================================================================
 # Remote QA Testing (Workbench)
@@ -834,9 +952,8 @@ qa-remote-vm-status:
 
 # Sync code and build on workbench (native Linux build, no cross-compile)
 qa-remote-build:
-	@echo "=== Syncing code to workbench ==="
-	rsync -az --delete --exclude='.git' --exclude='bin/' --exclude='qa-workspace/' \
-		-e ssh .. $(WORKBENCH_USER)@$(WORKBENCH_IP):~/secure-infra/
+	@echo "=== Fetching latest main on workbench ==="
+	$(WORKBENCH_SSH) "cd ~/secure-infra && git fetch origin && git checkout origin/main"
 	@echo "=== Building natively on workbench ==="
 	$(WORKBENCH_SSH) "export PATH=/snap/bin:\$$PATH && cd $(WORKBENCH_DIR) && make all"
 	@echo "=== Pushing binaries to VMs ==="
@@ -861,15 +978,16 @@ qa-remote-up:
 qa-remote-down:
 	$(WORKBENCH_SSH) "cd $(WORKBENCH_DIR) && make qa-down"
 
-# Run integration tests on workbench
-qa-remote-test:
+# Run integration tests on workbench (rebuilds binaries first)
+qa-remote-test: qa-remote-build
 	@echo "=== Syncing integration test to workbench ==="
 	scp integration_test.go $(WORKBENCH_USER)@$(WORKBENCH_IP):$(WORKBENCH_DIR)/
 	@echo "=== Running Go integration tests on workbench ==="
-	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 15m -run 'Test(TMFIFOTransportIntegration|CredentialDeliveryE2E|NexusRestartPersistence|AegisRestartSentryReconnection|AegisMidPushRestart)'"
+	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 15m -run 'Test(TMFIFOTransportIntegration|CredentialDeliveryE2E|NexusRestartPersistence|AegisRestartSentryReconnection|AegisMidPushRestart|StateSyncConsistency|MultiTenantEnrollmentIsolation|DPURegistrationFlows|TenantLifecycle|OperatorOnboardingE2E)'"
 
 # Run integration test with VM rebuild (full setup)
-qa-remote-test-full: qa-remote-vm-create qa-remote-build qa-remote-test
+# Note: qa-remote-build is already a dependency of qa-remote-test
+qa-remote-test-full: qa-remote-vm-create qa-remote-test
 
 # =============================================================================
 # Help

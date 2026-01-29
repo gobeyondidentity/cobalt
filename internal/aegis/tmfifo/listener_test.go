@@ -370,11 +370,8 @@ func TestListenerStartWithInvalidPath(t *testing.T) {
 			path:        "/nonexistent/path/tmfifo",
 			expectError: ErrDeviceNotFound,
 		},
-		{
-			name:        "empty path uses default",
-			path:        "",
-			expectError: ErrDeviceNotFound, // Default path doesn't exist in test
-		},
+		// Note: empty path now creates a TCP listener on the default port,
+		// which succeeds. This is tested separately in TestListenerStartStop.
 	}
 
 	for _, tc := range tests {
@@ -384,6 +381,7 @@ func TestListenerStartWithInvalidPath(t *testing.T) {
 			if !errors.Is(err, tc.expectError) && err != tc.expectError {
 				t.Errorf("expected %v, got %v", tc.expectError, err)
 			}
+			listener.Stop()
 		})
 	}
 }
@@ -394,17 +392,21 @@ func TestListenerStartWithInvalidPath(t *testing.T) {
 
 // TestDevicePath verifies device path configuration.
 func TestDevicePath(t *testing.T) {
-	// Default path
+	// Empty path uses TCP listener on default address
 	listener := NewListener("", nil)
-	if listener.DevicePath() != DefaultDevicePath {
-		t.Errorf("expected default path %s, got %s", DefaultDevicePath, listener.DevicePath())
+	if listener.ListenAddr() != DefaultListenAddr {
+		t.Errorf("expected default listen addr %s, got %s", DefaultListenAddr, listener.ListenAddr())
 	}
 
-	// Custom path
-	customPath := "/dev/custom-tmfifo"
-	listener = NewListener(customPath, nil)
-	if listener.DevicePath() != customPath {
-		t.Errorf("expected custom path %s, got %s", customPath, listener.DevicePath())
+	// Unix socket path (starts with /)
+	socketPath := "/dev/custom-tmfifo"
+	listener = NewListener(socketPath, nil)
+	if listener.SocketPath() != socketPath {
+		t.Errorf("expected socket path %s, got %s", socketPath, listener.SocketPath())
+	}
+	// DevicePath returns socket path for backward compat
+	if listener.DevicePath() != socketPath {
+		t.Errorf("expected DevicePath %s, got %s", socketPath, listener.DevicePath())
 	}
 }
 
@@ -468,7 +470,7 @@ func TestHandleEnrollRequest(t *testing.T) {
 
 	handler := &mockHandler{}
 	listener := NewListener(fakePath, handler)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	// Create enrollment request message
@@ -518,7 +520,7 @@ func TestHandlePostureReport(t *testing.T) {
 
 	handler := &mockHandler{}
 	listener := NewListener(fakePath, handler)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	// Create posture report message
@@ -561,7 +563,7 @@ func TestHandleMessageReplayDetection(t *testing.T) {
 
 	handler := &mockHandler{}
 	listener := NewListener(fakePath, handler)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	// Create message with fixed nonce
@@ -598,7 +600,7 @@ func TestHandleMessageNoHandler(t *testing.T) {
 
 	// No handler
 	listener := NewListener(fakePath, nil)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	payload := EnrollRequestPayload{Hostname: "test-host"}
@@ -632,7 +634,7 @@ func TestHandleMessageHandlerError(t *testing.T) {
 		enrollErr: errors.New("enrollment denied"),
 	}
 	listener := NewListener(fakePath, handler)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	payload := EnrollRequestPayload{Hostname: "test-host"}
@@ -661,7 +663,7 @@ func TestHandleUnknownMessageType(t *testing.T) {
 	f, _ := os.OpenFile(fakePath, os.O_CREATE|os.O_RDWR, 0600)
 
 	listener := NewListener(fakePath, nil)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	msg := Message{
@@ -731,17 +733,17 @@ func TestHandleCredentialAck(t *testing.T) {
 // Send Message Tests
 // ============================================================================
 
-// TestSendMessageDeviceNotOpen tests sending when device is not open.
+// TestSendMessageDeviceNotOpen tests sending when no connection is active.
 func TestSendMessageDeviceNotOpen(t *testing.T) {
 	listener := NewListener("/dev/null", nil)
 
 	msg := &Message{Type: TypeCredentialPush}
 	err := listener.sendMessage(msg)
 	if err == nil {
-		t.Error("expected error when device not open")
+		t.Error("expected error when no active connection")
 	}
-	if !strings.Contains(err.Error(), "device not open") {
-		t.Errorf("error should mention device not open: %v", err)
+	if !strings.Contains(err.Error(), "no active connection") {
+		t.Errorf("error should mention no active connection: %v", err)
 	}
 }
 
@@ -756,7 +758,7 @@ func TestSendMessage(t *testing.T) {
 	}
 
 	listener := NewListener(fakePath, nil)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	msg := &Message{
@@ -795,7 +797,7 @@ func TestSendCredentialPush(t *testing.T) {
 	f, _ := os.OpenFile(fakePath, os.O_CREATE|os.O_RDWR, 0600)
 
 	listener := NewListener(fakePath, nil)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	err := listener.SendCredentialPush("ssh-ca", "prod-ca", []byte("ssh-ed25519 AAAA..."))
@@ -828,7 +830,7 @@ func TestPushCredential(t *testing.T) {
 	f, _ := os.OpenFile(fakePath, os.O_CREATE|os.O_RDWR, 0600)
 
 	listener := NewListener(fakePath, nil)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	result, err := listener.PushCredential("ssh-ca", "prod-ca", []byte("key-data"))
@@ -1338,12 +1340,13 @@ func TestDOCAError14Translation(t *testing.T) {
 func TestListenerReconnectionAfterDisconnect(t *testing.T) {
 	tmpDir := t.TempDir()
 	fakePath := filepath.Join(tmpDir, "tmfifo_test")
-	f, _ := os.Create(fakePath)
-	f.Close()
 
 	handler := &mockHandler{}
 
-	// First connection cycle
+	// First connection cycle - create file before starting
+	f, _ := os.Create(fakePath)
+	f.Close()
+
 	listener := NewListener(fakePath, handler)
 	ctx := context.Background()
 
@@ -1356,6 +1359,10 @@ func TestListenerReconnectionAfterDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stop failed: %v", err)
 	}
+
+	// Recreate file for second listener (Stop may have cleaned it up)
+	f, _ = os.Create(fakePath)
+	f.Close()
 
 	// Create new listener (simulating reconnection)
 	listener2 := NewListener(fakePath, handler)
@@ -1429,7 +1436,7 @@ func TestMessageWithEmptyNonce(t *testing.T) {
 	f, _ := os.OpenFile(fakePath, os.O_CREATE|os.O_RDWR, 0600)
 
 	listener := NewListener(fakePath, &mockHandler{})
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	// Message with empty ID should still be processed (nonce check skipped)
@@ -1461,7 +1468,7 @@ func TestConcurrentSends(t *testing.T) {
 	f, _ := os.OpenFile(fakePath, os.O_CREATE|os.O_RDWR, 0600)
 
 	listener := NewListener(fakePath, nil)
-	listener.device = f
+	listener.activeConn = &fileConn{file: f}
 	listener.started = true
 
 	var wg sync.WaitGroup

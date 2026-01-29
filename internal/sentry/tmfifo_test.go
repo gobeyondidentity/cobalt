@@ -11,46 +11,48 @@ import (
 )
 
 func TestDetectTmfifo_notAvailable(t *testing.T) {
-	// Default path should not exist in test environment
-	path, ok := DetectTmfifo()
+	// tmfifo_net0 interface should not exist in test environment
+	iface, ok := DetectTmfifo()
 	if ok {
-		t.Skipf("tmfifo device exists at %s, skipping unavailable test", path)
+		t.Skipf("tmfifo interface exists (%s), skipping unavailable test", iface)
 	}
 
-	if path != "" {
-		t.Errorf("expected empty path when not available, got %s", path)
+	if iface != "" {
+		t.Errorf("expected empty interface name when not available, got %s", iface)
 	}
 }
 
 func TestNewTmfifoClient(t *testing.T) {
-	// Default path
+	// Default address
 	client := NewTmfifoClient("", "test-host")
-	if client.devicePath != DefaultTmfifoPath {
-		t.Errorf("expected default path %s, got %s", DefaultTmfifoPath, client.devicePath)
+	if client.dpuAddr != DefaultTmfifoDPUAddr {
+		t.Errorf("expected default addr %s, got %s", DefaultTmfifoDPUAddr, client.dpuAddr)
 	}
 	if client.hostname != "test-host" {
 		t.Errorf("expected hostname 'test-host', got %s", client.hostname)
 	}
 
-	// Custom path
-	customPath := "/dev/custom-tmfifo"
-	client = NewTmfifoClient(customPath, "custom-host")
-	if client.devicePath != customPath {
-		t.Errorf("expected custom path %s, got %s", customPath, client.devicePath)
+	// Custom address
+	customAddr := "10.0.0.1:9444"
+	client = NewTmfifoClient(customAddr, "custom-host")
+	if client.dpuAddr != customAddr {
+		t.Errorf("expected custom addr %s, got %s", customAddr, client.dpuAddr)
 	}
 }
 
-func TestTmfifoClient_Open_deviceNotFound(t *testing.T) {
-	client := NewTmfifoClient("/dev/nonexistent-tmfifo", "test-host")
+func TestTmfifoClient_Open_connectionFailed(t *testing.T) {
+	// Try to connect to non-existent address
+	client := NewTmfifoClient("127.0.0.1:59999", "test-host")
 
 	err := client.Open()
 	if err == nil {
-		t.Fatal("expected error for nonexistent device")
+		client.Close()
+		t.Fatal("expected error for connection refused")
 	}
 }
 
 func TestTmfifoClient_Close_notOpen(t *testing.T) {
-	client := NewTmfifoClient("/dev/nonexistent", "test-host")
+	client := NewTmfifoClient("127.0.0.1:9444", "test-host")
 
 	// Should not error when closing a non-open client
 	if err := client.Close(); err != nil {
@@ -79,7 +81,7 @@ func TestGenerateNonce(t *testing.T) {
 func TestTmfifoClient_handleCredentialPush_sshCA(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	client := NewTmfifoClient("/dev/null", "test-host")
+	client := NewTmfifoClient("127.0.0.1:9444", "test-host")
 	client.credInstaller = &CredentialInstaller{
 		TrustedCADir:   tmpDir,
 		SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
@@ -101,15 +103,15 @@ func TestTmfifoClient_handleCredentialPush_sshCA(t *testing.T) {
 	msg := &tmfifo.Message{
 		Type:    tmfifo.TypeCredentialPush,
 		Payload: payloadBytes,
-		ID:   "test-nonce",
+		ID:      "test-nonce",
 	}
 
-	// Handle the message (will fail on sendCredentialAck since device is /dev/null)
+	// Handle the message (will fail on sendCredentialAck since not connected)
 	err := client.handleCredentialPush(msg)
 	// We expect this to fail on the ack, but the installation should succeed
 	if err != nil {
 		// The error should be about writing the ack, not installation
-		t.Logf("expected error on ack: %v", err)
+		t.Logf("expected error on ack (not connected): %v", err)
 	}
 
 	// Verify the CA was installed
@@ -126,7 +128,7 @@ func TestTmfifoClient_handleCredentialPush_sshCA(t *testing.T) {
 }
 
 func TestTmfifoClient_handleCredentialPush_unsupportedType(t *testing.T) {
-	client := NewTmfifoClient("/dev/null", "test-host")
+	client := NewTmfifoClient("127.0.0.1:9444", "test-host")
 
 	// Build credential push with unsupported type
 	payload := tmfifo.CredentialPushPayload{
@@ -139,7 +141,7 @@ func TestTmfifoClient_handleCredentialPush_unsupportedType(t *testing.T) {
 	msg := &tmfifo.Message{
 		Type:    tmfifo.TypeCredentialPush,
 		Payload: payloadBytes,
-		ID:   "test-nonce",
+		ID:      "test-nonce",
 	}
 
 	// Handle should fail with unsupported type error
@@ -151,12 +153,12 @@ func TestTmfifoClient_handleCredentialPush_unsupportedType(t *testing.T) {
 }
 
 func TestTmfifoClient_handleCredentialPush_invalidPayload(t *testing.T) {
-	client := NewTmfifoClient("/dev/null", "test-host")
+	client := NewTmfifoClient("127.0.0.1:9444", "test-host")
 
 	msg := &tmfifo.Message{
 		Type:    tmfifo.TypeCredentialPush,
 		Payload: []byte("not json"),
-		ID:   "test-nonce",
+		ID:      "test-nonce",
 	}
 
 	// Handle should fail with parse error
@@ -168,12 +170,12 @@ func TestTmfifoClient_handleCredentialPush_invalidPayload(t *testing.T) {
 }
 
 func TestTmfifoClient_handleMessage_unknownType(t *testing.T) {
-	client := NewTmfifoClient("/dev/null", "test-host")
+	client := NewTmfifoClient("127.0.0.1:9444", "test-host")
 
 	msg := &tmfifo.Message{
 		Type:    "UNKNOWN_TYPE",
 		Payload: []byte("{}"),
-		ID:   "test-nonce",
+		ID:      "test-nonce",
 	}
 
 	// Unknown types should be ignored without error
@@ -276,7 +278,7 @@ func TestCredentialAckPayload(t *testing.T) {
 	}
 }
 
-// mockTmfifoDevice simulates a tmfifo device for testing ReportPosture with credential push.
+// mockTmfifoDevice simulates a tmfifo connection for testing ReportPosture with credential push.
 type mockTmfifoDevice struct {
 	readBuf  []byte
 	writeBuf []byte
@@ -345,8 +347,8 @@ func TestTmfifoClient_ReportPosture_handlesCredentialPushBeforeAck(t *testing.T)
 	)
 
 	client := &TmfifoClient{
-		devicePath: "/dev/test",
-		hostname:   "test-host",
+		dpuAddr:  "127.0.0.1:9444",
+		hostname: "test-host",
 		credInstaller: &CredentialInstaller{
 			TrustedCADir:   tmpDir,
 			SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
@@ -401,8 +403,8 @@ func TestTmfifoClient_ReportPosture_multipleCredentialPushesBeforeAck(t *testing
 	)
 
 	client := &TmfifoClient{
-		devicePath: "/dev/test",
-		hostname:   "test-host",
+		dpuAddr:  "127.0.0.1:9444",
+		hostname: "test-host",
 		credInstaller: &CredentialInstaller{
 			TrustedCADir:   tmpDir,
 			SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
@@ -410,7 +412,6 @@ func TestTmfifoClient_ReportPosture_multipleCredentialPushesBeforeAck(t *testing
 		stopCh: make(chan struct{}),
 	}
 	os.WriteFile(client.credInstaller.SshdConfigPath, []byte("Port 22\n"), 0644)
-	client.device = os.NewFile(uintptr(999), "/dev/test")
 
 	posture := json.RawMessage(`{"secure_boot": true}`)
 	err := client.reportPostureWithReader(posture, mockDev, mockDev)
@@ -447,8 +448,8 @@ func TestTmfifoClient_ReportPosture_ackStillRequired(t *testing.T) {
 	)
 
 	client := &TmfifoClient{
-		devicePath: "/dev/test",
-		hostname:   "test-host",
+		dpuAddr:  "127.0.0.1:9444",
+		hostname: "test-host",
 		credInstaller: &CredentialInstaller{
 			TrustedCADir:   tmpDir,
 			SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
@@ -456,7 +457,6 @@ func TestTmfifoClient_ReportPosture_ackStillRequired(t *testing.T) {
 		stopCh: make(chan struct{}),
 	}
 	os.WriteFile(client.credInstaller.SshdConfigPath, []byte("Port 22\n"), 0644)
-	client.device = os.NewFile(uintptr(999), "/dev/test")
 
 	posture := json.RawMessage(`{"secure_boot": true}`)
 	err := client.reportPostureWithReader(posture, mockDev, mockDev)

@@ -26,7 +26,13 @@ Examples:
   bluectl inventory bf3-lab --output json`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dpu, err := dpuStore.Get(args[0])
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+		nexusClient := NewNexusClient(serverURL)
+
+		dpu, err := nexusClient.GetDPU(cmd.Context(), args[0])
 		if err != nil {
 			return err
 		}
@@ -34,7 +40,8 @@ Examples:
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		client, err := grpcclient.NewClient(dpu.Address())
+		grpcAddr := fmt.Sprintf("%s:%d", dpu.Host, dpu.Port)
+		client, err := grpcclient.NewClient(grpcAddr)
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
@@ -120,9 +127,6 @@ Examples:
 				fmt.Printf("... and %d more (use --output json for full list)\n", len(inv.Modules)-limit)
 			}
 		}
-
-		// Update DPU status
-		dpuStore.UpdateStatus(dpu.ID, "healthy")
 
 		return nil
 	},

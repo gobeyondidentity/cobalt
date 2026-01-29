@@ -86,9 +86,19 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// KeyMaker routes
 	mux.HandleFunc("POST /api/v1/keymakers/bind", s.handleBindKeyMaker)
+	mux.HandleFunc("GET /api/v1/keymakers", s.handleListKeyMakers)
+	mux.HandleFunc("GET /api/v1/keymakers/{id}", s.handleGetKeyMaker)
+	mux.HandleFunc("DELETE /api/v1/keymakers/{id}", s.handleRevokeKeyMaker)
 
 	// Operator routes
+	mux.HandleFunc("GET /api/v1/operators", s.handleListOperators)
 	mux.HandleFunc("POST /api/v1/operators/invite", s.handleInviteOperator)
+	mux.HandleFunc("GET /api/v1/operators/{email}", s.handleGetOperator)
+	mux.HandleFunc("PATCH /api/v1/operators/{email}/status", s.handleUpdateOperatorStatus)
+	mux.HandleFunc("DELETE /api/v1/operators/{email}", s.handleDeleteOperator)
+
+	// Invite routes
+	mux.HandleFunc("DELETE /api/v1/invites/{code}", s.handleDeleteInvite)
 
 	// Authorization routes
 	mux.HandleFunc("POST /api/v1/authorizations", s.handleCreateAuthorization)
@@ -96,6 +106,12 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/authorizations/{id}", s.handleGetAuthorization)
 	mux.HandleFunc("DELETE /api/v1/authorizations/{id}", s.handleDeleteAuthorization)
 	mux.HandleFunc("POST /api/v1/authorizations/check", s.handleCheckAuthorization)
+
+	// SSH CA registration routes
+	mux.HandleFunc("POST /api/v1/ssh-cas", s.handleCreateSSHCA)
+
+	// Credential push routes
+	mux.HandleFunc("POST /api/v1/push", s.handlePush)
 
 	// Trust routes
 	mux.HandleFunc("POST /api/v1/trust", s.handleCreateTrust)
@@ -109,6 +125,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/hosts/{id}/posture", s.handleHostPostureUpdate)
 	mux.HandleFunc("GET /api/v1/hosts", s.handleListAgentHosts)
 	mux.HandleFunc("GET /api/v1/hosts/{id}", s.handleGetAgentHost)
+	mux.HandleFunc("GET /api/v1/hosts/{dpuName}/posture", s.handleGetHostPostureByDPU)
 	mux.HandleFunc("DELETE /api/v1/hosts/{id}", s.handleDeleteAgentHost)
 
 	// Host certificate issuance (DPU Agent calls on behalf of Host Agent)
@@ -934,15 +951,44 @@ func (s *Server) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	// Check for assigned DPUs
-	count, _ := s.store.GetTenantDPUCount(id)
-	if count > 0 {
-		writeError(w, r, http.StatusConflict, fmt.Sprintf("Cannot delete tenant with %d assigned DPUs", count))
+	// Check if tenant exists first
+	if _, err := s.store.GetTenant(id); err != nil {
+		writeError(w, r, http.StatusNotFound, "Tenant not found")
+		return
+	}
+
+	// Check for dependencies that would prevent deletion
+	deps, err := s.store.GetTenantDependencies(id)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to check dependencies: "+err.Error())
+		return
+	}
+
+	if deps.HasAny() {
+		// Build detailed message listing dependencies
+		var parts []string
+		if len(deps.DPUs) > 0 {
+			parts = append(parts, fmt.Sprintf("%d DPUs", len(deps.DPUs)))
+		}
+		if len(deps.Operators) > 0 {
+			parts = append(parts, fmt.Sprintf("%d operators", len(deps.Operators)))
+		}
+		if len(deps.CAs) > 0 {
+			parts = append(parts, fmt.Sprintf("%d SSH CAs", len(deps.CAs)))
+		}
+		if deps.TrustRelationships > 0 {
+			parts = append(parts, fmt.Sprintf("%d trust relationships", deps.TrustRelationships))
+		}
+		if deps.Invites > 0 {
+			parts = append(parts, fmt.Sprintf("%d invites", deps.Invites))
+		}
+		msg := "Cannot delete tenant: " + strings.Join(parts, ", ") + " depend on it"
+		writeError(w, r, http.StatusConflict, msg)
 		return
 	}
 
 	if err := s.store.RemoveTenant(id); err != nil {
-		writeError(w, r, http.StatusNotFound, "Tenant not found")
+		writeError(w, r, http.StatusInternalServerError, "Failed to delete tenant: "+err.Error())
 		return
 	}
 

@@ -3,87 +3,102 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+// testSocketPath generates a short socket path in /tmp to avoid the Unix socket path limit (108 chars).
+func testSocketPath(suffix string) string {
+	return fmt.Sprintf("/tmp/tmfifo_%d_%s.sock", os.Getpid(), suffix)
+}
 
 // ============================================================================
 // TmfifoNetTransport Tests
 // ============================================================================
 
-func TestNewTmfifoNetTransport_DeviceNotFound(t *testing.T) {
-	_, err := NewTmfifoNetTransport("/nonexistent/device")
-	if err != ErrTmfifoDeviceNotFound {
-		t.Errorf("expected ErrTmfifoDeviceNotFound, got %v", err)
-	}
-}
-
-func TestNewTmfifoNetTransport_DefaultPath(t *testing.T) {
-	// Create a temp directory with a fake device file
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
-
-	// Create a fake device file (regular file as a stand-in)
-	f, err := os.Create(fakePath)
-	if err != nil {
-		t.Fatalf("failed to create fake device: %v", err)
-	}
-	f.Close()
-
-	// Test with explicit path
-	transport, err := NewTmfifoNetTransport(fakePath)
+func TestNewTmfifoNetTransport_DefaultAddr(t *testing.T) {
+	transport, err := NewTmfifoNetTransport("")
 	if err != nil {
 		t.Fatalf("NewTmfifoNetTransport failed: %v", err)
 	}
 
+	tt := transport.(*TmfifoNetTransport)
+	if tt.dpuAddr != TmfifoDefaultDPUAddr {
+		t.Errorf("dpuAddr = %s, want %s", tt.dpuAddr, TmfifoDefaultDPUAddr)
+	}
+
 	if transport.Type() != TransportTmfifoNet {
 		t.Errorf("Type() = %s, want %s", transport.Type(), TransportTmfifoNet)
+	}
+}
+
+func TestNewTmfifoNetTransport_CustomAddr(t *testing.T) {
+	customAddr := "10.0.0.1:8080"
+	transport, err := NewTmfifoNetTransport(customAddr)
+	if err != nil {
+		t.Fatalf("NewTmfifoNetTransport failed: %v", err)
+	}
+
+	tt := transport.(*TmfifoNetTransport)
+	if tt.dpuAddr != customAddr {
+		t.Errorf("dpuAddr = %s, want %s", tt.dpuAddr, customAddr)
 	}
 }
 
 func TestTmfifoNetTransport_Type(t *testing.T) {
-	// Create internal transport to test Type
-	transport := &TmfifoNetTransport{devicePath: "/dev/tmfifo_net0"}
+	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444"}
 	if transport.Type() != TransportTmfifoNet {
 		t.Errorf("Type() = %s, want %s", transport.Type(), TransportTmfifoNet)
 	}
 }
 
-func TestTmfifoNetTransport_ConnectWithFakeDevice(t *testing.T) {
-	// Create a temp file to simulate device
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
+func TestTmfifoNetTransport_ConnectWithUnixSocket(t *testing.T) {
+	// Use /tmp to avoid path length limits
+	socketPath := testSocketPath("conn")
+	t.Cleanup(func() { os.Remove(socketPath) })
 
-	// Create a named pipe (FIFO) for bidirectional communication
-	// Note: os.MkdirAll and regular files can't do bidirectional I/O,
-	// but we can at least test the open path with a regular file
-	f, err := os.Create(fakePath)
+	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
-		t.Fatalf("failed to create fake device: %v", err)
+		t.Fatalf("failed to create Unix socket listener: %v", err)
 	}
-	f.Close()
+	defer listener.Close()
 
-	transport, err := NewTmfifoNetTransport(fakePath)
+	// Create transport with socket path
+	transport, err := NewTmfifoNetTransportWithSocket("", socketPath)
 	if err != nil {
-		t.Fatalf("NewTmfifoNetTransport failed: %v", err)
+		t.Fatalf("NewTmfifoNetTransportWithSocket failed: %v", err)
 	}
 
-	// Connect should succeed with the fake file
-	err = transport.Connect(context.Background())
+	tt := transport.(*TmfifoNetTransport)
+	if !tt.useUnixSocket {
+		t.Error("expected useUnixSocket = true")
+	}
+
+	// Connect should succeed
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Accept connection in goroutine
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		conn.Close()
+	}()
+
+	err = transport.Connect(ctx)
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
 	}
 
-	// Type check
-	tt, ok := transport.(*TmfifoNetTransport)
-	if !ok {
-		t.Fatal("expected *TmfifoNetTransport")
-	}
-
-	// Verify connected state
 	tt.mu.Lock()
 	connected := tt.connected
 	tt.mu.Unlock()
@@ -91,28 +106,88 @@ func TestTmfifoNetTransport_ConnectWithFakeDevice(t *testing.T) {
 		t.Error("expected connected = true after Connect")
 	}
 
-	// Close
-	err = transport.Close()
+	transport.Close()
+	<-done
+}
+
+func TestTmfifoNetTransport_ConnectWithTCP(t *testing.T) {
+	// Use TCP instead of Unix socket
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Errorf("Close failed: %v", err)
+		t.Fatalf("failed to create TCP listener: %v", err)
 	}
+	defer listener.Close()
+
+	addr := listener.Addr().String()
+
+	// Create transport with TCP address
+	transport, err := NewTmfifoNetTransport(addr)
+	if err != nil {
+		t.Fatalf("NewTmfifoNetTransport failed: %v", err)
+	}
+
+	tt := transport.(*TmfifoNetTransport)
+	if tt.useUnixSocket {
+		t.Error("expected useUnixSocket = false for TCP")
+	}
+
+	// Accept connection in goroutine
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		conn.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = transport.Connect(ctx)
+	if err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+
+	tt.mu.Lock()
+	connected := tt.connected
+	tt.mu.Unlock()
+	if !connected {
+		t.Error("expected connected = true after Connect")
+	}
+
+	transport.Close()
+	<-done
 }
 
 func TestTmfifoNetTransport_ConnectAlreadyConnected(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+	defer listener.Close()
 
-	f, _ := os.Create(fakePath)
-	f.Close()
-
-	transport, _ := NewTmfifoNetTransport(fakePath)
+	addr := listener.Addr().String()
+	transport, _ := NewTmfifoNetTransport(addr)
 	tt := transport.(*TmfifoNetTransport)
 
-	// First connect
-	tt.Connect(context.Background())
+	// Accept in background
+	go func() {
+		conn, _ := listener.Accept()
+		if conn != nil {
+			defer conn.Close()
+			time.Sleep(2 * time.Second)
+		}
+	}()
 
-	// Second connect should be a no-op (already connected)
-	err := tt.Connect(context.Background())
+	ctx := context.Background()
+
+	// First connect
+	tt.Connect(ctx)
+
+	// Second connect should be a no-op
+	err = tt.Connect(ctx)
 	if err != nil {
 		t.Errorf("second Connect should succeed: %v", err)
 	}
@@ -121,13 +196,7 @@ func TestTmfifoNetTransport_ConnectAlreadyConnected(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_ConnectAfterClose(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
-
-	f, _ := os.Create(fakePath)
-	f.Close()
-
-	transport, _ := NewTmfifoNetTransport(fakePath)
+	transport, _ := NewTmfifoNetTransport("192.168.100.2:9444")
 	tt := transport.(*TmfifoNetTransport)
 
 	tt.Close()
@@ -143,26 +212,43 @@ func TestTmfifoNetTransport_ConnectAfterClose(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_ResetAndReconnect(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+	defer listener.Close()
 
-	f, _ := os.Create(fakePath)
-	f.Close()
-
-	transport, _ := NewTmfifoNetTransport(fakePath)
+	addr := listener.Addr().String()
+	transport, _ := NewTmfifoNetTransport(addr)
 	tt := transport.(*TmfifoNetTransport)
 
+	// Accept connections in background
+	connCh := make(chan net.Conn, 2)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			connCh <- conn
+		}
+	}()
+
+	ctx := context.Background()
+
 	// First connection
-	err := tt.Connect(context.Background())
+	err = tt.Connect(ctx)
 	if err != nil {
 		t.Fatalf("first connect failed: %v", err)
 	}
+	conn1 := <-connCh
 
 	// Close
 	tt.Close()
+	conn1.Close()
 
 	// Connect after close should fail
-	err = tt.Connect(context.Background())
+	err = tt.Connect(ctx)
 	if err == nil {
 		t.Error("expected error connecting after close")
 	}
@@ -171,7 +257,7 @@ func TestTmfifoNetTransport_ResetAndReconnect(t *testing.T) {
 	tt.Reset()
 
 	// Now connect should succeed
-	err = tt.Connect(context.Background())
+	err = tt.Connect(ctx)
 	if err != nil {
 		t.Errorf("connect after reset failed: %v", err)
 	}
@@ -192,38 +278,17 @@ func TestTmfifoNetTransport_ResetAndReconnect(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_ResetImplementsResettable(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
-
-	f, _ := os.Create(fakePath)
-	f.Close()
-
-	transport, _ := NewTmfifoNetTransport(fakePath)
+	transport, _ := NewTmfifoNetTransport("")
 
 	// Verify Transport implements Resettable
-	resettable, ok := transport.(Resettable)
+	_, ok := transport.(Resettable)
 	if !ok {
 		t.Fatal("TmfifoNetTransport does not implement Resettable interface")
 	}
-
-	tt := transport.(*TmfifoNetTransport)
-	tt.Connect(context.Background())
-	tt.Close()
-
-	// Use the Resettable interface
-	resettable.Reset()
-
-	// Verify we can reconnect
-	err := tt.Connect(context.Background())
-	if err != nil {
-		t.Errorf("connect after Reset() via interface failed: %v", err)
-	}
-
-	tt.Close()
 }
 
 func TestTmfifoNetTransport_SendNotConnected(t *testing.T) {
-	transport := &TmfifoNetTransport{devicePath: "/fake"}
+	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444"}
 
 	msg := &Message{Type: MessageEnrollRequest}
 	err := transport.Send(msg)
@@ -236,7 +301,7 @@ func TestTmfifoNetTransport_SendNotConnected(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_SendAfterClose(t *testing.T) {
-	transport := &TmfifoNetTransport{devicePath: "/fake", connected: true, closed: true}
+	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444", connected: true, closed: true}
 
 	msg := &Message{Type: MessageEnrollRequest}
 	err := transport.Send(msg)
@@ -249,7 +314,7 @@ func TestTmfifoNetTransport_SendAfterClose(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_RecvNotConnected(t *testing.T) {
-	transport := &TmfifoNetTransport{devicePath: "/fake"}
+	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444"}
 
 	_, err := transport.Recv()
 	if err == nil {
@@ -261,7 +326,7 @@ func TestTmfifoNetTransport_RecvNotConnected(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_RecvAfterClose(t *testing.T) {
-	transport := &TmfifoNetTransport{devicePath: "/fake", connected: true, closed: true}
+	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444", connected: true, closed: true}
 
 	_, err := transport.Recv()
 	if err != io.EOF {
@@ -269,38 +334,47 @@ func TestTmfifoNetTransport_RecvAfterClose(t *testing.T) {
 	}
 }
 
-func TestTmfifoNetTransport_SendAndRecvWithPipe(t *testing.T) {
-	// Create a pipe for testing bidirectional communication
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
-
-	// Create a regular file for read/write
-	f, err := os.OpenFile(fakePath, os.O_CREATE|os.O_RDWR, 0600)
+func TestTmfifoNetTransport_SendAndRecvWithTCP(t *testing.T) {
+	// Use TCP for reliable testing
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("failed to create file: %v", err)
+		t.Fatalf("failed to create listener: %v", err)
 	}
-	defer f.Close()
+	defer listener.Close()
 
-	// Create transport with pre-opened file
-	transport := newTmfifoNetTransportFromDevice(f, fakePath)
+	addr := listener.Addr().String()
+	clientTransport, _ := NewTmfifoNetTransport(addr)
 
-	// Send a message (writes to file)
+	// Accept in background
+	serverConnCh := make(chan net.Conn)
+	go func() {
+		conn, _ := listener.Accept()
+		serverConnCh <- conn
+	}()
+
+	ctx := context.Background()
+	err = clientTransport.Connect(ctx)
+	if err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+
+	serverConn := <-serverConnCh
+	serverTransport := newTmfifoNetTransportFromConn(serverConn)
+
+	// Send a message from client
 	msg := &Message{
 		Type:    MessageEnrollRequest,
 		ID:      "test-123",
 		Payload: json.RawMessage(`{"hostname":"test-host"}`),
 	}
 
-	err = transport.Send(msg)
+	err = clientTransport.Send(msg)
 	if err != nil {
 		t.Fatalf("Send failed: %v", err)
 	}
 
-	// Seek to beginning for read
-	f.Seek(0, 0)
-
-	// Recv the message
-	received, err := transport.Recv()
+	// Receive on server
+	received, err := serverTransport.Recv()
 	if err != nil {
 		t.Fatalf("Recv failed: %v", err)
 	}
@@ -312,40 +386,48 @@ func TestTmfifoNetTransport_SendAndRecvWithPipe(t *testing.T) {
 		t.Errorf("ID = %s, want test-123", received.ID)
 	}
 
-	transport.Close()
+	clientTransport.Close()
+	serverTransport.Close()
 }
 
 func TestTmfifoNetTransport_DoubleClose(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+	defer listener.Close()
 
-	f, _ := os.Create(fakePath)
-	f.Close()
+	addr := listener.Addr().String()
+	transport, _ := NewTmfifoNetTransport(addr)
 
-	transport, _ := NewTmfifoNetTransport(fakePath)
-	tt := transport.(*TmfifoNetTransport)
-	tt.Connect(context.Background())
+	go func() {
+		conn, _ := listener.Accept()
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+
+	transport.(*TmfifoNetTransport).Connect(context.Background())
 
 	// First close
-	err := tt.Close()
+	err = transport.Close()
 	if err != nil {
 		t.Fatalf("first Close failed: %v", err)
 	}
 
 	// Second close should be safe
-	err = tt.Close()
+	err = transport.Close()
 	if err != nil {
 		t.Errorf("second Close should not error: %v", err)
 	}
 }
 
-func TestTmfifoNetTransport_CloseWithoutDevice(t *testing.T) {
-	// Transport that was never connected (no device opened)
-	transport := &TmfifoNetTransport{devicePath: "/fake"}
+func TestTmfifoNetTransport_CloseWithoutConnection(t *testing.T) {
+	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444"}
 
 	err := transport.Close()
 	if err != nil {
-		t.Errorf("Close without device should succeed: %v", err)
+		t.Errorf("Close without connection should succeed: %v", err)
 	}
 }
 
@@ -353,21 +435,25 @@ func TestTmfifoNetTransport_CloseWithoutDevice(t *testing.T) {
 // TmfifoNetListener Tests
 // ============================================================================
 
-func TestNewTmfifoNetListener_DeviceNotFound(t *testing.T) {
-	_, err := NewTmfifoNetListener("/nonexistent/device")
-	if err != ErrTmfifoDeviceNotFound {
-		t.Errorf("expected ErrTmfifoDeviceNotFound, got %v", err)
+func TestNewTmfifoNetListener_DefaultAddr(t *testing.T) {
+	listener, err := NewTmfifoNetListener("")
+	if err != nil {
+		// Skip if port is already in use (e.g., on self-hosted runners with aegis)
+		if strings.Contains(err.Error(), "address already in use") {
+			t.Skip("Default port 9444 in use; skipping")
+		}
+		t.Fatalf("NewTmfifoNetListener failed: %v", err)
+	}
+	defer listener.Close()
+
+	if listener.Type() != TransportTmfifoNet {
+		t.Errorf("Type() = %s, want %s", listener.Type(), TransportTmfifoNet)
 	}
 }
 
-func TestNewTmfifoNetListener_DefaultPath(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
-
-	f, _ := os.Create(fakePath)
-	f.Close()
-
-	listener, err := NewTmfifoNetListener(fakePath)
+func TestTmfifoNetListener_CustomAddr(t *testing.T) {
+	// Use a random high port to avoid conflicts
+	listener, err := NewTmfifoNetListener("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("NewTmfifoNetListener failed: %v", err)
 	}
@@ -379,25 +465,35 @@ func TestNewTmfifoNetListener_DefaultPath(t *testing.T) {
 }
 
 func TestTmfifoNetListener_Type(t *testing.T) {
-	listener := &TmfifoNetListener{devicePath: "/dev/tmfifo_net0"}
+	listener := &TmfifoNetListener{listenAddr: ":9444"}
 	if listener.Type() != TransportTmfifoNet {
 		t.Errorf("Type() = %s, want %s", listener.Type(), TransportTmfifoNet)
 	}
 }
 
 func TestTmfifoNetListener_AcceptAndClose(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
-
-	f, _ := os.Create(fakePath)
-	f.Close()
-
-	listener, err := NewTmfifoNetListener(fakePath)
+	listener, err := NewTmfifoNetListener("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("NewTmfifoNetListener failed: %v", err)
 	}
 
-	// Accept should succeed (opens the device)
+	// Get the actual address the listener is bound to
+	tcpListener := listener.listener.(*net.TCPListener)
+	addr := tcpListener.Addr().String()
+
+	// Connect from client in goroutine
+	clientDone := make(chan struct{})
+	go func() {
+		defer close(clientDone)
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		time.Sleep(100 * time.Millisecond)
+	}()
+
+	// Accept should succeed
 	transport, err := listener.Accept()
 	if err != nil {
 		t.Fatalf("Accept failed: %v", err)
@@ -410,8 +506,8 @@ func TestTmfifoNetListener_AcceptAndClose(t *testing.T) {
 	// Close the transport
 	transport.Close()
 
-	// Wait for watchTransportClose to release the token
-	time.Sleep(150 * time.Millisecond)
+	// Wait for client
+	<-clientDone
 
 	// Close the listener
 	err = listener.Close()
@@ -421,13 +517,7 @@ func TestTmfifoNetListener_AcceptAndClose(t *testing.T) {
 }
 
 func TestTmfifoNetListener_DoubleClose(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
-
-	f, _ := os.Create(fakePath)
-	f.Close()
-
-	listener, _ := NewTmfifoNetListener(fakePath)
+	listener, _ := NewTmfifoNetListener("127.0.0.1:0")
 
 	// First close
 	err := listener.Close()
@@ -443,90 +533,214 @@ func TestTmfifoNetListener_DoubleClose(t *testing.T) {
 }
 
 func TestTmfifoNetListener_AcceptAfterClose(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
-
-	f, _ := os.Create(fakePath)
-	f.Close()
-
-	listener, _ := NewTmfifoNetListener(fakePath)
-
-	// Accept once to consume the initial token
-	transport, _ := listener.Accept()
-	transport.Close()
-
-	// Wait for token release
-	time.Sleep(150 * time.Millisecond)
+	listener, _ := NewTmfifoNetListener("127.0.0.1:0")
 
 	// Close the listener
 	listener.Close()
 
-	// Accept after close should fail immediately (channel closed)
-	// This test verifies the channel close behavior
+	// Accept after close should fail
+	_, err := listener.Accept()
+	if err == nil {
+		t.Error("expected error on Accept after Close")
+	}
 }
 
-func TestTmfifoNetListener_CloseWithActiveTransport(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
+func TestTmfifoNetListener_UnixSocket(t *testing.T) {
+	socketPath := testSocketPath("list")
+	t.Cleanup(func() { os.Remove(socketPath) })
 
-	f, _ := os.Create(fakePath)
-	f.Close()
+	listener, err := NewTmfifoNetListenerWithSocket("", socketPath)
+	if err != nil {
+		t.Fatalf("NewTmfifoNetListenerWithSocket failed: %v", err)
+	}
 
-	listener, _ := NewTmfifoNetListener(fakePath)
+	if !listener.useUnixSocket {
+		t.Error("expected useUnixSocket = true")
+	}
 
-	// Accept a connection
+	// Connect client
+	clientDone := make(chan struct{})
+	go func() {
+		defer close(clientDone)
+		conn, err := net.Dial("unix", socketPath)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		time.Sleep(100 * time.Millisecond)
+	}()
+
+	// Accept
 	transport, err := listener.Accept()
 	if err != nil {
 		t.Fatalf("Accept failed: %v", err)
 	}
 
-	// Close the transport first to let watchTransportClose complete
 	transport.Close()
+	<-clientDone
+	listener.Close()
 
-	// Wait for watchTransportClose to finish processing
-	time.Sleep(200 * time.Millisecond)
-
-	// Now close the listener (transport already closed)
-	err = listener.Close()
-	if err != nil {
-		t.Errorf("listener Close failed: %v", err)
-	}
-
-	// Verify transport is closed
-	tt := transport.(*TmfifoNetTransport)
-	tt.mu.Lock()
-	closed := tt.closed
-	tt.mu.Unlock()
-
-	if !closed {
-		t.Error("expected transport to be closed")
+	// Socket file should be cleaned up
+	if _, err := os.Stat(socketPath); !os.IsNotExist(err) {
+		t.Error("expected socket file to be removed after Close")
 	}
 }
 
-func TestNewTmfifoNetTransportFromDevice(t *testing.T) {
-	tmpDir := t.TempDir()
-	fakePath := filepath.Join(tmpDir, "tmfifo_net0")
+func TestNewTmfifoNetTransportFromConn(t *testing.T) {
+	// Create a socket pair
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
 
-	f, err := os.Create(fakePath)
-	if err != nil {
-		t.Fatalf("failed to create file: %v", err)
-	}
+	transport := newTmfifoNetTransportFromConn(client)
 
-	// Use the internal constructor
-	transport := newTmfifoNetTransportFromDevice(f, fakePath)
-
-	if transport.devicePath != fakePath {
-		t.Errorf("devicePath = %q, want %q", transport.devicePath, fakePath)
-	}
 	if !transport.connected {
-		t.Error("expected connected = true when created from device")
+		t.Error("expected connected = true when created from conn")
 	}
-	if transport.device != f {
-		t.Error("expected device to be set")
+	if transport.conn != client {
+		t.Error("expected conn to be set")
 	}
 	if transport.reader == nil {
 		t.Error("expected reader to be set")
 	}
 
 	transport.Close()
+}
+
+// ============================================================================
+// Helper Function Tests
+// ============================================================================
+
+func TestIsUnixSocket(t *testing.T) {
+	// Use short path in /tmp
+	socketPath := testSocketPath("issock")
+	t.Cleanup(func() { os.Remove(socketPath) })
+
+	// Create a Unix socket
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create Unix socket: %v", err)
+	}
+	defer listener.Close()
+
+	if !isUnixSocket(socketPath) {
+		t.Error("expected isUnixSocket to return true for Unix socket")
+	}
+
+	// Create a regular file
+	regularFile := "/tmp/tmfifo_test_regular.txt"
+	f, _ := os.Create(regularFile)
+	f.Close()
+	t.Cleanup(func() { os.Remove(regularFile) })
+
+	if isUnixSocket(regularFile) {
+		t.Error("expected isUnixSocket to return false for regular file")
+	}
+
+	// Non-existent path
+	if isUnixSocket("/nonexistent/path") {
+		t.Error("expected isUnixSocket to return false for non-existent path")
+	}
+}
+
+func TestHasTmfifoInterface(t *testing.T) {
+	// This test just verifies the function doesn't panic
+	// On most systems, tmfifo_net0 won't exist
+	result := hasTmfifoInterface()
+	t.Logf("hasTmfifoInterface() = %v", result)
+}
+
+func TestHasTmfifoInterface_Exported(t *testing.T) {
+	// Test the exported version
+	result := HasTmfifoInterface()
+	t.Logf("HasTmfifoInterface() = %v", result)
+}
+
+// ============================================================================
+// Integration Tests
+// ============================================================================
+
+func TestTmfifoRoundTrip(t *testing.T) {
+	// Use TCP for reliable integration test
+	serverListener, err := NewTmfifoNetListener("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create server listener: %v", err)
+	}
+	defer serverListener.Close()
+
+	// Get actual bound address
+	tcpListener := serverListener.listener.(*net.TCPListener)
+	addr := tcpListener.Addr().String()
+
+	// Create client transport
+	clientTransport, err := NewTmfifoNetTransport(addr)
+	if err != nil {
+		t.Fatalf("failed to create client transport: %v", err)
+	}
+	defer clientTransport.Close()
+
+	// Server accepts in background
+	serverCh := make(chan Transport)
+	go func() {
+		transport, _ := serverListener.Accept()
+		serverCh <- transport
+	}()
+
+	// Client connects
+	ctx := context.Background()
+	if err := clientTransport.Connect(ctx); err != nil {
+		t.Fatalf("client Connect failed: %v", err)
+	}
+
+	serverTransport := <-serverCh
+	defer serverTransport.Close()
+
+	// Send message from client to server
+	msg := &Message{
+		Version: ProtocolVersion,
+		Type:    MessageEnrollRequest,
+		ID:      "round-trip-test",
+		TS:      time.Now().UnixMilli(),
+		Payload: json.RawMessage(`{"hostname":"test-host"}`),
+	}
+
+	if err := clientTransport.Send(msg); err != nil {
+		t.Fatalf("client Send failed: %v", err)
+	}
+
+	// Server receives
+	received, err := serverTransport.Recv()
+	if err != nil {
+		t.Fatalf("server Recv failed: %v", err)
+	}
+
+	if received.Type != msg.Type {
+		t.Errorf("received Type = %s, want %s", received.Type, msg.Type)
+	}
+	if received.ID != msg.ID {
+		t.Errorf("received ID = %s, want %s", received.ID, msg.ID)
+	}
+
+	// Send response from server to client
+	response := &Message{
+		Version: ProtocolVersion,
+		Type:    MessageEnrollResponse,
+		ID:      "round-trip-test",
+		TS:      time.Now().UnixMilli(),
+		Payload: json.RawMessage(`{"success":true,"host_id":"host_123"}`),
+	}
+
+	if err := serverTransport.Send(response); err != nil {
+		t.Fatalf("server Send failed: %v", err)
+	}
+
+	// Client receives response
+	receivedResp, err := clientTransport.Recv()
+	if err != nil {
+		t.Fatalf("client Recv failed: %v", err)
+	}
+
+	if receivedResp.Type != MessageEnrollResponse {
+		t.Errorf("response Type = %s, want %s", receivedResp.Type, MessageEnrollResponse)
+	}
 }

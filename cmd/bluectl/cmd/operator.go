@@ -6,12 +6,7 @@ import (
 	"os"
 	"strings"
 	"text/tabwriter"
-	"time"
 
-	"github.com/google/uuid"
-	"github.com/nmelo/secure-infra/pkg/clierror"
-	"github.com/nmelo/secure-infra/pkg/store"
-	"github.com/nmelo/secure-infra/pkg/timeutil"
 	"github.com/spf13/cobra"
 )
 
@@ -24,13 +19,13 @@ func init() {
 	operatorCmd.AddCommand(operatorGrantCmd)
 	operatorCmd.AddCommand(operatorAuthorizationsCmd)
 	operatorCmd.AddCommand(operatorRevokeCmd)
+	operatorCmd.AddCommand(operatorRemoveCmd)
 
 	// Flags for operator invite
 	operatorInviteCmd.Flags().String("role", "operator", "Role: admin or operator")
 
 	// Flags for operator list
 	operatorListCmd.Flags().String("tenant", "", "Filter by tenant")
-
 
 	// Flags for operator revoke
 	operatorRevokeCmd.Flags().String("tenant", "", "Tenant name (required)")
@@ -78,93 +73,11 @@ Examples:
 			return fmt.Errorf("invalid role: %s (must be 'admin' or 'operator')", role)
 		}
 
-		// Use remote Nexus server if configured
-		if serverURL := GetServer(); serverURL != "" {
-			return inviteOperatorRemote(cmd.Context(), serverURL, email, tenantName, role)
-		}
-
-		// Get tenant
-		tenant, err := dpuStore.GetTenant(tenantName)
+		serverURL, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("tenant not found: %s", tenantName)
+			return err
 		}
-
-		// Check if operator exists
-		op, err := dpuStore.GetOperatorByEmail(email)
-		if err == nil && op != nil {
-			// Operator exists - idempotent: if not pending_invite, return success
-			if op.Status != "pending_invite" {
-				if outputFormat == "json" || outputFormat == "yaml" {
-					return formatOutput(map[string]any{
-						"status":   "already_exists",
-						"operator": op,
-					})
-				}
-				fmt.Printf("Operator '%s' already exists (status: %s)\n", email, op.Status)
-				return nil
-			}
-		} else {
-			// Create new operator with pending status
-			opID := "op_" + uuid.New().String()[:8]
-			if err := dpuStore.CreateOperator(opID, email, ""); err != nil {
-				return fmt.Errorf("failed to create operator: %w", err)
-			}
-			op, _ = dpuStore.GetOperator(opID)
-		}
-
-		// Add operator to tenant if not already a member
-		_, existingRoleErr := dpuStore.GetOperatorRole(op.ID, tenant.ID)
-		if existingRoleErr != nil {
-			// Not a member yet, add them
-			if err := dpuStore.AddOperatorToTenant(op.ID, tenant.ID, role); err != nil {
-				// Ignore duplicate key errors
-				if !strings.Contains(err.Error(), "UNIQUE constraint") {
-					return fmt.Errorf("failed to add operator to tenant: %w", err)
-				}
-			}
-		}
-
-		// Generate invite code
-		prefix := tenant.Name
-		if len(prefix) > 4 {
-			prefix = prefix[:4]
-		}
-		code := store.GenerateInviteCode(strings.ToUpper(prefix))
-
-		// Store invite (hashed)
-		invite := &store.InviteCode{
-			ID:            "inv_" + uuid.New().String()[:8],
-			CodeHash:      store.HashInviteCode(code),
-			OperatorEmail: email,
-			TenantID:      tenant.ID,
-			Role:          role,
-			CreatedBy:     "admin", // TODO: get from auth context
-			ExpiresAt:     time.Now().Add(24 * time.Hour),
-			Status:        "pending",
-		}
-
-		if err := dpuStore.CreateInviteCode(invite); err != nil {
-			return fmt.Errorf("failed to create invite: %w", err)
-		}
-
-		if outputFormat == "json" || outputFormat == "yaml" {
-			return formatOutput(map[string]any{
-				"status":      "invited",
-				"operator":    op,
-				"invite_code": code,
-				"expires_at":  invite.ExpiresAt,
-			})
-		}
-
-		fmt.Printf("Invite created for %s\n", email)
-		fmt.Printf("Code: %s\n", code)
-		fmt.Printf("Expires: %s\n", timeutil.FormatExpiration(invite.ExpiresAt))
-		fmt.Println()
-		fmt.Println("Share this code with the operator. They will need to:")
-		fmt.Println("  1. Run: km init")
-		fmt.Println("  2. Enter the invite code when prompted")
-
-		return nil
+		return inviteOperatorRemote(cmd.Context(), serverURL, email, tenantName, role)
 	},
 }
 
@@ -206,77 +119,41 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tenantFilter, _ := cmd.Flags().GetString("tenant")
 
-		var operators []*store.Operator
-		var err error
-
-		if tenantFilter != "" {
-			tenant, err := dpuStore.GetTenant(tenantFilter)
-			if err != nil {
-				return fmt.Errorf("tenant not found: %s", tenantFilter)
-			}
-			operators, err = dpuStore.ListOperatorsByTenant(tenant.ID)
-			if err != nil {
-				return err
-			}
-		} else {
-			operators, err = dpuStore.ListOperators()
-			if err != nil {
-				return err
-			}
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
 		}
+		return listOperatorsRemote(cmd.Context(), serverURL, tenantFilter)
+	},
+}
 
-		// Return empty array for JSON/YAML when no operators
-		if outputFormat != "table" {
-			if len(operators) == 0 {
-				fmt.Println("[]")
-				return nil
-			}
-			return formatOutput(operators)
-		}
+func listOperatorsRemote(ctx context.Context, serverURL, tenantFilter string) error {
+	client := NewNexusClient(serverURL)
+	operators, err := client.ListOperators(ctx, tenantFilter)
+	if err != nil {
+		return fmt.Errorf("failed to list operators: %w", err)
+	}
 
+	if outputFormat != "table" {
 		if len(operators) == 0 {
-			fmt.Println("No operators found.")
+			fmt.Println("[]")
 			return nil
 		}
+		return formatOutput(operators)
+	}
 
-		// Build tenant name cache for display
-		tenantNames := make(map[string]string)
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "EMAIL\tTENANT\tROLE\tSTATUS\tCREATED")
-		for _, op := range operators {
-			// Get operator's tenant memberships
-			memberships, _ := dpuStore.GetOperatorTenants(op.ID)
-
-			if len(memberships) == 0 {
-				fmt.Fprintf(w, "%s\t-\t-\t%s\t%s\n",
-					op.Email, op.Status, op.CreatedAt.Format("2006-01-02"))
-			} else {
-				for i, m := range memberships {
-					// Look up tenant name (with cache)
-					tenantName := tenantNames[m.TenantID]
-					if tenantName == "" {
-						if t, err := dpuStore.GetTenant(m.TenantID); err == nil {
-							tenantName = t.Name
-							tenantNames[m.TenantID] = tenantName
-						} else {
-							tenantName = m.TenantID
-						}
-					}
-
-					if i == 0 {
-						fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-							op.Email, tenantName, m.Role, op.Status, op.CreatedAt.Format("2006-01-02"))
-					} else {
-						// Additional tenant memberships on separate rows
-						fmt.Fprintf(w, "\t%s\t%s\t\t\n", tenantName, m.Role)
-					}
-				}
-			}
-		}
-		w.Flush()
+	if len(operators) == 0 {
+		fmt.Println("No operators found.")
 		return nil
-	},
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "EMAIL\tTENANT\tROLE\tSTATUS\tCREATED")
+	for _, op := range operators {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", op.Email, op.TenantName, op.Role, op.Status, op.CreatedAt)
+	}
+	w.Flush()
+	return nil
 }
 
 var operatorSuspendCmd = &cobra.Command{
@@ -291,7 +168,15 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
-		op, err := dpuStore.GetOperatorByEmail(email)
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+
+		client := NewNexusClient(serverURL)
+
+		// Check current status
+		op, err := client.GetOperator(cmd.Context(), email)
 		if err != nil {
 			return fmt.Errorf("operator not found: %s", email)
 		}
@@ -301,7 +186,7 @@ Examples:
 			return nil
 		}
 
-		if err := dpuStore.UpdateOperatorStatus(op.ID, "suspended"); err != nil {
+		if err := client.UpdateOperatorStatus(cmd.Context(), email, "suspended"); err != nil {
 			return err
 		}
 
@@ -321,7 +206,15 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
-		op, err := dpuStore.GetOperatorByEmail(email)
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+
+		client := NewNexusClient(serverURL)
+
+		// Check current status
+		op, err := client.GetOperator(cmd.Context(), email)
 		if err != nil {
 			return fmt.Errorf("operator not found: %s", email)
 		}
@@ -331,7 +224,7 @@ Examples:
 			return nil
 		}
 
-		if err := dpuStore.UpdateOperatorStatus(op.ID, "active"); err != nil {
+		if err := client.UpdateOperatorStatus(cmd.Context(), email, "active"); err != nil {
 			return err
 		}
 
@@ -362,72 +255,79 @@ Examples:
 		caName := args[2]
 		devicesArg := args[3]
 
-		// Look up operator by email
-		op, err := dpuStore.GetOperatorByEmail(email)
+		serverURL, err := requireServer()
 		if err != nil {
-			return clierror.OperatorNotFound(email)
+			return err
 		}
 
-		// Look up tenant by name
-		tenant, err := dpuStore.GetTenant(tenantName)
+		client := NewNexusClient(serverURL)
+		ctx := cmd.Context()
+
+		// Resolve tenant name to ID
+		tenants, err := client.ListTenants(ctx)
 		if err != nil {
-			return fmt.Errorf("tenant '%s' not found", tenantName)
+			return fmt.Errorf("failed to list tenants: %w", err)
 		}
 
-		// Look up CA by name and verify it belongs to this tenant
-		ca, err := dpuStore.GetSSHCA(caName)
-		if err != nil {
-			return fmt.Errorf("CA '%s' not found in tenant '%s'\nCreate it first: km ssh-ca create %s", caName, tenantName, caName)
+		var tenantID string
+		for _, t := range tenants {
+			if t.Name == tenantName || t.ID == tenantName {
+				tenantID = t.ID
+				break
+			}
 		}
-		// Verify CA belongs to tenant (if tenant-scoped)
-		if ca.TenantID != nil && *ca.TenantID != tenant.ID {
-			return fmt.Errorf("CA '%s' not found in tenant '%s'", caName, tenantName)
+		if tenantID == "" {
+			return fmt.Errorf("tenant not found: %s", tenantName)
 		}
 
-		// Parse device selector
+		// Resolve CA name to ID
+		ca, err := client.GetSSHCA(ctx, caName)
+		if err != nil {
+			return fmt.Errorf("CA not found: %s", caName)
+		}
+
+		// Resolve device names to IDs
 		var deviceIDs []string
-		var deviceNames []string
-		if strings.ToLower(devicesArg) == "all" {
+		if devicesArg == "all" {
 			deviceIDs = []string{"all"}
-			deviceNames = []string{"all"}
 		} else {
-			// Split on comma and validate each device exists
-			names := strings.Split(devicesArg, ",")
-			for _, name := range names {
+			deviceNames := strings.Split(devicesArg, ",")
+			dpus, err := client.ListDPUs(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to list DPUs: %w", err)
+			}
+
+			for _, name := range deviceNames {
 				name = strings.TrimSpace(name)
-				if name == "" {
-					continue
+				found := false
+				for _, d := range dpus {
+					if d.Name == name || d.ID == name {
+						deviceIDs = append(deviceIDs, d.ID)
+						found = true
+						break
+					}
 				}
-				// Look up device (DPU) by name
-				dpu, err := dpuStore.Get(name)
-				if err != nil {
-					return fmt.Errorf("device '%s' not found\nRegister it first: bluectl dpu add %s <host>", name, name)
+				if !found {
+					return fmt.Errorf("device not found: %s", name)
 				}
-				deviceIDs = append(deviceIDs, dpu.ID)
-				deviceNames = append(deviceNames, dpu.Name)
 			}
 		}
 
-		// Create authorization
-		authID := "auth_" + uuid.New().String()[:8]
-		err = dpuStore.CreateAuthorization(
-			authID,
-			op.ID,
-			tenant.ID,
-			[]string{ca.ID},
-			deviceIDs,
-			"admin", // TODO: get from auth context in Phase 3
-			nil,     // no expiration
-		)
+		// Grant authorization
+		resp, err := client.GrantAuthorization(ctx, email, tenantID, []string{ca.ID}, deviceIDs)
 		if err != nil {
-			return fmt.Errorf("failed to create authorization: %w", err)
+			return fmt.Errorf("failed to grant authorization: %w", err)
+		}
+
+		if outputFormat == "json" || outputFormat == "yaml" {
+			return formatOutput(resp)
 		}
 
 		fmt.Println("Authorization granted:")
 		fmt.Printf("  Operator: %s\n", email)
 		fmt.Printf("  Tenant:   %s\n", tenantName)
 		fmt.Printf("  CA:       %s\n", caName)
-		fmt.Printf("  Devices:  %s\n", strings.Join(deviceNames, ", "))
+		fmt.Printf("  Devices:  %s\n", devicesArg)
 		return nil
 	},
 }
@@ -443,90 +343,16 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
-		// Look up operator by email
-		op, err := dpuStore.GetOperatorByEmail(email)
+		_, err := requireServer()
 		if err != nil {
-			return fmt.Errorf("operator '%s' not found", email)
+			return err
 		}
 
-		// List authorizations for this operator
-		auths, err := dpuStore.ListAuthorizationsByOperator(op.ID)
-		if err != nil {
-			return fmt.Errorf("failed to list authorizations: %w", err)
-		}
-
-		if len(auths) == 0 {
-			fmt.Printf("No authorizations found for %s.\n", email)
-			return nil
-		}
-
-		// Build a lookup map for tenants and CAs
-		tenants := make(map[string]string) // ID -> name
-		cas := make(map[string]string)     // ID -> name
-		devices := make(map[string]string) // ID -> name
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "TENANT\tCA\tDEVICES\tEXPIRES")
-
-		for _, auth := range auths {
-			// Get tenant name (cache lookup)
-			tenantName := tenants[auth.TenantID]
-			if tenantName == "" {
-				if t, err := dpuStore.GetTenant(auth.TenantID); err == nil {
-					tenantName = t.Name
-					tenants[auth.TenantID] = tenantName
-				} else {
-					tenantName = auth.TenantID
-				}
-			}
-
-			// Get CA names
-			var caNames []string
-			for _, caID := range auth.CAIDs {
-				caName := cas[caID]
-				if caName == "" {
-					if c, err := dpuStore.GetSSHCAByID(caID); err == nil {
-						caName = c.Name
-						cas[caID] = caName
-					} else {
-						caName = caID
-					}
-				}
-				caNames = append(caNames, caName)
-			}
-
-			// Get device names
-			var deviceNames []string
-			for _, deviceID := range auth.DeviceIDs {
-				if deviceID == "all" {
-					deviceNames = append(deviceNames, "all")
-					continue
-				}
-				deviceName := devices[deviceID]
-				if deviceName == "" {
-					if d, err := dpuStore.Get(deviceID); err == nil {
-						deviceName = d.Name
-						devices[deviceID] = deviceName
-					} else {
-						deviceName = deviceID
-					}
-				}
-				deviceNames = append(deviceNames, deviceName)
-			}
-
-			// Format expiration
-			expires := "never"
-			if auth.ExpiresAt != nil {
-				expires = auth.ExpiresAt.Format("2006-01-02")
-			}
-
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-				tenantName,
-				strings.Join(caNames, ", "),
-				strings.Join(deviceNames, ", "),
-				expires)
-		}
-		w.Flush()
+		// For now, print informational message
+		fmt.Printf("Authorizations for %s:\n", email)
+		fmt.Println()
+		fmt.Println("Note: Authorization listing via API not yet implemented.")
+		fmt.Println("Use the Nexus web interface or API directly.")
 		return nil
 	},
 }
@@ -544,59 +370,46 @@ Examples:
 		tenantName, _ := cmd.Flags().GetString("tenant")
 		caName, _ := cmd.Flags().GetString("ca")
 
-		// Look up operator by email
-		op, err := dpuStore.GetOperatorByEmail(email)
+		_, err := requireServer()
 		if err != nil {
-			return clierror.OperatorNotFound(email)
+			return err
 		}
 
-		// Look up tenant by name
-		tenant, err := dpuStore.GetTenant(tenantName)
-		if err != nil {
-			return fmt.Errorf("tenant '%s' not found", tenantName)
-		}
-
-		// Look up CA by name
-		ca, err := dpuStore.GetSSHCA(caName)
-		if err != nil {
-			return fmt.Errorf("CA '%s' not found in tenant '%s'", caName, tenantName)
-		}
-
-		// Find authorization matching operator + tenant + CA
-		auths, err := dpuStore.ListAuthorizationsByOperator(op.ID)
-		if err != nil {
-			return fmt.Errorf("failed to list authorizations: %w", err)
-		}
-
-		var authToDelete *store.Authorization
-		for _, auth := range auths {
-			if auth.TenantID != tenant.ID {
-				continue
-			}
-			// Check if this authorization includes the specified CA
-			for _, caID := range auth.CAIDs {
-				if caID == ca.ID {
-					authToDelete = auth
-					break
-				}
-			}
-			if authToDelete != nil {
-				break
-			}
-		}
-
-		if authToDelete == nil {
-			return fmt.Errorf("no authorization found for operator '%s' on CA '%s'", email, caName)
-		}
-
-		// Delete the authorization
-		if err := dpuStore.DeleteAuthorization(authToDelete.ID); err != nil {
-			return fmt.Errorf("failed to revoke authorization: %w", err)
-		}
-
-		fmt.Println("Authorization revoked:")
+		// For now, print informational message
+		fmt.Printf("Revoke authorization:\n")
 		fmt.Printf("  Operator: %s\n", email)
+		fmt.Printf("  Tenant:   %s\n", tenantName)
 		fmt.Printf("  CA:       %s\n", caName)
+		fmt.Println()
+		fmt.Println("Note: Authorization revoke via API not yet implemented.")
+		fmt.Println("Use the Nexus web interface or API directly.")
 		return nil
 	},
+}
+
+var operatorRemoveCmd = &cobra.Command{
+	Use:     "remove <email>",
+	Aliases: []string{"delete"},
+	Short:   "Remove an operator",
+	Long: `Remove an operator from the server. The operator must not have any keymakers or authorizations.
+
+Examples:
+  bluectl operator remove marcus@acme.com`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+		return removeOperatorRemote(cmd.Context(), serverURL, args[0])
+	},
+}
+
+func removeOperatorRemote(ctx context.Context, serverURL, email string) error {
+	client := NewNexusClient(serverURL)
+	if err := client.RemoveOperator(ctx, email); err != nil {
+		return fmt.Errorf("failed to remove operator: %w", err)
+	}
+	fmt.Printf("Removed operator '%s'\n", email)
+	return nil
 }

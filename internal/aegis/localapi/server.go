@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/nmelo/secure-infra/pkg/transport"
 )
 
@@ -49,6 +50,10 @@ type Config struct {
 
 	// HTTPClient for Control Plane communication (allows mocking)
 	HTTPClient *http.Client
+
+	// Store is the SQLite store for state persistence (optional).
+	// If provided, pairing state and credential queue are persisted across restarts.
+	Store *store.Store
 }
 
 // Server is the local HTTP API server for Host Agent communication.
@@ -79,6 +84,9 @@ type Server struct {
 	// credentialQueue holds credentials waiting to be retrieved by the Host Agent
 	credentialQueue []*QueuedCredential
 	credentialMu    sync.RWMutex
+
+	// store is the SQLite store for state persistence (optional)
+	store *store.Store
 }
 
 // NewServer creates a new local API server.
@@ -106,6 +114,12 @@ func NewServer(cfg *Config) (*Server, error) {
 			baseURL:    strings.TrimSuffix(cfg.ControlPlaneURL, "/"),
 			httpClient: httpClient,
 		},
+		store: cfg.Store,
+	}
+
+	// Restore state from store if available
+	if err := s.restoreState(); err != nil {
+		return nil, fmt.Errorf("failed to restore state: %w", err)
 	}
 
 	mux := http.NewServeMux()
@@ -292,6 +306,7 @@ func (s *Server) isPairedHost(hostname string) bool {
 }
 
 // setPairedHost sets the paired host (only if not already paired).
+// Persists the pairing to the store if configured.
 func (s *Server) setPairedHost(hostname, hostID string) bool {
 	s.pairedMu.Lock()
 	defer s.pairedMu.Unlock()
@@ -302,6 +317,12 @@ func (s *Server) setPairedHost(hostname, hostID string) bool {
 
 	s.pairedHost = hostname
 	s.pairedHostID = hostID
+
+	// Persist pairing to store
+	if err := s.persistPairing(hostname, hostID); err != nil {
+		log.Printf("localapi: warning: failed to persist pairing: %v", err)
+	}
+
 	return true
 }
 
@@ -442,16 +463,22 @@ func generateNonce() string {
 
 // queueCredentialForHost stores a credential for later retrieval by the Host Agent.
 // This is used when tmfifo is not available or not connected.
+// Persists the credential to the store if configured.
 func (s *Server) queueCredentialForHost(hostname, credType, credName string, data []byte) (*CredentialPushResult, error) {
 	s.credentialMu.Lock()
 	defer s.credentialMu.Unlock()
 
-	// Add to queue
+	// Add to in-memory queue
 	s.credentialQueue = append(s.credentialQueue, &QueuedCredential{
 		CredType: credType,
 		CredName: credName,
 		Data:     data,
 	})
+
+	// Persist to store
+	if err := s.persistCredential(credType, credName, data); err != nil {
+		log.Printf("localapi: warning: failed to persist credential: %v", err)
+	}
 
 	log.Printf("Queued %s credential '%s' for host '%s' (queue size: %d)",
 		credType, credName, hostname, len(s.credentialQueue))
@@ -463,12 +490,19 @@ func (s *Server) queueCredentialForHost(hostname, credType, credName string, dat
 }
 
 // GetQueuedCredentials returns and clears all queued credentials for the paired host.
+// Clears the credentials from the persistent store as well.
 func (s *Server) GetQueuedCredentials() []*QueuedCredential {
 	s.credentialMu.Lock()
 	defer s.credentialMu.Unlock()
 
 	creds := s.credentialQueue
 	s.credentialQueue = nil
+
+	// Clear from persistent store
+	if err := s.clearPersistedCredentials(); err != nil {
+		log.Printf("localapi: warning: failed to clear persisted credentials: %v", err)
+	}
+
 	return creds
 }
 
@@ -526,4 +560,63 @@ func (s *Server) RegisterViaTransport(ctx context.Context, hostname string, post
 		HostID:  resp.HostID,
 		DPUName: s.config.DPUName,
 	}, nil
+}
+
+// restoreState restores pairing and credential queue state from the store.
+func (s *Server) restoreState() error {
+	if s.store == nil {
+		return nil
+	}
+
+	// Restore paired host from store
+	host, err := s.store.GetAgentHostByDPU(s.config.DPUName)
+	if err == nil && host != nil {
+		s.pairedHost = host.Hostname
+		s.pairedHostID = host.ID
+		log.Printf("localapi: restored pairing with host '%s' (ID: %s)", host.Hostname, host.ID)
+	}
+
+	// Restore credential queue from store
+	creds, err := s.store.GetQueuedCredentials(s.config.DPUName)
+	if err != nil {
+		return fmt.Errorf("failed to restore credential queue: %w", err)
+	}
+	if len(creds) > 0 {
+		s.credentialMu.Lock()
+		for _, c := range creds {
+			s.credentialQueue = append(s.credentialQueue, &QueuedCredential{
+				CredType: c.CredType,
+				CredName: c.CredName,
+				Data:     c.Data,
+			})
+		}
+		s.credentialMu.Unlock()
+		log.Printf("localapi: restored %d queued credentials from store", len(creds))
+	}
+
+	return nil
+}
+
+// persistPairing saves the pairing state to the store.
+func (s *Server) persistPairing(hostname, hostID string) error {
+	if s.store == nil {
+		return nil
+	}
+	return s.store.UpdateAgentHostByDPU(s.config.DPUName, s.config.DPUID, hostname, hostID)
+}
+
+// persistCredential adds a credential to the persistent queue.
+func (s *Server) persistCredential(credType, credName string, data []byte) error {
+	if s.store == nil {
+		return nil
+	}
+	return s.store.QueueCredential(s.config.DPUName, credType, credName, data)
+}
+
+// clearPersistedCredentials removes all credentials from the persistent queue.
+func (s *Server) clearPersistedCredentials() error {
+	if s.store == nil {
+		return nil
+	}
+	return s.store.ClearQueuedCredentials(s.config.DPUName)
 }
