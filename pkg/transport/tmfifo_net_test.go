@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -437,6 +438,10 @@ func TestTmfifoNetTransport_CloseWithoutConnection(t *testing.T) {
 func TestNewTmfifoNetListener_DefaultAddr(t *testing.T) {
 	listener, err := NewTmfifoNetListener("")
 	if err != nil {
+		// Skip if port is already in use (e.g., on self-hosted runners with aegis)
+		if strings.Contains(err.Error(), "address already in use") {
+			t.Skip("Default port 9444 in use; skipping")
+		}
 		t.Fatalf("NewTmfifoNetListener failed: %v", err)
 	}
 	defer listener.Close()
