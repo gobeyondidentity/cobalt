@@ -264,6 +264,28 @@ func (s *Server) handleGetAgentHost(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// handleGetHostPostureByDPU handles GET /api/v1/hosts/{dpuName}/posture
+// Returns the posture data for the host paired with the specified DPU.
+func (s *Server) handleGetHostPostureByDPU(w http.ResponseWriter, r *http.Request) {
+	dpuName := r.PathValue("dpuName")
+
+	// Look up host by DPU name
+	host, err := s.store.GetAgentHostByDPU(dpuName)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "Host not found for DPU: "+dpuName)
+		return
+	}
+
+	// Get posture for this host
+	posture, err := s.store.GetAgentHostPosture(host.ID)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "No posture data available for host")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, agentPostureToResponse(posture))
+}
+
 // handleDeleteAgentHost handles DELETE /api/v1/hosts/{id}
 func (s *Server) handleDeleteAgentHost(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")

@@ -689,3 +689,134 @@ func TestHostScan_ResponseFormat(t *testing.T) {
 		t.Error("keys array should not be nil")
 	}
 }
+
+// ----- Host Posture by DPU Endpoint Tests -----
+
+// TestGetHostPostureByDPU_UnknownDPU tests 404 for unknown DPU name.
+func TestGetHostPostureByDPU_UnknownDPU(t *testing.T) {
+	t.Log("Testing GET /api/v1/hosts/{dpu-name}/posture returns 404 for unknown DPU")
+
+	_, mux := setupTestServer(t)
+
+	req := httptest.NewRequest("GET", "/api/v1/hosts/nonexistent-dpu/posture", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result map[string]string
+	json.NewDecoder(w.Body).Decode(&result)
+
+	if !strings.Contains(result["error"], "Host not found for DPU") {
+		t.Errorf("expected error to mention 'Host not found for DPU', got: %s", result["error"])
+	}
+}
+
+// TestGetHostPostureByDPU_NoPosture tests 404 when host exists but has no posture data.
+func TestGetHostPostureByDPU_NoPosture(t *testing.T) {
+	t.Log("Testing GET /api/v1/hosts/{dpu-name}/posture returns 404 when host has no posture")
+
+	server, mux := setupTestServer(t)
+
+	// Setup: Add a DPU and register a host without posture
+	t.Log("Creating DPU and registering host without posture data")
+	server.store.Add("dpu1", "bf3-test", "192.168.1.100", 50051)
+
+	host := &store.AgentHost{
+		DPUName:  "bf3-test",
+		DPUID:    "dpu1",
+		Hostname: "gpu-node-01",
+		TenantID: "",
+	}
+	server.store.RegisterAgentHost(host)
+
+	t.Log("Calling GET /api/v1/hosts/bf3-test/posture")
+	req := httptest.NewRequest("GET", "/api/v1/hosts/bf3-test/posture", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result map[string]string
+	json.NewDecoder(w.Body).Decode(&result)
+
+	if !strings.Contains(result["error"], "No posture data available") {
+		t.Errorf("expected error to mention 'No posture data available', got: %s", result["error"])
+	}
+}
+
+// TestGetHostPostureByDPU_Success tests successful posture retrieval.
+func TestGetHostPostureByDPU_Success(t *testing.T) {
+	t.Log("Testing GET /api/v1/hosts/{dpu-name}/posture returns posture data")
+
+	server, mux := setupTestServer(t)
+
+	// Setup: Add a DPU and register a host with posture
+	t.Log("Creating DPU and registering host")
+	server.store.Add("dpu1", "bf3-test", "192.168.1.100", 50051)
+
+	host := &store.AgentHost{
+		DPUName:  "bf3-test",
+		DPUID:    "dpu1",
+		Hostname: "gpu-node-01",
+		TenantID: "",
+	}
+	server.store.RegisterAgentHost(host)
+
+	// Add posture data
+	t.Log("Adding posture data for host")
+	secureBoot := true
+	tpmPresent := true
+	posture := &store.AgentHostPosture{
+		HostID:         host.ID,
+		SecureBoot:     &secureBoot,
+		DiskEncryption: "luks",
+		OSVersion:      "Ubuntu 22.04",
+		KernelVersion:  "5.15.0-generic",
+		TPMPresent:     &tpmPresent,
+		PostureHash:    "abc123",
+	}
+	server.store.UpdateAgentHostPosture(posture)
+
+	t.Log("Calling GET /api/v1/hosts/bf3-test/posture")
+	req := httptest.NewRequest("GET", "/api/v1/hosts/bf3-test/posture", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	t.Log("Verifying posture response fields")
+	var result agentPostureResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Verify posture fields
+	if result.SecureBoot == nil || *result.SecureBoot != true {
+		t.Error("expected secure_boot to be true")
+	}
+	if result.DiskEncryption != "luks" {
+		t.Errorf("expected disk_encryption 'luks', got '%s'", result.DiskEncryption)
+	}
+	if result.OSVersion != "Ubuntu 22.04" {
+		t.Errorf("expected os_version 'Ubuntu 22.04', got '%s'", result.OSVersion)
+	}
+	if result.KernelVersion != "5.15.0-generic" {
+		t.Errorf("expected kernel_version '5.15.0-generic', got '%s'", result.KernelVersion)
+	}
+	if result.TPMPresent == nil || *result.TPMPresent != true {
+		t.Error("expected tpm_present to be true")
+	}
+	if result.PostureHash != "abc123" {
+		t.Errorf("expected posture_hash 'abc123', got '%s'", result.PostureHash)
+	}
+	if result.CollectedAt == "" {
+		t.Error("expected collected_at to be set")
+	}
+}

@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -450,6 +451,110 @@ func (s *Server) handleDeleteInvite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "Failed to delete invite: "+err.Error())
 		return
 	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ----- KeyMaker Management Types -----
+
+// KeyMakerResponse is the response for keymaker endpoints.
+type KeyMakerResponse struct {
+	ID            string  `json:"id"`
+	OperatorID    string  `json:"operator_id"`
+	OperatorEmail string  `json:"operator_email"`
+	Name          string  `json:"name"`
+	Platform      string  `json:"platform"`
+	SecureElement string  `json:"secure_element"`
+	BoundAt       string  `json:"bound_at"`
+	LastSeen      *string `json:"last_seen,omitempty"`
+	Status        string  `json:"status"`
+}
+
+// keymakerToResponse converts a store.KeyMaker to an API response.
+// It resolves the operator email from the operator ID.
+func (s *Server) keymakerToResponse(km *store.KeyMaker) KeyMakerResponse {
+	resp := KeyMakerResponse{
+		ID:            km.ID,
+		OperatorID:    km.OperatorID,
+		Name:          km.Name,
+		Platform:      km.Platform,
+		SecureElement: km.SecureElement,
+		BoundAt:       km.BoundAt.Format(time.RFC3339),
+		Status:        km.Status,
+	}
+
+	// Resolve operator email (graceful degradation: use ID if lookup fails)
+	if op, err := s.store.GetOperator(km.OperatorID); err == nil {
+		resp.OperatorEmail = op.Email
+	} else {
+		resp.OperatorEmail = km.OperatorID
+	}
+
+	if km.LastSeen != nil {
+		t := km.LastSeen.Format(time.RFC3339)
+		resp.LastSeen = &t
+	}
+	return resp
+}
+
+// handleListKeyMakers handles GET /api/v1/keymakers
+// Supports optional ?operator_id= query parameter to filter by operator.
+func (s *Server) handleListKeyMakers(w http.ResponseWriter, r *http.Request) {
+	operatorID := r.URL.Query().Get("operator_id")
+
+	var keymakers []*store.KeyMaker
+	var err error
+
+	if operatorID != "" {
+		keymakers, err = s.store.ListKeyMakersByOperator(operatorID)
+	} else {
+		keymakers, err = s.store.ListAllKeyMakers()
+	}
+
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to list keymakers: "+err.Error())
+		return
+	}
+
+	result := make([]KeyMakerResponse, 0, len(keymakers))
+	for _, km := range keymakers {
+		result = append(result, s.keymakerToResponse(km))
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handleGetKeyMaker handles GET /api/v1/keymakers/{id}
+func (s *Server) handleGetKeyMaker(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	km, err := s.store.GetKeyMaker(id)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "KeyMaker not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, s.keymakerToResponse(km))
+}
+
+// handleRevokeKeyMaker handles DELETE /api/v1/keymakers/{id}
+func (s *Server) handleRevokeKeyMaker(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	// Check if keymaker exists first
+	km, err := s.store.GetKeyMaker(id)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "KeyMaker not found")
+		return
+	}
+
+	// Revoke the keymaker
+	if err := s.store.RevokeKeyMaker(id); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to revoke keymaker: "+err.Error())
+		return
+	}
+
+	log.Printf("KeyMaker revoked: id=%s operator_id=%s name=%s", km.ID, km.OperatorID, km.Name)
 
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -86,6 +86,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// KeyMaker routes
 	mux.HandleFunc("POST /api/v1/keymakers/bind", s.handleBindKeyMaker)
+	mux.HandleFunc("GET /api/v1/keymakers", s.handleListKeyMakers)
+	mux.HandleFunc("GET /api/v1/keymakers/{id}", s.handleGetKeyMaker)
+	mux.HandleFunc("DELETE /api/v1/keymakers/{id}", s.handleRevokeKeyMaker)
 
 	// Operator routes
 	mux.HandleFunc("GET /api/v1/operators", s.handleListOperators)
@@ -116,6 +119,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/hosts/{id}/posture", s.handleHostPostureUpdate)
 	mux.HandleFunc("GET /api/v1/hosts", s.handleListAgentHosts)
 	mux.HandleFunc("GET /api/v1/hosts/{id}", s.handleGetAgentHost)
+	mux.HandleFunc("GET /api/v1/hosts/{dpuName}/posture", s.handleGetHostPostureByDPU)
 	mux.HandleFunc("DELETE /api/v1/hosts/{id}", s.handleDeleteAgentHost)
 
 	// Host certificate issuance (DPU Agent calls on behalf of Host Agent)

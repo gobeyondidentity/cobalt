@@ -942,3 +942,146 @@ func (c *NexusClient) GrantAuthorization(ctx context.Context, email, tenantID st
 
 	return &auth, nil
 }
+
+// ----- KeyMaker Methods -----
+
+// keymakerResponse matches the API response for KeyMaker operations.
+type keymakerResponse struct {
+	ID            string  `json:"id"`
+	OperatorID    string  `json:"operator_id"`
+	OperatorEmail string  `json:"operator_email"`
+	Name          string  `json:"name"`
+	Platform      string  `json:"platform"`
+	SecureElement string  `json:"secure_element"`
+	BoundAt       string  `json:"bound_at"`
+	LastSeen      *string `json:"last_seen,omitempty"`
+	Status        string  `json:"status"`
+}
+
+// ListKeyMakers retrieves all KeyMakers from the Nexus server, optionally filtered by operator.
+func (c *NexusClient) ListKeyMakers(ctx context.Context, operatorID string) ([]keymakerResponse, error) {
+	url := c.baseURL + "/api/v1/keymakers"
+	if operatorID != "" {
+		url += "?operator_id=" + operatorID
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var keymakers []keymakerResponse
+	if err := json.NewDecoder(resp.Body).Decode(&keymakers); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return keymakers, nil
+}
+
+// GetKeyMaker retrieves a KeyMaker by ID from the Nexus server.
+func (c *NexusClient) GetKeyMaker(ctx context.Context, id string) (*keymakerResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/keymakers/"+id, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("KeyMaker not found: %s", id)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var km keymakerResponse
+	if err := json.NewDecoder(resp.Body).Decode(&km); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &km, nil
+}
+
+// RevokeKeyMaker revokes a KeyMaker by ID.
+func (c *NexusClient) RevokeKeyMaker(ctx context.Context, id string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/keymakers/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// ----- Host Posture Methods -----
+
+// postureResponse matches the API response for host posture.
+type postureResponse struct {
+	SecureBoot     *bool  `json:"secure_boot"`
+	DiskEncryption string `json:"disk_encryption"`
+	OSVersion      string `json:"os_version"`
+	KernelVersion  string `json:"kernel_version"`
+	TPMPresent     *bool  `json:"tpm_present"`
+	PostureHash    string `json:"posture_hash"`
+	CollectedAt    string `json:"collected_at"`
+}
+
+// ErrNoPostureData indicates no posture data is available for the host.
+var ErrNoPostureData = fmt.Errorf("no posture data available")
+
+// GetHostPostureByDPU retrieves the posture data for the host paired with a DPU.
+func (c *NexusClient) GetHostPostureByDPU(ctx context.Context, dpuName string) (*postureResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/hosts/"+dpuName+"/posture", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNoPostureData
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var posture postureResponse
+	if err := json.NewDecoder(resp.Body).Decode(&posture); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &posture, nil
+}

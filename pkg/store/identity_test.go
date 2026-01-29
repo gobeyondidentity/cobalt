@@ -350,3 +350,138 @@ func TestDeleteInviteCode_NotFound(t *testing.T) {
 	assert.Error(t, err, "deleting non-existent invite code should fail")
 	assert.Contains(t, err.Error(), "not found", "error should indicate invite code not found")
 }
+
+// TestListAllKeyMakers_Empty tests listing keymakers when none exist.
+func TestListAllKeyMakers_Empty(t *testing.T) {
+	t.Log("Setting up test store")
+	store := setupTestStore(t)
+
+	t.Log("Listing all keymakers from empty database")
+	keymakers, err := store.ListAllKeyMakers()
+	assert.NoError(t, err, "listing empty keymakers should not error")
+	assert.Len(t, keymakers, 0, "should return empty slice when no keymakers exist")
+}
+
+// TestListAllKeyMakers_ReturnsAll tests that ListAllKeyMakers returns all keymakers regardless of status.
+func TestListAllKeyMakers_ReturnsAll(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create two operators
+	t.Log("Creating operators")
+	if err := store.CreateOperator("op1", "op1@example.com", "Operator 1"); err != nil {
+		t.Fatalf("failed to create operator 1: %v", err)
+	}
+	if err := store.CreateOperator("op2", "op2@example.com", "Operator 2"); err != nil {
+		t.Fatalf("failed to create operator 2: %v", err)
+	}
+
+	// Create keymakers with different statuses and operators
+	t.Log("Creating keymakers with different statuses")
+	keymakers := []*KeyMaker{
+		{
+			ID:                "km1",
+			OperatorID:        "op1",
+			Name:              "Active KM 1",
+			Platform:          "darwin",
+			SecureElement:     "TPM",
+			DeviceFingerprint: "fp1",
+			PublicKey:         "pk1",
+			Status:            "active",
+		},
+		{
+			ID:                "km2",
+			OperatorID:        "op1",
+			Name:              "Revoked KM",
+			Platform:          "linux",
+			SecureElement:     "TPM",
+			DeviceFingerprint: "fp2",
+			PublicKey:         "pk2",
+			Status:            "revoked",
+		},
+		{
+			ID:                "km3",
+			OperatorID:        "op2",
+			Name:              "Active KM 2",
+			Platform:          "windows",
+			SecureElement:     "TPM",
+			DeviceFingerprint: "fp3",
+			PublicKey:         "pk3",
+			Status:            "active",
+		},
+	}
+
+	for _, km := range keymakers {
+		if err := store.CreateKeyMaker(km); err != nil {
+			t.Fatalf("failed to create keymaker %s: %v", km.ID, err)
+		}
+	}
+
+	t.Log("Listing all keymakers")
+	result, err := store.ListAllKeyMakers()
+	assert.NoError(t, err, "listing all keymakers should not error")
+	assert.Len(t, result, 3, "should return all 3 keymakers")
+
+	// Verify all keymakers are present
+	t.Log("Verifying all keymakers are returned")
+	ids := make(map[string]bool)
+	for _, km := range result {
+		ids[km.ID] = true
+	}
+	assert.True(t, ids["km1"], "should include km1")
+	assert.True(t, ids["km2"], "should include km2 (revoked)")
+	assert.True(t, ids["km3"], "should include km3")
+}
+
+// TestListAllKeyMakers_OrderedByBoundAtDesc tests that keymakers are ordered by bound_at DESC.
+func TestListAllKeyMakers_OrderedByBoundAtDesc(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create an operator
+	t.Log("Creating operator")
+	if err := store.CreateOperator("op1", "op1@example.com", "Operator 1"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create keymakers with delays to ensure different timestamps
+	// SQLite timestamps are in seconds, so we need 1+ second delay
+	t.Log("Creating keymakers in sequence with 1 second delays")
+	for i := 1; i <= 3; i++ {
+		km := &KeyMaker{
+			ID:                string(rune('a'+i-1)) + "km",
+			OperatorID:        "op1",
+			Name:              "KeyMaker",
+			Platform:          "darwin",
+			SecureElement:     "TPM",
+			DeviceFingerprint: "fp",
+			PublicKey:         "pk" + string(rune('0'+i)),
+			Status:            "active",
+		}
+		if err := store.CreateKeyMaker(km); err != nil {
+			t.Fatalf("failed to create keymaker %d: %v", i, err)
+		}
+		// 1 second delay to ensure different timestamps (SQLite uses seconds)
+		if i < 3 {
+			time.Sleep(1 * time.Second)
+		}
+	}
+
+	t.Log("Listing all keymakers and verifying order")
+	result, err := store.ListAllKeyMakers()
+	assert.NoError(t, err, "listing all keymakers should not error")
+	assert.Len(t, result, 3, "should return all 3 keymakers")
+
+	// Most recent (last created) should be first due to DESC ordering
+	t.Log("Verifying keymakers are ordered by bound_at DESC")
+	assert.Equal(t, "ckm", result[0].ID, "most recently bound should be first")
+	assert.Equal(t, "bkm", result[1].ID, "second most recent should be second")
+	assert.Equal(t, "akm", result[2].ID, "oldest should be last")
+
+	// Also verify bound_at values are actually in descending order
+	t.Log("Verifying bound_at timestamps are in descending order")
+	for i := 0; i < len(result)-1; i++ {
+		assert.True(t, result[i].BoundAt.After(result[i+1].BoundAt) || result[i].BoundAt.Equal(result[i+1].BoundAt),
+			"bound_at should be in descending order")
+	}
+}

@@ -306,6 +306,28 @@ func (s *Store) ListKeyMakersByOperator(operatorID string) ([]*KeyMaker, error) 
 	return keymakers, rows.Err()
 }
 
+// ListAllKeyMakers returns all KeyMakers regardless of status, ordered by bound_at DESC.
+func (s *Store) ListAllKeyMakers() ([]*KeyMaker, error) {
+	rows, err := s.db.Query(
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status
+		 FROM keymakers ORDER BY bound_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list keymakers: %w", err)
+	}
+	defer rows.Close()
+
+	var keymakers []*KeyMaker
+	for rows.Next() {
+		km, err := s.scanKeyMakerRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		keymakers = append(keymakers, km)
+	}
+	return keymakers, rows.Err()
+}
+
 // UpdateKeyMakerLastSeen updates the last seen timestamp for a KeyMaker.
 func (s *Store) UpdateKeyMakerLastSeen(id string) error {
 	now := time.Now().Unix()

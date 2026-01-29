@@ -37,9 +37,10 @@ type AuthorizationResponse struct {
 
 // CheckAuthorizationRequest is the request body for checking authorization.
 type CheckAuthorizationRequest struct {
-	OperatorID string `json:"operator_id"`
-	CAID       string `json:"ca_id"`
-	DeviceID   string `json:"device_id,omitempty"` // Optional, only for distribution
+	OperatorID  string `json:"operator_id"`
+	CAID        string `json:"ca_id"`
+	DeviceID    string `json:"device_id,omitempty"`    // Optional, only for distribution
+	KeyMakerID  string `json:"keymaker_id,omitempty"`  // Optional, for revocation check
 }
 
 // CheckAuthorizationResponse is the response for checking authorization.
@@ -188,6 +189,19 @@ func (s *Server) handleCheckAuthorization(w http.ResponseWriter, r *http.Request
 	if req.CAID == "" {
 		writeError(w, r, http.StatusBadRequest, "ca_id is required")
 		return
+	}
+
+	// Check KeyMaker revocation status if keymaker_id is provided
+	if req.KeyMakerID != "" {
+		km, err := s.store.GetKeyMaker(req.KeyMakerID)
+		if err != nil {
+			writeError(w, r, http.StatusUnauthorized, "device not found")
+			return
+		}
+		if km.Status == "revoked" {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "device revoked"})
+			return
+		}
 	}
 
 	var authorized bool

@@ -93,14 +93,67 @@ Examples:
 		if err != nil {
 			return err
 		}
-		_ = serverURL // Will be used when API is fully implemented
 
-		// Host posture is available via host agent endpoint
-		// For now, print informational message
+		client := NewNexusClient(serverURL)
+		posture, err := client.GetHostPostureByDPU(cmd.Context(), dpuName)
+		if err != nil {
+			if err == ErrNoPostureData {
+				fmt.Printf("No posture data available for DPU '%s'.\n", dpuName)
+				fmt.Println("The host may not have registered yet or has not reported posture.")
+				return nil
+			}
+			return fmt.Errorf("failed to get host posture: %w", err)
+		}
+
+		if outputFormat != "table" {
+			return formatOutput(posture)
+		}
+
+		// Table output with formatted labels
 		fmt.Printf("Host posture for DPU '%s':\n", dpuName)
-		fmt.Println()
-		fmt.Println("Note: Host posture via API not yet fully implemented.")
-		fmt.Println("Use 'bluectl host list' to see basic host information.")
+
+		// Format boolean values as enabled/disabled or yes/no
+		secureBootStr := "unknown"
+		if posture.SecureBoot != nil {
+			if *posture.SecureBoot {
+				secureBootStr = "enabled"
+			} else {
+				secureBootStr = "disabled"
+			}
+		}
+
+		tpmPresentStr := "unknown"
+		if posture.TPMPresent != nil {
+			if *posture.TPMPresent {
+				tpmPresentStr = "yes"
+			} else {
+				tpmPresentStr = "no"
+			}
+		}
+
+		diskEncryption := posture.DiskEncryption
+		if diskEncryption == "" {
+			diskEncryption = "none"
+		}
+
+		osVersion := posture.OSVersion
+		if osVersion == "" {
+			osVersion = "unknown"
+		}
+
+		kernelVersion := posture.KernelVersion
+		if kernelVersion == "" {
+			kernelVersion = "unknown"
+		}
+
+		fmt.Printf("  Secure Boot:     %s\n", secureBootStr)
+		fmt.Printf("  Disk Encryption: %s\n", diskEncryption)
+		fmt.Printf("  OS Version:      %s\n", osVersion)
+		fmt.Printf("  Kernel Version:  %s\n", kernelVersion)
+		fmt.Printf("  TPM Present:     %s\n", tpmPresentStr)
+		fmt.Printf("  Posture Hash:    %s\n", posture.PostureHash)
+		fmt.Printf("  Last Updated:    %s\n", posture.CollectedAt)
+
 		return nil
 	},
 }
