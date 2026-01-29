@@ -55,6 +55,17 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check operator suspension status
+	operator, err := s.store.GetOperator(req.OperatorID)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "operator not found")
+		return
+	}
+	if operator.Status == "suspended" {
+		writeError(w, r, http.StatusForbidden, "operator suspended")
+		return
+	}
+
 	// Resolve CA by name
 	ca, err := s.store.GetSSHCA(req.CAName)
 	if err != nil {
@@ -80,14 +91,8 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get operator for email (needed for distribution record)
-	operator, err := s.store.GetOperator(req.OperatorID)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "operator not found")
-		return
-	}
-
 	// Check attestation with auto-refresh
+	// Note: operator was already fetched during suspension check above
 	gate := attestation.NewGate(s.store)
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
