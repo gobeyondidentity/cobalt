@@ -3,7 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"text/tabwriter"
 	"time"
 
@@ -114,10 +116,25 @@ Examples:
   bluectl dpu add 10.0.0.50 --port 50052             # Custom port`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		host := args[0]
+		hostArg := args[0]
 		port, _ := cmd.Flags().GetInt("port")
 		name, _ := cmd.Flags().GetString("name")
 		offline, _ := cmd.Flags().GetBool("offline")
+
+		// Parse host:port if provided in argument (e.g., "192.168.1.204:18051")
+		// This prevents double-port bug where "IP:PORT" + default port = "IP:PORT:PORT"
+		host, portStr, err := net.SplitHostPort(hostArg)
+		if err != nil {
+			// No port in argument, use as-is
+			host = hostArg
+		} else {
+			// Port was in argument, parse it (overrides --port flag)
+			parsedPort, parseErr := strconv.Atoi(portStr)
+			if parseErr != nil {
+				return fmt.Errorf("invalid port in address %q: %w", hostArg, parseErr)
+			}
+			port = parsedPort
+		}
 
 		serverURL, err := requireServer()
 		if err != nil {
