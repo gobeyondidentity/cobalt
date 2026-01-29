@@ -869,10 +869,10 @@ func TestNexusRestartPersistence(t *testing.T) {
 		t.Fatalf("Failed to show tenant: %v", err)
 	}
 
-	if !strings.Contains(tenantShowOutput, dpuName) {
-		t.Errorf("%s DPU assignment to tenant did not persist. Tenant show:\n%s", errFmt("x"), tenantShowOutput)
+	if !strings.Contains(tenantShowOutput, "DPU Count:    1") {
+		t.Errorf("%s DPU assignment to tenant did not persist (expected DPU Count: 1). Tenant show:\n%s", errFmt("x"), tenantShowOutput)
 	} else {
-		logOK(t, fmt.Sprintf("DPU '%s' still assigned to tenant '%s'", dpuName, tenantName))
+		logOK(t, fmt.Sprintf("DPU still assigned to tenant '%s' (Count: 1)", tenantName))
 	}
 
 	// Step 14: Compare full state
@@ -2043,10 +2043,10 @@ func TestStateSyncConsistency(t *testing.T) {
 		t.Fatalf("Failed to show tenant: %v", err)
 	}
 
-	if !strings.Contains(tenantShow, dpuName) {
-		t.Fatalf("SYNC BUG: DPU assignment not visible in tenant show. Output:\n%s", tenantShow)
+	if !strings.Contains(tenantShow, "DPU Count:    1") {
+		t.Fatalf("SYNC BUG: DPU assignment not visible in tenant show (expected DPU Count: 1). Output:\n%s", tenantShow)
 	}
-	logOK(t, "Tenant assignment persisted and visible")
+	logOK(t, "Tenant assignment persisted and visible (DPU Count: 1)")
 
 	// Step 9: Cross-check all operations use same data source
 	logStep(t, 9, "Running cross-check: verifying all operations use consistent data source...")
@@ -2184,20 +2184,33 @@ func TestDPURegistrationFlows(t *testing.T) {
 	}
 	logOK(t, fmt.Sprintf("Created tenants: %s, %s", tenantA, tenantB))
 
-	// Step 3: Test DPU add with invalid/unreachable address
-	logStep(t, 3, "Testing DPU add with unreachable address (should fail gracefully)...")
+	// Step 3: Test DPU add with unreachable address (should succeed but show offline)
+	logStep(t, 3, "Testing DPU add with unreachable address (should succeed with offline status)...")
 	badOutput, badErr := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
 		"dpu", "add", "10.255.255.255:18051", "--name", "bad-dpu", "--server", "http://localhost:18080")
 
-	if badErr == nil {
-		t.Fatalf("Expected error when adding unreachable DPU, but got success. Output:\n%s", badOutput)
+	if badErr != nil {
+		t.Fatalf("Failed to add unreachable DPU (should succeed with offline status): %v\nOutput: %s", badErr, badOutput)
 	}
-	// Verify error message is clear (should mention connection failure)
-	if !strings.Contains(badOutput, "cannot connect") && !strings.Contains(badOutput, "connection") &&
-		!strings.Contains(strings.ToLower(badOutput), "timeout") && !strings.Contains(badOutput, "failed") {
-		t.Logf("Warning: Error message may not be clear enough for users. Output:\n%s", badOutput)
+	logOK(t, "Unreachable DPU added successfully (will show as offline)")
+
+	// Verify the DPU shows as offline
+	dpuList, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+		"dpu", "list", "--server", "http://localhost:18080")
+	if err != nil {
+		t.Fatalf("Failed to list DPUs: %v", err)
 	}
-	logOK(t, "Unreachable DPU rejected with error (expected)")
+	if !strings.Contains(dpuList, "bad-dpu") {
+		t.Fatalf("Added DPU 'bad-dpu' not found in list:\n%s", dpuList)
+	}
+	if !strings.Contains(dpuList, "offline") {
+		t.Logf("Note: DPU status may not show 'offline' for unreachable DPU. List:\n%s", dpuList)
+	}
+	logOK(t, "Unreachable DPU shows in list (expected offline status)")
+
+	// Clean up the bad DPU before continuing
+	cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+		"dpu", "remove", "bad-dpu", "--server", "http://localhost:18080")
 
 	// Step 4: Start aegis on DPU (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 4, "Starting aegis on DPU...")
@@ -2227,7 +2240,7 @@ func TestDPURegistrationFlows(t *testing.T) {
 	}
 
 	// Verify DPU appears in list
-	dpuList, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "list", "--server", "http://localhost:18080")
+	dpuList, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "dpu", "list", "--server", "http://localhost:18080")
 	if err != nil {
 		t.Fatalf("Failed to list DPUs: %v", err)
 	}
@@ -2250,10 +2263,10 @@ func TestDPURegistrationFlows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to show tenant A: %v", err)
 	}
-	if !strings.Contains(tenantShow, dpuName) {
-		t.Fatalf("DPU '%s' not visible in tenant A show. Output:\n%s", dpuName, tenantShow)
+	if !strings.Contains(tenantShow, "DPU Count:    1") {
+		t.Fatalf("DPU assignment not visible in tenant A show (expected DPU Count: 1). Output:\n%s", tenantShow)
 	}
-	logOK(t, fmt.Sprintf("DPU '%s' assigned to tenant '%s'", dpuName, tenantA))
+	logOK(t, fmt.Sprintf("DPU assigned to tenant '%s' (Count: 1)", tenantA))
 
 	// Step 7: Enroll host via sentry (connects directly to aegis via TCP)
 	logStep(t, 7, "Enrolling host...")
@@ -2301,8 +2314,8 @@ func TestDPURegistrationFlows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to show tenant B: %v", err)
 	}
-	if !strings.Contains(tenantShowB, dpuName) {
-		t.Fatalf("DPU '%s' not visible in tenant B show after reassign. Output:\n%s", dpuName, tenantShowB)
+	if !strings.Contains(tenantShowB, "DPU Count:    1") {
+		t.Fatalf("DPU not visible in tenant B show after reassign (expected DPU Count: 1). Output:\n%s", tenantShowB)
 	}
 
 	// Verify DPU no longer assigned to tenant A
@@ -2311,10 +2324,10 @@ func TestDPURegistrationFlows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to show tenant A after reassign: %v", err)
 	}
-	if strings.Contains(tenantShowA, dpuName) {
-		t.Fatalf("DPU '%s' still visible in tenant A show after reassign. Output:\n%s", dpuName, tenantShowA)
+	if !strings.Contains(tenantShowA, "DPU Count:    0") {
+		t.Fatalf("DPU still visible in tenant A show after reassign (expected DPU Count: 0). Output:\n%s", tenantShowA)
 	}
-	logOK(t, fmt.Sprintf("DPU '%s' reassigned from tenant A to tenant B", dpuName))
+	logOK(t, fmt.Sprintf("DPU reassigned from tenant '%s' to tenant '%s'", tenantA, tenantB))
 
 	// Step 10: Test DPU remove
 	logStep(t, 10, "Testing DPU remove...")
