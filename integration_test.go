@@ -3934,7 +3934,7 @@ func TestOperatorOnboardingE2E(t *testing.T) {
 		// Step 10: Push credential
 		logStep(t, 10, "Pushing SSH CA credential (km push)...")
 		pushOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
-			"push", "ssh-ca", caName, dpuName)
+			"push", "ssh-ca", caName, dpuName, "--force")
 		if err != nil {
 			nexusLog, _ := cfg.multipassExec(ctx, cfg.ServerVM, "tail", "-50", "/tmp/nexus.log")
 			aegisLog, _ := cfg.multipassExec(ctx, cfg.DPUVM, "tail", "-50", "/tmp/aegis.log")
@@ -4290,7 +4290,7 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		// Step 2: Verify km push works BEFORE suspension
 		logStep(t, 2, "Verifying km push works BEFORE suspension...")
 		pushOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
-			"push", "ssh-ca", caBeforeSuspend, dpuName)
+			"push", "ssh-ca", caBeforeSuspend, dpuName, "--force")
 		if err != nil {
 			nexusLog, _ := cfg.multipassExec(ctx, cfg.ServerVM, "tail", "-30", "/tmp/nexus.log")
 			fmt.Printf("    Nexus log:\n%s\n", nexusLog)
@@ -4343,7 +4343,7 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		// Step 5: Attempt km push AFTER suspension (should fail)
 		logStep(t, 5, "Attempting km push AFTER suspension (should fail)...")
 		pushOutput, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
-			"push", "ssh-ca", caAfterSuspend, dpuName)
+			"push", "ssh-ca", caAfterSuspend, dpuName, "--force")
 
 		// Verify push failed
 		if err == nil && strings.Contains(pushOutput, "CA installed") {
@@ -4407,7 +4407,7 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		// Step 3: Attempt km push AFTER activation (should succeed)
 		logStep(t, 3, "Attempting km push AFTER activation (should succeed)...")
 		pushOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
-			"push", "ssh-ca", caAfterActivate, dpuName)
+			"push", "ssh-ca", caAfterActivate, dpuName, "--force")
 		if err != nil {
 			nexusLog, _ := cfg.multipassExec(ctx, cfg.ServerVM, "tail", "-30", "/tmp/nexus.log")
 			fmt.Printf("    Nexus log:\n%s\n", nexusLog)
