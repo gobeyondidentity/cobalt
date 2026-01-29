@@ -114,10 +114,9 @@ Examples:
 
 // pushRequest is the request body for pushing credentials to a DPU.
 type pushRequest struct {
-	CAName     string `json:"ca_name"`
-	TargetDPU  string `json:"target_dpu"`
-	OperatorID string `json:"operator_id"`
-	Force      bool   `json:"force"`
+	CAName    string `json:"ca_name"`
+	TargetDPU string `json:"target_dpu"`
+	Force     bool   `json:"force"`
 }
 
 // pushResponse is the response from the push API.
@@ -133,10 +132,9 @@ type pushResponse struct {
 // callPushAPI calls the server push endpoint and handles the response.
 func callPushAPI(config *KMConfig, caName, targetDPU string, force bool) (*pushResponse, error) {
 	reqBody := pushRequest{
-		CAName:     caName,
-		TargetDPU:  targetDPU,
-		OperatorID: config.OperatorID,
-		Force:      force,
+		CAName:    caName,
+		TargetDPU: targetDPU,
+		Force:     force,
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -153,6 +151,11 @@ func callPushAPI(config *KMConfig, caName, targetDPU string, force bool) (*pushR
 		return nil, clierror.InternalError(fmt.Errorf("failed to create push request: %w", err))
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Sign request with KeyMaker credentials
+	if err := signRequest(req, config, jsonBody); err != nil {
+		return nil, clierror.InternalError(fmt.Errorf("failed to sign request: %w", err))
+	}
 
 	resp, err := pushHTTPClient.Do(req)
 	if err != nil {

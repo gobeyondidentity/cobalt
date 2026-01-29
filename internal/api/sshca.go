@@ -14,10 +14,10 @@ import (
 
 // createSSHCARequest is the request body for creating an SSH CA.
 type createSSHCARequest struct {
-	Name       string `json:"name"`
-	PublicKey  string `json:"public_key"`  // SSH public key format (ssh-ed25519 AAAA...)
-	KeyType    string `json:"key_type"`    // e.g., "ed25519", "rsa", "ecdsa"
-	OperatorID string `json:"operator_id"` // Operator creating the CA
+	Name      string `json:"name"`
+	PublicKey string `json:"public_key"` // SSH public key format (ssh-ed25519 AAAA...)
+	KeyType   string `json:"key_type"`   // e.g., "ed25519", "rsa", "ecdsa"
+	// Note: operator_id is now extracted from auth context, not request body
 }
 
 // createSSHCAResponse is the response for a created SSH CA.
@@ -40,6 +40,13 @@ func (s *Server) handleCreateSSHCA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get authenticated operator ID from context (set by AuthMiddleware)
+	operatorID := GetAuthOperatorID(r.Context())
+	if operatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	// Validate required fields
 	if req.Name == "" {
 		writeError(w, r, http.StatusBadRequest, "name is required")
@@ -53,17 +60,9 @@ func (s *Server) handleCreateSSHCA(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "key_type is required")
 		return
 	}
-	if req.OperatorID == "" {
-		writeError(w, r, http.StatusBadRequest, "operator_id is required")
-		return
-	}
 
-	// Validate operator exists
-	_, err := s.store.GetOperator(req.OperatorID)
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "operator not found")
-		return
-	}
+	// Operator already validated by AuthMiddleware
+	_ = operatorID // used for future audit logging
 
 	// Validate public key format (should start with "ssh-" or "ecdsa-")
 	if !isValidSSHPublicKeyFormat(req.PublicKey) {
