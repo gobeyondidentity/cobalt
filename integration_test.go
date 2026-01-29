@@ -3585,15 +3585,24 @@ func TestCALifecycleE2E(t *testing.T) {
 	t.Run("Scenario2_CertificateSigning", func(t *testing.T) {
 		certPath := testKeyPath + "-cert.pub"
 
-		logStep(t, 1, "Signing certificate with valid CA...")
-		signOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
+		// Grant operator permission to use the CA before signing
+		logStep(t, 1, "Granting operator permission to use CA...")
+		grantOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"operator", "grant", operatorEmail, tenantName, lifecycleCA, dpuName, "--server", "http://localhost:18080")
+		if err != nil {
+			t.Fatalf("bluectl operator grant failed: %v\nOutput: %s", err, grantOutput)
+		}
+		logOK(t, fmt.Sprintf("Granted operator access to CA '%s'", lifecycleCA))
+
+		logStep(t, 2, "Signing certificate with valid CA...")
+		signOutput, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
 			"ssh-ca", "sign", lifecycleCA, "--principal", "testuser", "--pubkey", testKeyPath+".pub")
 		if err != nil {
 			t.Fatalf("km ssh-ca sign failed: %v\nOutput: %s", err, signOutput)
 		}
 
 		// Save certificate output to file
-		logStep(t, 2, "Saving certificate to file...")
+		logStep(t, 3, "Saving certificate to file...")
 		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c",
 			fmt.Sprintf("/home/ubuntu/km ssh-ca sign %s --principal testuser --pubkey %s.pub > %s",
 				lifecycleCA, testKeyPath, certPath))
@@ -3602,7 +3611,7 @@ func TestCALifecycleE2E(t *testing.T) {
 		}
 		logOK(t, fmt.Sprintf("Certificate saved to %s", certPath))
 
-		logStep(t, 3, "Inspecting certificate with ssh-keygen...")
+		logStep(t, 4, "Inspecting certificate with ssh-keygen...")
 		inspectOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "ssh-keygen", "-L", "-f", certPath)
 		if err != nil {
 			t.Fatalf("Failed to inspect certificate: %v\nOutput: %s", err, inspectOutput)
@@ -3671,15 +3680,16 @@ func TestCALifecycleE2E(t *testing.T) {
 		}
 		logOK(t, "Command failed as expected")
 
-		// Verify error message indicates CA not found
+		// Verify error message indicates CA not found or not authorized
 		combinedOutput := signOutput + err.Error()
 		if !strings.Contains(strings.ToLower(combinedOutput), "not found") &&
 			!strings.Contains(strings.ToLower(combinedOutput), "no such") &&
 			!strings.Contains(strings.ToLower(combinedOutput), "does not exist") &&
+			!strings.Contains(strings.ToLower(combinedOutput), "not authorized") &&
 			!strings.Contains(strings.ToLower(combinedOutput), "unknown") {
-			t.Fatalf("Expected 'not found' or similar error, got: %s", combinedOutput)
+			t.Fatalf("Expected 'not found' or 'not authorized' error, got: %s", combinedOutput)
 		}
-		logOK(t, fmt.Sprintf("Error indicates CA not found: %s", truncateForLog(combinedOutput, 80)))
+		logOK(t, fmt.Sprintf("Error indicates CA not available: %s", truncateForLog(combinedOutput, 80)))
 
 		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Scenario 4 - Signing with deleted CA fails"))
 	})
