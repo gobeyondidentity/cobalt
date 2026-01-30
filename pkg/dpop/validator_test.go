@@ -643,9 +643,9 @@ func TestValidatorIATFuture(t *testing.T) {
 	}
 }
 
-// TestValidatorIATZero tests that zero iat is rejected.
+// TestValidatorIATZero tests that zero iat is rejected with a clear error message.
 func TestValidatorIATZero(t *testing.T) {
-	t.Log("Testing iat=0 rejection")
+	t.Log("Testing iat=0 rejection with clear error message")
 
 	pub, priv := testKeyPair(t)
 	kid := "test-key"
@@ -669,11 +669,15 @@ func TestValidatorIATZero(t *testing.T) {
 	if ErrorCode(err) != ErrCodeInvalidIAT {
 		t.Errorf("expected error code %s, got %s", ErrCodeInvalidIAT, ErrorCode(err))
 	}
+	// The error message should clearly indicate iat must be positive, not show a confusing age calculation
+	if !strings.Contains(err.Error(), "iat must be positive") {
+		t.Errorf("expected error message to contain 'iat must be positive', got: %s", err.Error())
+	}
 }
 
-// TestValidatorIATNegative tests that negative iat is rejected.
+// TestValidatorIATNegative tests that negative iat is rejected with a clear error message.
 func TestValidatorIATNegative(t *testing.T) {
-	t.Log("Testing negative iat rejection")
+	t.Log("Testing negative iat rejection with clear error message")
 
 	pub, priv := testKeyPair(t)
 	kid := "test-key"
@@ -696,6 +700,10 @@ func TestValidatorIATNegative(t *testing.T) {
 	}
 	if ErrorCode(err) != ErrCodeInvalidIAT {
 		t.Errorf("expected error code %s, got %s", ErrCodeInvalidIAT, ErrorCode(err))
+	}
+	// The error message should clearly indicate iat must be positive
+	if !strings.Contains(err.Error(), "iat must be positive") {
+		t.Errorf("expected error message to contain 'iat must be positive', got: %s", err.Error())
 	}
 }
 
@@ -962,9 +970,9 @@ func TestValidatorURINormalization(t *testing.T) {
 	}
 }
 
-// TestNormalizeURL tests the URL normalization function directly.
-func TestNormalizeURL(t *testing.T) {
-	t.Log("Testing URL normalization function")
+// TestNormalizeURI tests the URI normalization function directly.
+func TestNormalizeURI(t *testing.T) {
+	t.Log("Testing URI normalization function")
 
 	tests := []struct {
 		name     string
@@ -1032,7 +1040,7 @@ func TestNormalizeURL(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Logf("Normalizing: %q", tc.input)
-			result, err := normalizeURL(tc.input)
+			result, err := NormalizeURI(tc.input)
 			if tc.wantErr {
 				if err == nil {
 					t.Error("expected error, got nil")

@@ -626,9 +626,9 @@ func TestVerifyProof_Invalid(t *testing.T) {
 }
 
 func TestNormalizeURI_Invalid(t *testing.T) {
-	t.Log("Testing normalizeURI handles invalid URIs")
+	t.Log("Testing NormalizeURI handles invalid URIs")
 
-	_, err := normalizeURI("://invalid")
+	_, err := NormalizeURI("://invalid")
 	if err == nil {
 		t.Error("expected error for invalid URI")
 	}

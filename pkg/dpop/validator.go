@@ -4,7 +4,6 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -171,11 +170,11 @@ func (v *Validator) ValidateProof(proof, method, uri string, keyLookup KeyLookup
 	}
 
 	// Step 11: htu check - must match normalized uri parameter
-	normalizedProofURI, err := normalizeURL(claims.HTU)
+	normalizedProofURI, err := NormalizeURI(claims.HTU)
 	if err != nil {
 		return "", ErrInvalidProof("invalid htu URL")
 	}
-	normalizedRequestURI, err := normalizeURL(uri)
+	normalizedRequestURI, err := NormalizeURI(uri)
 	if err != nil {
 		return "", ErrInvalidProof("invalid request URI")
 	}
@@ -189,7 +188,7 @@ func (v *Validator) ValidateProof(proof, method, uri string, keyLookup KeyLookup
 
 	// iat must be positive (0 is invalid, as is negative)
 	if iat <= 0 {
-		return "", ErrInvalidIAT(now-iat, int64(v.config.MaxProofAge.Seconds()))
+		return "", ErrIATNonPositive()
 	}
 
 	// Check if iat is too far in the past
@@ -206,42 +205,4 @@ func (v *Validator) ValidateProof(proof, method, uri string, keyLookup KeyLookup
 	}
 
 	return header.Kid, nil
-}
-
-// normalizeURL returns scheme + host + path, with lowercase scheme/host, no query/fragment.
-// Default ports (443 for https, 80 for http) are removed.
-func normalizeURL(uri string) (string, error) {
-	if uri == "" {
-		return "", ErrInvalidProof("URL cannot be empty")
-	}
-
-	parsed, err := url.Parse(uri)
-	if err != nil {
-		return "", err
-	}
-
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", ErrInvalidProof("URL must have scheme and host")
-	}
-
-	// Normalize scheme to lowercase
-	scheme := strings.ToLower(parsed.Scheme)
-
-	// Normalize host to lowercase
-	host := strings.ToLower(parsed.Host)
-
-	// Remove default ports
-	if scheme == "https" && strings.HasSuffix(host, ":443") {
-		host = strings.TrimSuffix(host, ":443")
-	} else if scheme == "http" && strings.HasSuffix(host, ":80") {
-		host = strings.TrimSuffix(host, ":80")
-	}
-
-	// Path stays as-is (case-sensitive per RFC 3986)
-	path := parsed.Path
-	if path == "" {
-		path = "/"
-	}
-
-	return scheme + "://" + host + path, nil
 }

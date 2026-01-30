@@ -76,7 +76,7 @@ func GenerateProof(privateKey ed25519.PrivateKey, method, uri string, kid string
 	}
 
 	// Normalize URI per RFC 9449
-	normalizedURI, err := normalizeURI(uri)
+	normalizedURI, err := NormalizeURI(uri)
 	if err != nil {
 		return "", fmt.Errorf("failed to normalize URI: %w", err)
 	}
@@ -133,15 +133,25 @@ func SignRequest(req *http.Request, privateKey ed25519.PrivateKey, kid string) e
 	return nil
 }
 
-// normalizeURI normalizes a URI per RFC 9449 Section 4.2:
+// NormalizeURI normalizes a URI per RFC 9449 Section 4.2:
 //   - Lowercase scheme and host
 //   - Keep path exactly as-is
 //   - Remove query string and fragment
 //   - Remove default port (443 for https, 80 for http)
-func normalizeURI(rawURI string) (string, error) {
+//
+// Returns an error if the URI is empty or missing scheme/host.
+func NormalizeURI(rawURI string) (string, error) {
+	if rawURI == "" {
+		return "", ErrInvalidProof("URL cannot be empty")
+	}
+
 	parsed, err := url.Parse(rawURI)
 	if err != nil {
 		return "", err
+	}
+
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", ErrInvalidProof("URL must have scheme and host")
 	}
 
 	// Lowercase scheme and host
