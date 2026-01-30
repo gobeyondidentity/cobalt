@@ -425,11 +425,16 @@ func registerSSHCA(config *KMConfig, name, pubKeyStr, keyType string) (bool, str
 		return false, "failed to marshal request: " + err.Error()
 	}
 
-	resp, err := http.Post(
-		config.ControlPlaneURL+"/api/v1/ssh-cas",
-		"application/json",
-		bytes.NewReader(jsonBody),
-	)
+	// Get DPoP-enabled HTTP client
+	httpClient := getDPoPHTTPClient(config.ControlPlaneURL)
+
+	req, err := http.NewRequest("POST", config.ControlPlaneURL+"/api/v1/ssh-cas", bytes.NewReader(jsonBody))
+	if err != nil {
+		return false, "failed to create request: " + err.Error()
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return false, "connection failed: " + err.Error()
 	}
@@ -441,6 +446,9 @@ func registerSSHCA(config *KMConfig, name, pubKeyStr, keyType string) (bool, str
 	case http.StatusConflict:
 		// CA already registered on server - not an error
 		return false, ""
+	case http.StatusUnauthorized, http.StatusForbidden:
+		// Auth error - provide user-friendly message
+		return false, "authentication failed: please run 'km init' to enroll"
 	default:
 		var errResp struct {
 			Error string `json:"error"`

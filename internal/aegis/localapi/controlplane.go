@@ -6,13 +6,48 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"strings"
+
+	"github.com/nmelo/secure-infra/pkg/dpop"
 )
 
 // ControlPlaneClient handles communication with the Control Plane.
 type ControlPlaneClient struct {
-	baseURL    string
+	baseURL string
+	// dpopClient is the DPoP-authenticated HTTP client (preferred)
+	dpopClient *dpop.Client
+	// httpClient is the fallback plain HTTP client (deprecated)
 	httpClient *http.Client
+}
+
+// do performs an HTTP request using DPoP client if available, otherwise plain HTTP.
+// It handles 401 responses with appropriate error logging.
+func (c *ControlPlaneClient) do(req *http.Request) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+
+	if c.dpopClient != nil {
+		resp, err = c.dpopClient.Do(req)
+	} else {
+		resp, err = c.httpClient.Do(req)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle authentication errors with user-friendly logging
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		authErr := dpop.ParseAuthError(resp)
+		if authErr != nil {
+			log.Printf("controlplane: authentication error: %s", authErr.UserFriendlyMessage())
+			return resp, fmt.Errorf("authentication failed: %s", authErr.Code)
+		}
+	}
+
+	return resp, nil
 }
 
 // Ping checks if the Control Plane is reachable.
@@ -22,7 +57,7 @@ func (c *ControlPlaneClient) Ping(ctx context.Context) error {
 		return err
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return fmt.Errorf("control plane unreachable: %w", err)
 	}
@@ -50,8 +85,12 @@ func (c *ControlPlaneClient) RegisterHost(ctx context.Context, req *ProxiedRegis
 	httpReq.Header.Set("X-DPU-Name", req.DPUName)
 	httpReq.Header.Set("X-DPU-Attestation", req.AttestationStatus)
 
-	resp, err := c.httpClient.Do(httpReq)
+	resp, err := c.do(httpReq)
 	if err != nil {
+		// Check if this is an auth error (already logged)
+		if strings.Contains(err.Error(), "authentication failed") {
+			return nil, err
+		}
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -93,8 +132,11 @@ func (c *ControlPlaneClient) UpdatePosture(ctx context.Context, req *ProxiedPost
 	httpReq.Header.Set("X-DPU-Name", req.DPUName)
 	httpReq.Header.Set("X-DPU-Attestation", req.AttestationStatus)
 
-	resp, err := c.httpClient.Do(httpReq)
+	resp, err := c.do(httpReq)
 	if err != nil {
+		if strings.Contains(err.Error(), "authentication failed") {
+			return err
+		}
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -126,8 +168,11 @@ func (c *ControlPlaneClient) RequestCertificate(ctx context.Context, req *Proxie
 	httpReq.Header.Set("X-DPU-Name", req.DPUName)
 	httpReq.Header.Set("X-DPU-Attestation", req.AttestationStatus)
 
-	resp, err := c.httpClient.Do(httpReq)
+	resp, err := c.do(httpReq)
 	if err != nil {
+		if strings.Contains(err.Error(), "authentication failed") {
+			return nil, err
+		}
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()

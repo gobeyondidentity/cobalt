@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -61,7 +62,8 @@ func TestAuthClient_LoadOrGenerateKey_GeneratesNewKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("key file not created: %v", err)
 	}
-	if info.Mode().Perm() != 0600 {
+	// Windows Mode().Perm() returns 0666 regardless of ACLs
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Errorf("key file permissions = %o, want 0600", info.Mode().Perm())
 	}
 
@@ -374,8 +376,8 @@ func TestAuthClient_DirectoryCreation(t *testing.T) {
 	if !info.IsDir() {
 		t.Error("expected directory, got file")
 	}
-	// Check directory permissions (0755)
-	if info.Mode().Perm() != 0755 {
+	// Check directory permissions (0755) - Windows Mode().Perm() returns 0777
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0755 {
 		t.Errorf("directory permissions = %o, want 0755", info.Mode().Perm())
 	}
 }

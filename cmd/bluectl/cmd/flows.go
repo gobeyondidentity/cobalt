@@ -35,7 +35,10 @@ Examples:
 		if err != nil {
 			return err
 		}
-		nexus := NewNexusClient(serverURL)
+		nexus, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 
 		dpu, err := nexus.GetDPU(cmd.Context(), args[0])
 		if err != nil {

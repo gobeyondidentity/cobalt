@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -261,7 +262,8 @@ func TestKeyStore_FilePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stat() error = %v", err)
 	}
-	if info.Mode().Perm() != 0600 {
+	// Windows Mode().Perm() returns 0666 regardless of ACLs
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Errorf("file permissions = %o, want 0600", info.Mode().Perm())
 	}
 }

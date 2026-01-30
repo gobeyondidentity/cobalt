@@ -9,6 +9,7 @@ import (
 	"net/url"
 
 	"github.com/nmelo/secure-infra/pkg/clierror"
+	"github.com/nmelo/secure-infra/pkg/dpop"
 )
 
 // AuthorizationCheckRequest is sent to the server to check authorization.
@@ -51,12 +52,24 @@ func checkAuthorization(caName, deviceName string) error {
 		return clierror.TokenExpired()
 	}
 
+	// Get DPoP-enabled HTTP client
+	httpClient := getDPoPHTTPClient(config.ControlPlaneURL)
+
 	// Look up CA ID by name
-	caResp, err := http.Get(config.ControlPlaneURL + "/api/credentials/ssh-cas/" + url.QueryEscape(caName))
+	caReq, err := http.NewRequest("GET", config.ControlPlaneURL+"/api/credentials/ssh-cas/"+url.QueryEscape(caName), nil)
+	if err != nil {
+		return clierror.InternalError(fmt.Errorf("failed to create CA lookup request: %w", err))
+	}
+	caResp, err := httpClient.Do(caReq)
 	if err != nil {
 		return clierror.ConnectionFailed("server")
 	}
 	defer caResp.Body.Close()
+
+	// Handle auth errors with user-friendly messages
+	if authErr := handleAuthError(caResp); authErr != nil {
+		return authErr
+	}
 
 	if caResp.StatusCode == http.StatusNotFound {
 		return &AuthorizationError{Type: "ca", Resource: caName}
@@ -75,11 +88,20 @@ func checkAuthorization(caName, deviceName string) error {
 	// Look up device ID by name if a device is specified
 	var deviceID string
 	if deviceName != "" {
-		dpuResp, err := http.Get(config.ControlPlaneURL + "/api/dpus/" + url.QueryEscape(deviceName))
+		dpuReq, err := http.NewRequest("GET", config.ControlPlaneURL+"/api/dpus/"+url.QueryEscape(deviceName), nil)
+		if err != nil {
+			return clierror.InternalError(fmt.Errorf("failed to create device lookup request: %w", err))
+		}
+		dpuResp, err := httpClient.Do(dpuReq)
 		if err != nil {
 			return clierror.ConnectionFailed("server")
 		}
 		defer dpuResp.Body.Close()
+
+		// Handle auth errors with user-friendly messages
+		if authErr := handleAuthError(dpuResp); authErr != nil {
+			return authErr
+		}
 
 		if dpuResp.StatusCode == http.StatusNotFound {
 			return &AuthorizationError{Type: "device", Resource: deviceName}
@@ -99,9 +121,9 @@ func checkAuthorization(caName, deviceName string) error {
 
 	// Now use caInfo.ID and deviceID for the authorization check
 	reqBody := AuthorizationCheckRequest{
-		OperatorID:  config.OperatorID,
-		CAID:        caInfo.ID,
-		KeyMakerID:  config.KeyMakerID,
+		OperatorID: config.OperatorID,
+		CAID:       caInfo.ID,
+		KeyMakerID: config.KeyMakerID,
 	}
 	if deviceID != "" {
 		reqBody.DeviceID = deviceID
@@ -112,15 +134,22 @@ func checkAuthorization(caName, deviceName string) error {
 		return clierror.InternalError(fmt.Errorf("failed to marshal authorization request: %w", err))
 	}
 
-	resp, err := http.Post(
-		config.ControlPlaneURL+"/api/v1/authorizations/check",
-		"application/json",
-		bytes.NewReader(jsonBody),
-	)
+	req, err := http.NewRequest("POST", config.ControlPlaneURL+"/api/v1/authorizations/check", bytes.NewReader(jsonBody))
+	if err != nil {
+		return clierror.InternalError(fmt.Errorf("failed to create authorization request: %w", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return clierror.ConnectionFailed("server")
 	}
 	defer resp.Body.Close()
+
+	// Handle auth errors with user-friendly messages
+	if authErr := handleAuthError(resp); authErr != nil {
+		return authErr
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -169,14 +198,27 @@ func getAuthorizations() ([]Authorization, error) {
 		return nil, clierror.TokenExpired()
 	}
 
+	// Get DPoP-enabled HTTP client
+	httpClient := getDPoPHTTPClient(config.ControlPlaneURL)
+
 	reqURL := fmt.Sprintf("%s/api/v1/authorizations?operator_id=%s",
 		config.ControlPlaneURL, url.QueryEscape(config.OperatorID))
 
-	resp, err := http.Get(reqURL)
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, clierror.InternalError(fmt.Errorf("failed to create authorizations request: %w", err))
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, clierror.ConnectionFailed("server")
 	}
 	defer resp.Body.Close()
+
+	// Handle auth errors with user-friendly messages
+	if authErr := handleAuthError(resp); authErr != nil {
+		return nil, authErr
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -219,4 +261,41 @@ type DeviceRevokedError struct{}
 
 func (e *DeviceRevokedError) Error() string {
 	return "Error: This device has been revoked.\nHint: Contact your tenant admin to re-enroll this device."
+}
+
+// handleAuthError checks for DPoP authentication errors and returns user-friendly messages.
+// Returns nil if the response is not an auth error (2xx or other non-auth error).
+func handleAuthError(resp *http.Response) error {
+	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
+		return nil
+	}
+
+	// Try to parse the error body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		// Can't read body, return generic error
+		if resp.StatusCode == http.StatusUnauthorized {
+			return clierror.TokenExpired()
+		}
+		return clierror.NotAuthorized("this operation")
+	}
+
+	// Try to parse as JSON error
+	var errResp struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
+		// Check for DPoP-specific errors
+		authErr := &dpop.AuthError{
+			StatusCode: resp.StatusCode,
+			Code:       errResp.Error,
+		}
+		return fmt.Errorf("%s", authErr.UserFriendlyMessage())
+	}
+
+	// Generic auth error
+	if resp.StatusCode == http.StatusUnauthorized {
+		return clierror.TokenExpired()
+	}
+	return clierror.NotAuthorized("this operation")
 }

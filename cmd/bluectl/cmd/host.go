@@ -48,7 +48,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		hosts, err := client.ListAgentHosts(cmd.Context(), tenantFilter)
 		if err != nil {
 			return fmt.Errorf("failed to list hosts: %w", err)
@@ -94,7 +97,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		posture, err := client.GetHostPostureByDPU(cmd.Context(), dpuName)
 		if err != nil {
 			if err == ErrNoPostureData {
@@ -176,7 +182,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		if err := client.DeleteAgentHost(cmd.Context(), hostID); err != nil {
 			return fmt.Errorf("failed to delete host: %w", err)
 		}

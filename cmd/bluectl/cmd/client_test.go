@@ -2,11 +2,15 @@ package cmd
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nmelo/secure-infra/pkg/dpop"
 )
 
 func TestNexusClient_AddDPU(t *testing.T) {
@@ -1203,5 +1207,494 @@ func TestNexusClient_ListAgentHosts_RejectsUnwrappedResponse(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "failed to decode response") {
 		t.Errorf("expected decode error, got: %v", err)
+	}
+}
+
+// ----- DPoP Integration Tests -----
+
+func TestNexusClient_DPoP_HeaderPresent(t *testing.T) {
+	t.Log("Testing that DPoP header is present when DPoP is enabled")
+
+	// Generate test keypair
+	_, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	proofGen := dpop.NewEd25519Generator(privKey)
+	testKID := "test-kid-12345"
+
+	var receivedDPoPHeader string
+	var receivedMethod string
+	var receivedPath string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedDPoPHeader = r.Header.Get("DPoP")
+		receivedMethod = r.Method
+		receivedPath = r.URL.Path
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]dpuResponse{})
+	}))
+	defer server.Close()
+
+	t.Log("Creating NexusClient with DPoP enabled")
+	client := NewNexusClient(server.URL)
+	client.SetDPoP(proofGen, testKID)
+
+	t.Log("Verifying IsDPoPEnabled returns true")
+	if !client.IsDPoPEnabled() {
+		t.Error("expected IsDPoPEnabled() to return true after SetDPoP")
+	}
+
+	t.Log("Calling ListDPUs to verify DPoP header is sent")
+	_, err = client.ListDPUs(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Log("Verifying DPoP header was present in request")
+	if receivedDPoPHeader == "" {
+		t.Error("expected DPoP header to be present, but it was empty")
+		return
+	}
+
+	t.Log("Parsing and verifying DPoP proof structure")
+	header, payload, _, err := dpop.ParseProof(receivedDPoPHeader)
+	if err != nil {
+		t.Fatalf("failed to parse DPoP proof: %v", err)
+	}
+
+	// Verify header fields
+	if header["typ"] != "dpop+jwt" {
+		t.Errorf("expected typ=dpop+jwt, got %v", header["typ"])
+	}
+	if header["alg"] != "EdDSA" {
+		t.Errorf("expected alg=EdDSA, got %v", header["alg"])
+	}
+	if header["kid"] != testKID {
+		t.Errorf("expected kid=%s, got %v", testKID, header["kid"])
+	}
+
+	// Verify payload fields
+	if payload["htm"] != receivedMethod {
+		t.Errorf("expected htm=%s, got %v", receivedMethod, payload["htm"])
+	}
+
+	// htu should contain the path
+	htu, ok := payload["htu"].(string)
+	if !ok {
+		t.Errorf("expected htu to be string, got %T", payload["htu"])
+	} else if !strings.Contains(htu, receivedPath) {
+		t.Errorf("expected htu to contain %s, got %s", receivedPath, htu)
+	}
+
+	// Verify signature with public key
+	pubKey := privKey.Public().(ed25519.PublicKey)
+	if !dpop.VerifyProof(receivedDPoPHeader, pubKey) {
+		t.Error("DPoP proof signature verification failed")
+	}
+}
+
+func TestNexusClient_DPoP_HeaderNotPresentWhenDisabled(t *testing.T) {
+	t.Log("Testing that DPoP header is not present when DPoP is disabled")
+
+	var receivedDPoPHeader string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedDPoPHeader = r.Header.Get("DPoP")
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]dpuResponse{})
+	}))
+	defer server.Close()
+
+	t.Log("Creating NexusClient without DPoP")
+	client := NewNexusClient(server.URL)
+
+	t.Log("Verifying IsDPoPEnabled returns false")
+	if client.IsDPoPEnabled() {
+		t.Error("expected IsDPoPEnabled() to return false by default")
+	}
+
+	t.Log("Calling ListDPUs to verify no DPoP header is sent")
+	_, err := client.ListDPUs(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Log("Verifying DPoP header was not present in request")
+	if receivedDPoPHeader != "" {
+		t.Errorf("expected DPoP header to be empty, got %s", receivedDPoPHeader)
+	}
+}
+
+func TestNexusClient_DPoP_AllHTTPMethods(t *testing.T) {
+	t.Log("Testing that DPoP header is present for all HTTP methods (GET, POST, PUT, DELETE)")
+
+	_, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	proofGen := dpop.NewEd25519Generator(privKey)
+	testKID := "test-kid-all-methods"
+
+	tests := []struct {
+		name       string
+		method     string
+		callMethod func(c *NexusClient) error
+	}{
+		{
+			name:   "GET request (ListDPUs)",
+			method: "GET",
+			callMethod: func(c *NexusClient) error {
+				_, err := c.ListDPUs(context.Background())
+				return err
+			},
+		},
+		{
+			name:   "POST request (AddDPU)",
+			method: "POST",
+			callMethod: func(c *NexusClient) error {
+				_, err := c.AddDPU(context.Background(), "test-dpu", "192.168.1.1", 18051)
+				return err
+			},
+		},
+		{
+			name:   "PUT request (UpdateTenant)",
+			method: "PUT",
+			callMethod: func(c *NexusClient) error {
+				_, err := c.UpdateTenant(context.Background(), "test-tenant-id", "Updated", "Desc", "contact@test.com", nil)
+				return err
+			},
+		},
+		{
+			name:   "DELETE request (RemoveDPU)",
+			method: "DELETE",
+			callMethod: func(c *NexusClient) error {
+				return c.RemoveDPU(context.Background(), "test-dpu-id")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var receivedDPoPHeader string
+			var receivedMethod string
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				receivedDPoPHeader = r.Header.Get("DPoP")
+				receivedMethod = r.Method
+
+				// Return appropriate status for each method
+				switch r.Method {
+				case "GET":
+					w.WriteHeader(http.StatusOK)
+					json.NewEncoder(w).Encode([]dpuResponse{})
+				case "POST":
+					w.WriteHeader(http.StatusCreated)
+					json.NewEncoder(w).Encode(dpuResponse{ID: "new-id"})
+				case "PUT":
+					w.WriteHeader(http.StatusOK)
+					json.NewEncoder(w).Encode(tenantResponse{ID: "test-id"})
+				case "DELETE":
+					w.WriteHeader(http.StatusNoContent)
+				}
+			}))
+			defer server.Close()
+
+			client := NewNexusClient(server.URL)
+			client.SetDPoP(proofGen, testKID)
+
+			_ = tt.callMethod(client)
+
+			t.Logf("Verifying DPoP header present for %s request", tt.method)
+			if receivedDPoPHeader == "" {
+				t.Errorf("expected DPoP header for %s request, but it was empty", tt.method)
+				return
+			}
+
+			t.Logf("Verifying method in DPoP proof matches %s", tt.method)
+			_, payload, _, err := dpop.ParseProof(receivedDPoPHeader)
+			if err != nil {
+				t.Fatalf("failed to parse DPoP proof: %v", err)
+			}
+
+			if payload["htm"] != receivedMethod {
+				t.Errorf("expected htm=%s, got %v", receivedMethod, payload["htm"])
+			}
+		})
+	}
+}
+
+func TestNexusClient_DPoP_AuthErrorHandling(t *testing.T) {
+	t.Log("Testing that 401 responses return user-friendly error messages")
+
+	_, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	proofGen := dpop.NewEd25519Generator(privKey)
+	testKID := "test-kid-auth-error"
+
+	tests := []struct {
+		name            string
+		statusCode      int
+		errorCode       string
+		expectedMessage string
+	}{
+		{
+			name:            "missing proof error",
+			statusCode:      401,
+			errorCode:       "dpop.missing_proof",
+			expectedMessage: "DPoP proof required",
+		},
+		{
+			name:            "invalid signature error",
+			statusCode:      401,
+			errorCode:       "dpop.invalid_signature",
+			expectedMessage: "signature verification failed",
+		},
+		{
+			name:            "unknown key error",
+			statusCode:      401,
+			errorCode:       "dpop.unknown_key",
+			expectedMessage: "key not recognized",
+		},
+		{
+			name:            "clock sync error",
+			statusCode:      401,
+			errorCode:       "dpop.invalid_iat",
+			expectedMessage: "clock may be out of sync",
+		},
+		{
+			name:            "revoked access",
+			statusCode:      403,
+			errorCode:       "auth.revoked",
+			expectedMessage: "Access has been revoked",
+		},
+		{
+			name:            "suspended access",
+			statusCode:      403,
+			errorCode:       "auth.suspended",
+			expectedMessage: "Access has been suspended",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.statusCode)
+				json.NewEncoder(w).Encode(map[string]string{"error": tt.errorCode})
+			}))
+			defer server.Close()
+
+			client := NewNexusClient(server.URL)
+			client.SetDPoP(proofGen, testKID)
+
+			_, err := client.ListDPUs(context.Background())
+
+			t.Logf("Verifying error message contains expected text for %s", tt.errorCode)
+			if err == nil {
+				t.Error("expected error, got nil")
+				return
+			}
+
+			if !strings.Contains(err.Error(), tt.expectedMessage) {
+				t.Errorf("expected error to contain %q, got %q", tt.expectedMessage, err.Error())
+			}
+		})
+	}
+}
+
+func TestNexusClient_DPoP_FreshProofPerRequest(t *testing.T) {
+	t.Log("Testing that each request gets a fresh DPoP proof (different jti)")
+
+	_, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	proofGen := dpop.NewEd25519Generator(privKey)
+	testKID := "test-kid-fresh-proof"
+
+	var proofs []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proofs = append(proofs, r.Header.Get("DPoP"))
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]dpuResponse{})
+	}))
+	defer server.Close()
+
+	client := NewNexusClient(server.URL)
+	client.SetDPoP(proofGen, testKID)
+
+	t.Log("Making two consecutive requests")
+	_, _ = client.ListDPUs(context.Background())
+	_, _ = client.ListDPUs(context.Background())
+
+	if len(proofs) != 2 {
+		t.Fatalf("expected 2 proofs captured, got %d", len(proofs))
+	}
+
+	t.Log("Verifying each request has a different jti")
+	_, payload1, _, err := dpop.ParseProof(proofs[0])
+	if err != nil {
+		t.Fatalf("failed to parse first proof: %v", err)
+	}
+
+	_, payload2, _, err := dpop.ParseProof(proofs[1])
+	if err != nil {
+		t.Fatalf("failed to parse second proof: %v", err)
+	}
+
+	jti1 := payload1["jti"].(string)
+	jti2 := payload2["jti"].(string)
+
+	if jti1 == jti2 {
+		t.Errorf("expected different jti for each request, but both were %s", jti1)
+	}
+}
+
+// ----- NewNexusClientWithDPoP Tests -----
+
+func TestNewNexusClientWithDPoPFromPaths_LoadsFromFiles(t *testing.T) {
+	t.Log("Testing that newNexusClientWithDPoPFromPaths loads keys from files")
+
+	// Create temp directory
+	tmpDir := t.TempDir()
+
+	// Generate test key
+	_, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	// Create key and kid files
+	keyPath := filepath.Join(tmpDir, "key.pem")
+	kidPath := filepath.Join(tmpDir, "kid")
+	testKID := "test-kid-from-file"
+
+	t.Log("Saving key to file")
+	keyStore := dpop.NewFileKeyStore(keyPath)
+	if err := keyStore.Save(privKey); err != nil {
+		t.Fatalf("failed to save key: %v", err)
+	}
+
+	t.Log("Saving kid to file")
+	kidStore := dpop.NewFileKIDStore(kidPath)
+	if err := kidStore.Save(testKID); err != nil {
+		t.Fatalf("failed to save kid: %v", err)
+	}
+
+	// Set up test server to verify DPoP header
+	var receivedDPoPHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedDPoPHeader = r.Header.Get("DPoP")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]dpuResponse{})
+	}))
+	defer server.Close()
+
+	t.Log("Creating client with DPoP from paths")
+	client, err := newNexusClientWithDPoPFromPaths(server.URL, keyPath, kidPath)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	t.Log("Verifying DPoP is enabled")
+	if !client.IsDPoPEnabled() {
+		t.Error("expected DPoP to be enabled")
+	}
+
+	t.Log("Making request to verify DPoP header is sent")
+	_, err = client.ListDPUs(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Log("Verifying DPoP header was present")
+	if receivedDPoPHeader == "" {
+		t.Error("expected DPoP header to be present")
+		return
+	}
+
+	t.Log("Verifying kid in DPoP proof matches")
+	header, _, _, err := dpop.ParseProof(receivedDPoPHeader)
+	if err != nil {
+		t.Fatalf("failed to parse DPoP proof: %v", err)
+	}
+
+	if header["kid"] != testKID {
+		t.Errorf("expected kid=%s, got %v", testKID, header["kid"])
+	}
+}
+
+func TestNewNexusClientWithDPoPFromPaths_NoFilesReturnsUnauthenticated(t *testing.T) {
+	t.Log("Testing that missing key files returns unauthenticated client")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "nonexistent", "key.pem")
+	kidPath := filepath.Join(tmpDir, "nonexistent", "kid")
+
+	client, err := newNexusClientWithDPoPFromPaths("http://localhost:8080", keyPath, kidPath)
+	if err != nil {
+		t.Fatalf("expected no error for missing files, got: %v", err)
+	}
+
+	t.Log("Verifying DPoP is disabled for pre-enrollment client")
+	if client.IsDPoPEnabled() {
+		t.Error("expected DPoP to be disabled when no files exist")
+	}
+}
+
+func TestNewNexusClientWithDPoPFromPaths_MismatchedFilesReturnsError(t *testing.T) {
+	t.Log("Testing that mismatched key/kid files returns error")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "key.pem")
+	kidPath := filepath.Join(tmpDir, "kid")
+
+	// Create only the key file (not the kid file)
+	_, privKey, _ := ed25519.GenerateKey(nil)
+	keyStore := dpop.NewFileKeyStore(keyPath)
+	if err := keyStore.Save(privKey); err != nil {
+		t.Fatalf("failed to save key: %v", err)
+	}
+
+	t.Log("Creating client with key but no kid file")
+	_, err := newNexusClientWithDPoPFromPaths("http://localhost:8080", keyPath, kidPath)
+	if err == nil {
+		t.Error("expected error when key exists but kid is missing")
+		return
+	}
+
+	if !strings.Contains(err.Error(), "kid file missing") {
+		t.Errorf("expected error about missing kid file, got: %v", err)
+	}
+
+	// Now test the opposite: kid exists but key doesn't
+	t.Log("Creating client with kid but no key file")
+	tmpDir2 := t.TempDir()
+	keyPath2 := filepath.Join(tmpDir2, "key.pem")
+	kidPath2 := filepath.Join(tmpDir2, "kid")
+
+	kidStore := dpop.NewFileKIDStore(kidPath2)
+	if err := kidStore.Save("test-kid"); err != nil {
+		t.Fatalf("failed to save kid: %v", err)
+	}
+
+	_, err = newNexusClientWithDPoPFromPaths("http://localhost:8080", keyPath2, kidPath2)
+	if err == nil {
+		t.Error("expected error when kid exists but key is missing")
+		return
+	}
+
+	if !strings.Contains(err.Error(), "key file missing") {
+		t.Errorf("expected error about missing key file, got: %v", err)
 	}
 }

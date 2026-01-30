@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package testutil provides testing utilities for Secure Infrastructure.
 package testutil
 

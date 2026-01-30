@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"runtime"
 	"testing"
 )
 
@@ -124,6 +125,9 @@ func TestNewHostTransport_NetworkRequiresDPUAddr(t *testing.T) {
 }
 
 func TestNewHostTransport_ForceTmfifo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("tmfifo is Linux-only")
+	}
 	if HasTmfifoInterface() {
 		t.Skip("Test assumes no hardware; tmfifo_net0 interface detected")
 	}
@@ -307,6 +311,9 @@ func TestNewDPUTransportListener_ForceComCh(t *testing.T) {
 }
 
 func TestNewDPUTransportListener_ForceTmfifo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("tmfifo Unix sockets are Linux-only")
+	}
 	// ForceTmfifo with a socket path will try to create a Unix socket listener
 	// This should succeed since it creates the socket
 	cfg := &Config{
@@ -476,6 +483,9 @@ func TestNewDPUTransportListener_FallbackToNetwork(t *testing.T) {
 }
 
 func TestNewDPUTransportListener_ForceTmfifo_SucceedsWithSocketPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("tmfifo Unix sockets are Linux-only")
+	}
 	// ForceTmfifo with a socket path should create a Unix socket listener
 	cfg := &Config{
 		ForceTmfifo:      true,

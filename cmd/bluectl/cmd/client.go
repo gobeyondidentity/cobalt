@@ -9,12 +9,17 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/nmelo/secure-infra/pkg/dpop"
 )
 
 // NexusClient provides HTTP client access to the Nexus API.
 type NexusClient struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL       string
+	httpClient    *http.Client
+	proofGen      dpop.ProofGenerator
+	kid           string
+	dpopEnabled   bool
 }
 
 // NewNexusClient creates a new client for the Nexus API.
@@ -25,6 +30,105 @@ func NewNexusClient(baseURL string) *NexusClient {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// NewNexusClientWithDPoP creates a NexusClient with DPoP authentication if keys exist.
+// It loads the key from ~/.bluectl/key.pem and kid from ~/.bluectl/kid.
+// If keys don't exist (pre-enrollment), it returns an unauthenticated client.
+// Returns an error if keys exist but cannot be loaded (permission issues, corrupt files).
+func NewNexusClientWithDPoP(baseURL string) (*NexusClient, error) {
+	keyPath, kidPath := dpop.DefaultKeyPaths("bluectl")
+	return newNexusClientWithDPoPFromPaths(baseURL, keyPath, kidPath)
+}
+
+// newNexusClientWithDPoPFromPaths is the internal implementation that accepts explicit paths.
+// This allows testing with temporary directories.
+func newNexusClientWithDPoPFromPaths(baseURL, keyPath, kidPath string) (*NexusClient, error) {
+	// Create base client
+	client := NewNexusClient(baseURL)
+
+	// Create key stores
+	keyStore := dpop.NewFileKeyStore(keyPath)
+	kidStore := dpop.NewFileKIDStore(kidPath)
+
+	// Check if both exist; if neither exists, return unauthenticated (pre-enrollment)
+	keyExists := keyStore.Exists()
+	kidExists := kidStore.Exists()
+
+	if !keyExists && !kidExists {
+		return client, nil
+	}
+
+	// If only one exists, something is wrong
+	if !keyExists {
+		return nil, fmt.Errorf("kid file exists but key file missing: %s", keyPath)
+	}
+	if !kidExists {
+		return nil, fmt.Errorf("key file exists but kid file missing: %s", kidPath)
+	}
+
+	// Load key (will check permissions)
+	key, err := keyStore.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load key: %w", err)
+	}
+
+	// Load kid
+	kid, err := kidStore.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load kid: %w", err)
+	}
+
+	// Create generator and enable DPoP
+	proofGen := dpop.NewEd25519Generator(key)
+	client.SetDPoP(proofGen, kid)
+
+	return client, nil
+}
+
+// SetDPoP configures DPoP authentication for the client.
+// proofGen is the DPoP proof generator, and kid is the server-assigned key identifier.
+func (c *NexusClient) SetDPoP(proofGen dpop.ProofGenerator, kid string) {
+	c.proofGen = proofGen
+	c.kid = kid
+	c.dpopEnabled = true
+}
+
+// IsDPoPEnabled returns true if DPoP authentication is configured.
+func (c *NexusClient) IsDPoPEnabled() bool {
+	return c.dpopEnabled
+}
+
+// doRequest executes an HTTP request, adding DPoP authentication if configured.
+// It handles 401/403 responses by returning a user-friendly error from dpop.ParseAuthError.
+func (c *NexusClient) doRequest(req *http.Request) (*http.Response, error) {
+	// Add DPoP header if configured
+	if c.dpopEnabled && c.proofGen != nil {
+		uri := c.baseURL + req.URL.Path
+		if req.URL.RawQuery != "" {
+			uri += "?" + req.URL.RawQuery
+		}
+		proof, err := c.proofGen.Generate(req.Method, uri, c.kid)
+		if err != nil {
+			return nil, fmt.Errorf("generate dpop proof: %w", err)
+		}
+		req.Header.Set("DPoP", proof)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for authentication errors on 401/403
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		authErr := dpop.ParseAuthError(resp)
+		if authErr != nil {
+			return nil, fmt.Errorf("%s", authErr.UserFriendlyMessage())
+		}
+	}
+
+	return resp, nil
 }
 
 // addDPURequest is the request body for adding a DPU.
@@ -98,7 +202,7 @@ func (c *NexusClient) AddDPU(ctx context.Context, name, host string, port int) (
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -124,7 +228,7 @@ func (c *NexusClient) ListDPUs(ctx context.Context) ([]dpuResponse, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -150,7 +254,7 @@ func (c *NexusClient) RemoveDPU(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -173,7 +277,7 @@ func (c *NexusClient) ListTenants(ctx context.Context) ([]tenantResponse, error)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -212,7 +316,7 @@ func (c *NexusClient) CreateTenant(ctx context.Context, name, description, conta
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -238,7 +342,7 @@ func (c *NexusClient) GetTenant(ctx context.Context, id string) (*tenantResponse
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -277,7 +381,7 @@ func (c *NexusClient) UpdateTenant(ctx context.Context, id, name, description, c
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -303,7 +407,7 @@ func (c *NexusClient) DeleteTenant(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -334,7 +438,7 @@ func (c *NexusClient) AssignDPUToTenant(ctx context.Context, tenantID, dpuID str
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -355,7 +459,7 @@ func (c *NexusClient) UnassignDPUFromTenant(ctx context.Context, tenantID, dpuID
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -409,7 +513,7 @@ func (c *NexusClient) InviteOperator(ctx context.Context, email, tenantName, rol
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -435,7 +539,7 @@ func (c *NexusClient) RemoveOperator(ctx context.Context, email string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -456,7 +560,7 @@ func (c *NexusClient) RemoveInviteCode(ctx context.Context, code string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -499,7 +603,7 @@ func (c *NexusClient) ListOperators(ctx context.Context, tenant string) ([]opera
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -525,7 +629,7 @@ func (c *NexusClient) GetOperator(ctx context.Context, email string) (*operatorR
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -565,7 +669,7 @@ func (c *NexusClient) UpdateOperatorStatus(ctx context.Context, email, status st
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -586,7 +690,7 @@ func (c *NexusClient) GetDPU(ctx context.Context, nameOrID string) (*dpuResponse
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -647,7 +751,7 @@ func (c *NexusClient) CreateTrust(ctx context.Context, req createTrustRequest) (
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(httpReq)
+	resp, err := c.doRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -678,7 +782,7 @@ func (c *NexusClient) ListTrust(ctx context.Context, tenant string) ([]trustResp
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -704,7 +808,7 @@ func (c *NexusClient) DeleteTrust(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -740,7 +844,7 @@ func (c *NexusClient) ListAgentHosts(ctx context.Context, tenant string) ([]agen
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -769,7 +873,7 @@ func (c *NexusClient) GetAgentHost(ctx context.Context, id string) (*agentHostRe
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -799,7 +903,7 @@ func (c *NexusClient) DeleteAgentHost(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -832,7 +936,7 @@ func (c *NexusClient) ListSSHCAs(ctx context.Context) ([]sshCAResponse, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -858,7 +962,7 @@ func (c *NexusClient) GetSSHCA(ctx context.Context, name string) (*sshCAResponse
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -924,7 +1028,7 @@ func (c *NexusClient) GrantAuthorization(ctx context.Context, email, tenantID st
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -970,7 +1074,7 @@ func (c *NexusClient) ListKeyMakers(ctx context.Context, operatorID string) ([]k
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -996,7 +1100,7 @@ func (c *NexusClient) GetKeyMaker(ctx context.Context, id string) (*keymakerResp
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -1026,7 +1130,7 @@ func (c *NexusClient) RevokeKeyMaker(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -1063,7 +1167,7 @@ func (c *NexusClient) GetHostPostureByDPU(ctx context.Context, dpuName string) (
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}

@@ -1,11 +1,14 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGenerateInviteCode(t *testing.T) {
@@ -484,4 +487,339 @@ func TestListAllKeyMakers_OrderedByBoundAtDesc(t *testing.T) {
 		assert.True(t, result[i].BoundAt.After(result[i+1].BoundAt) || result[i].BoundAt.Equal(result[i+1].BoundAt),
 			"bound_at should be in descending order")
 	}
+}
+
+// ============== DPoP Key Lookup Tests ==============
+
+// TestKeyFingerprint verifies SHA256 hex output for DPoP key fingerprints.
+func TestKeyFingerprint(t *testing.T) {
+	t.Log("Testing KeyFingerprint function produces correct SHA256 hex output")
+
+	// Test with known input
+	publicKey := []byte("test-public-key-data")
+	expectedHash := sha256.Sum256(publicKey)
+	expectedHex := hex.EncodeToString(expectedHash[:])
+
+	t.Log("Computing fingerprint for known public key")
+	result := KeyFingerprint(publicKey)
+
+	t.Log("Verifying fingerprint is 64 character hex string (SHA256)")
+	assert.Len(t, result, 64, "SHA256 hex fingerprint should be 64 characters")
+
+	t.Log("Verifying fingerprint matches expected SHA256 hash")
+	assert.Equal(t, expectedHex, result, "fingerprint should match expected SHA256 hex")
+
+	t.Log("Verifying same input produces same fingerprint")
+	result2 := KeyFingerprint(publicKey)
+	assert.Equal(t, result, result2, "same input should produce same fingerprint")
+
+	t.Log("Verifying different input produces different fingerprint")
+	differentKey := []byte("different-public-key-data")
+	differentResult := KeyFingerprint(differentKey)
+	assert.NotEqual(t, result, differentResult, "different input should produce different fingerprint")
+}
+
+// TestAdminKey_CRUD tests create, get, get by kid, list, revoke operations for admin keys.
+func TestAdminKey_CRUD(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create an operator first (admin keys require operator reference)
+	t.Log("Creating operator for admin key ownership")
+	err := store.CreateOperator("op1", "admin@example.com", "Admin User")
+	require.NoError(t, err, "failed to create operator")
+
+	// Test CreateAdminKey
+	t.Log("Creating admin key with DPoP binding")
+	publicKey := []byte("admin-public-key-data")
+	fingerprint := KeyFingerprint(publicKey)
+	ak := &AdminKey{
+		ID:             "ak1",
+		OperatorID:     "op1",
+		Name:           "Admin Laptop",
+		PublicKey:      publicKey,
+		Kid:            "kid-123",
+		KeyFingerprint: fingerprint,
+		Status:         "active",
+	}
+	err = store.CreateAdminKey(ak)
+	require.NoError(t, err, "CreateAdminKey should succeed")
+
+	// Test GetAdminKey
+	t.Log("Retrieving admin key by ID")
+	retrieved, err := store.GetAdminKey("ak1")
+	require.NoError(t, err, "GetAdminKey should succeed")
+	assert.Equal(t, "ak1", retrieved.ID)
+	assert.Equal(t, "op1", retrieved.OperatorID)
+	assert.Equal(t, "Admin Laptop", retrieved.Name)
+	assert.Equal(t, publicKey, retrieved.PublicKey)
+	assert.Equal(t, "kid-123", retrieved.Kid)
+	assert.Equal(t, fingerprint, retrieved.KeyFingerprint)
+	assert.Equal(t, "active", retrieved.Status)
+	assert.False(t, retrieved.BoundAt.IsZero(), "BoundAt should be set")
+
+	// Test GetAdminKeyByKid
+	t.Log("Retrieving admin key by kid for DPoP verification")
+	byKid, err := store.GetAdminKeyByKid("kid-123")
+	require.NoError(t, err, "GetAdminKeyByKid should succeed")
+	assert.Equal(t, "ak1", byKid.ID)
+	assert.Equal(t, "kid-123", byKid.Kid)
+
+	// Test GetAdminKeyByKid with non-existent kid
+	t.Log("Verifying GetAdminKeyByKid returns error for non-existent kid")
+	_, err = store.GetAdminKeyByKid("nonexistent-kid")
+	assert.Error(t, err, "should error for non-existent kid")
+
+	// Test ListAdminKeysByOperator
+	t.Log("Listing admin keys by operator")
+
+	// Create a second admin key for the same operator
+	ak2 := &AdminKey{
+		ID:             "ak2",
+		OperatorID:     "op1",
+		Name:           "Admin Phone",
+		PublicKey:      []byte("phone-public-key"),
+		Kid:            "kid-456",
+		KeyFingerprint: KeyFingerprint([]byte("phone-public-key")),
+		Status:         "active",
+	}
+	err = store.CreateAdminKey(ak2)
+	require.NoError(t, err, "CreateAdminKey for second key should succeed")
+
+	keys, err := store.ListAdminKeysByOperator("op1")
+	require.NoError(t, err, "ListAdminKeysByOperator should succeed")
+	assert.Len(t, keys, 2, "should return 2 admin keys")
+
+	// Test UpdateAdminKeyLastSeen
+	t.Log("Updating last seen timestamp for admin key")
+	err = store.UpdateAdminKeyLastSeen("ak1")
+	require.NoError(t, err, "UpdateAdminKeyLastSeen should succeed")
+
+	updated, _ := store.GetAdminKey("ak1")
+	assert.NotNil(t, updated.LastSeen, "LastSeen should be set after update")
+
+	// Test RevokeAdminKey
+	t.Log("Revoking admin key")
+	err = store.RevokeAdminKey("ak1")
+	require.NoError(t, err, "RevokeAdminKey should succeed")
+
+	revoked, _ := store.GetAdminKey("ak1")
+	assert.Equal(t, "revoked", revoked.Status, "status should be revoked")
+
+	// Verify revoked key is still returned by kid lookup (for rejection)
+	t.Log("Verifying revoked key is still retrievable by kid for rejection logic")
+	byKidRevoked, err := store.GetAdminKeyByKid("kid-123")
+	require.NoError(t, err, "should still find revoked key by kid")
+	assert.Equal(t, "revoked", byKidRevoked.Status)
+}
+
+// TestAdminKey_DuplicateKeyFingerprint verifies unique constraint rejects duplicate fingerprints.
+func TestAdminKey_DuplicateKeyFingerprint(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create operator
+	t.Log("Creating operator")
+	err := store.CreateOperator("op1", "admin@example.com", "Admin User")
+	require.NoError(t, err)
+
+	// Create first admin key
+	t.Log("Creating first admin key with unique fingerprint")
+	publicKey := []byte("shared-public-key-data")
+	fingerprint := KeyFingerprint(publicKey)
+	ak1 := &AdminKey{
+		ID:             "ak1",
+		OperatorID:     "op1",
+		Name:           "First Key",
+		PublicKey:      publicKey,
+		Kid:            "kid-1",
+		KeyFingerprint: fingerprint,
+		Status:         "active",
+	}
+	err = store.CreateAdminKey(ak1)
+	require.NoError(t, err, "first admin key should be created")
+
+	// Attempt to create second key with same fingerprint
+	t.Log("Attempting to create second admin key with duplicate fingerprint (should fail)")
+	ak2 := &AdminKey{
+		ID:             "ak2",
+		OperatorID:     "op1",
+		Name:           "Second Key",
+		PublicKey:      publicKey, // Same public key
+		Kid:            "kid-2",   // Different kid
+		KeyFingerprint: fingerprint,
+		Status:         "active",
+	}
+	err = store.CreateAdminKey(ak2)
+	assert.Error(t, err, "should reject duplicate key fingerprint")
+	assert.Contains(t, err.Error(), "UNIQUE constraint failed", "error should indicate unique constraint violation")
+}
+
+// TestGetKeyMakerByKid verifies kid-based lookup for keymakers.
+func TestGetKeyMakerByKid(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create operator
+	t.Log("Creating operator")
+	err := store.CreateOperator("op1", "operator@example.com", "Test Operator")
+	require.NoError(t, err)
+
+	// Create keymaker without kid (legacy)
+	t.Log("Creating keymaker without kid (legacy device)")
+	km1 := &KeyMaker{
+		ID:                "km1",
+		OperatorID:        "op1",
+		Name:              "Legacy Device",
+		Platform:          "darwin",
+		SecureElement:     "secure_enclave",
+		DeviceFingerprint: "fp1",
+		PublicKey:         "pubkey1",
+		Status:            "active",
+	}
+	err = store.CreateKeyMaker(km1)
+	require.NoError(t, err)
+
+	// Create keymaker with kid
+	t.Log("Creating keymaker with kid for DPoP binding")
+	km2 := &KeyMaker{
+		ID:                "km2",
+		OperatorID:        "op1",
+		Name:              "DPoP Device",
+		Platform:          "darwin",
+		SecureElement:     "secure_enclave",
+		DeviceFingerprint: "fp2",
+		PublicKey:         "pubkey2",
+		Status:            "active",
+	}
+	err = store.CreateKeyMaker(km2)
+	require.NoError(t, err)
+
+	// Set kid on km2
+	t.Log("Setting kid on keymaker via direct update")
+	_, err = store.db.Exec(`UPDATE keymakers SET kid = ?, key_fingerprint = ? WHERE id = ?`,
+		"km-kid-123", KeyFingerprint([]byte("pubkey2")), "km2")
+	require.NoError(t, err)
+
+	// Test GetKeyMakerByKid
+	t.Log("Looking up keymaker by kid")
+	found, err := store.GetKeyMakerByKid("km-kid-123")
+	require.NoError(t, err, "GetKeyMakerByKid should succeed")
+	assert.Equal(t, "km2", found.ID)
+	assert.Equal(t, "DPoP Device", found.Name)
+
+	// Test with non-existent kid
+	t.Log("Verifying GetKeyMakerByKid returns error for non-existent kid")
+	_, err = store.GetKeyMakerByKid("nonexistent")
+	assert.Error(t, err, "should error for non-existent kid")
+}
+
+// TestGetDPUByKid verifies kid-based lookup for DPUs.
+func TestGetDPUByKid(t *testing.T) {
+	t.Log("Setting up test store")
+	store := setupTestStore(t)
+
+	// Create DPU without kid (legacy)
+	t.Log("Creating DPU without kid (legacy)")
+	err := store.Add("dpu1", "bf3-legacy", "192.168.1.100", 50051)
+	require.NoError(t, err)
+
+	// Create DPU with kid
+	t.Log("Creating DPU for DPoP binding")
+	err = store.Add("dpu2", "bf3-dpop", "192.168.1.101", 50051)
+	require.NoError(t, err)
+
+	// Set kid and public_key on dpu2
+	t.Log("Setting kid and public_key on DPU via direct update")
+	publicKey := []byte("dpu-public-key-data")
+	_, err = store.db.Exec(`UPDATE dpus SET public_key = ?, kid = ?, key_fingerprint = ? WHERE id = ?`,
+		publicKey, "dpu-kid-456", KeyFingerprint(publicKey), "dpu2")
+	require.NoError(t, err)
+
+	// Test GetDPUByKid
+	t.Log("Looking up DPU by kid")
+	found, err := store.GetDPUByKid("dpu-kid-456")
+	require.NoError(t, err, "GetDPUByKid should succeed")
+	assert.Equal(t, "dpu2", found.ID)
+	assert.Equal(t, "bf3-dpop", found.Name)
+	assert.Equal(t, publicKey, found.PublicKey)
+
+	// Test with non-existent kid
+	t.Log("Verifying GetDPUByKid returns error for non-existent kid")
+	_, err = store.GetDPUByKid("nonexistent")
+	assert.Error(t, err, "should error for non-existent kid")
+}
+
+// BenchmarkKeyMakerLookupByKid benchmarks kid-based keymaker lookup.
+// Target: <1ms for 10,000 lookups (100ns per lookup average).
+func BenchmarkKeyMakerLookupByKid(b *testing.B) {
+	// Setup: create store with many keymakers
+	tmpDir := b.TempDir()
+	dbPath := tmpDir + "/bench.db"
+	store, err := Open(dbPath)
+	if err != nil {
+		b.Fatalf("failed to open store: %v", err)
+	}
+	defer store.Close()
+
+	// Create operator
+	err = store.CreateOperator("op1", "operator@example.com", "Test")
+	if err != nil {
+		b.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create 1000 keymakers with kids using fmt.Sprintf for unique IDs
+	var targetKid string
+	for i := 0; i < 1000; i++ {
+		id := "km" + strings.Repeat("0", 4-len(string(rune('0'+i%10000/1000)))) + string(rune('0'+i%10000/1000)) + string(rune('0'+i%1000/100)) + string(rune('0'+i%100/10)) + string(rune('0'+i%10))
+		// Simplified: just use a format string
+		id = "km" + string([]byte{'0' + byte(i/1000%10), '0' + byte(i/100%10), '0' + byte(i/10%10), '0' + byte(i%10)})
+		km := &KeyMaker{
+			ID:                id,
+			OperatorID:        "op1",
+			Name:              "Device",
+			Platform:          "darwin",
+			SecureElement:     "secure_enclave",
+			DeviceFingerprint: "fp" + id,
+			PublicKey:         "pk" + id,
+			Status:            "active",
+		}
+		err = store.CreateKeyMaker(km)
+		if err != nil {
+			b.Fatalf("failed to create keymaker %s: %v", id, err)
+		}
+		kid := "kid-" + id
+		_, err = store.db.Exec(`UPDATE keymakers SET kid = ? WHERE id = ?`, kid, id)
+		if err != nil {
+			b.Fatalf("failed to set kid: %v", err)
+		}
+		// Target kid in the middle (around index 500)
+		if i == 500 {
+			targetKid = kid
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := store.GetKeyMakerByKid(targetKid)
+		if err != nil {
+			b.Fatalf("lookup failed: %v", err)
+		}
+	}
+}
+
+// TestAdminKey_ListEmpty verifies empty list behavior.
+func TestAdminKey_ListEmpty(t *testing.T) {
+	t.Log("Setting up test store")
+	store := setupTestStore(t)
+
+	// Create operator with no admin keys
+	t.Log("Creating operator without admin keys")
+	err := store.CreateOperator("op1", "admin@example.com", "Admin")
+	require.NoError(t, err)
+
+	t.Log("Listing admin keys for operator with none")
+	keys, err := store.ListAdminKeysByOperator("op1")
+	assert.NoError(t, err, "listing empty should not error")
+	assert.Len(t, keys, 0, "should return empty slice")
 }

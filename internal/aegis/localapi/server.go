@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nmelo/secure-infra/pkg/dpop"
 	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/nmelo/secure-infra/pkg/transport"
 )
@@ -48,8 +49,13 @@ type Config struct {
 	// AttestationFetcher is a function to get current attestation status
 	AttestationFetcher func(ctx context.Context) (*AttestationInfo, error)
 
-	// HTTPClient for Control Plane communication (allows mocking)
+	// HTTPClient for Control Plane communication (allows mocking, deprecated)
+	// Deprecated: Use DPoPClient instead for authenticated requests.
 	HTTPClient *http.Client
+
+	// DPoPClient is the DPoP-enabled HTTP client for authenticated nexus API requests.
+	// If set, this takes precedence over HTTPClient.
+	DPoPClient *dpop.Client
 
 	// Store is the SQLite store for state persistence (optional).
 	// If provided, pairing state and credential queue are persisted across restarts.
@@ -113,21 +119,30 @@ func NewServer(cfg *Config) (*Server, error) {
 		return nil, fmt.Errorf("DPU name is required")
 	}
 
-	httpClient := cfg.HTTPClient
-	if httpClient == nil {
-		httpClient = &http.Client{
+	// Build control plane client
+	cpClient := &ControlPlaneClient{
+		baseURL: strings.TrimSuffix(cfg.ControlPlaneURL, "/"),
+	}
+
+	// Prefer DPoP client if available, otherwise fall back to plain HTTP client
+	if cfg.DPoPClient != nil {
+		cpClient.dpopClient = cfg.DPoPClient
+		log.Printf("localapi: using DPoP-authenticated HTTP client for nexus API")
+	} else if cfg.HTTPClient != nil {
+		cpClient.httpClient = cfg.HTTPClient
+		log.Printf("localapi: WARNING: using unauthenticated HTTP client (no DPoP)")
+	} else {
+		cpClient.httpClient = &http.Client{
 			Timeout: 30 * time.Second,
 		}
+		log.Printf("localapi: WARNING: using default unauthenticated HTTP client (no DPoP)")
 	}
 
 	s := &Server{
-		config: cfg,
-		controlPlane: &ControlPlaneClient{
-			baseURL:    strings.TrimSuffix(cfg.ControlPlaneURL, "/"),
-			httpClient: httpClient,
-		},
-		store:       cfg.Store,
-		pendingAcks: make(map[string]chan *CredentialAckResult),
+		config:       cfg,
+		controlPlane: cpClient,
+		store:        cfg.Store,
+		pendingAcks:  make(map[string]chan *CredentialAckResult),
 	}
 
 	// Restore state from store if available

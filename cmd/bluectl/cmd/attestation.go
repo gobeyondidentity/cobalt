@@ -45,7 +45,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		dpu, err := client.GetDPU(cmd.Context(), args[0])
 		if err != nil {
 			return clierror.DeviceNotFound(args[0])

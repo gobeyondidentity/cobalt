@@ -51,7 +51,10 @@ var tenantListCmd = &cobra.Command{
 }
 
 func listTenantsRemote(ctx context.Context, serverURL string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	tenants, err := client.ListTenants(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list tenants from server: %w", err)
@@ -120,7 +123,10 @@ Examples:
 }
 
 func addTenantRemote(ctx context.Context, serverURL, name, description, contact string, tags []string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	tenant, err := client.CreateTenant(ctx, name, description, contact, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create tenant on server: %w", err)
@@ -157,7 +163,10 @@ Examples:
 }
 
 func removeTenantRemote(ctx context.Context, serverURL, nameOrID string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 
 	// Resolve tenant name to ID
 	tenants, err := client.ListTenants(ctx)
@@ -199,7 +208,10 @@ var tenantShowCmd = &cobra.Command{
 }
 
 func showTenantRemote(ctx context.Context, serverURL, nameOrID string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 
 	// First resolve tenant to get ID
 	tenants, err := client.ListTenants(ctx)
@@ -258,7 +270,10 @@ Examples:
 }
 
 func updateTenantRemote(ctx context.Context, serverURL, nameOrID string, cmd *cobra.Command) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 
 	// Get existing tenant
 	tenant, err := client.GetTenant(ctx, nameOrID)
@@ -328,7 +343,10 @@ Examples:
 }
 
 func assignDPURemote(ctx context.Context, serverURL, tenantNameOrID, dpuNameOrID string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 
 	// Resolve tenant name to ID
 	tenants, err := client.ListTenants(ctx)
@@ -392,7 +410,10 @@ Examples:
 }
 
 func unassignDPURemote(ctx context.Context, serverURL, dpuNameOrID string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 
 	// Get DPU list to find the DPU and its tenant
 	dpus, err := client.ListDPUs(ctx)

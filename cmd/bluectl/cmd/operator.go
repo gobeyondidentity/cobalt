@@ -82,7 +82,10 @@ Examples:
 }
 
 func inviteOperatorRemote(ctx context.Context, serverURL, email, tenantName, role string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	resp, err := client.InviteOperator(ctx, email, tenantName, role)
 	if err != nil {
 		return fmt.Errorf("failed to invite operator on server: %w", err)
@@ -128,7 +131,10 @@ Examples:
 }
 
 func listOperatorsRemote(ctx context.Context, serverURL, tenantFilter string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	operators, err := client.ListOperators(ctx, tenantFilter)
 	if err != nil {
 		return fmt.Errorf("failed to list operators: %w", err)
@@ -173,7 +179,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 
 		// Check current status
 		op, err := client.GetOperator(cmd.Context(), email)
@@ -211,7 +220,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 
 		// Check current status
 		op, err := client.GetOperator(cmd.Context(), email)
@@ -260,7 +272,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		ctx := cmd.Context()
 
 		// Resolve tenant name to ID
@@ -406,7 +421,10 @@ Examples:
 }
 
 func removeOperatorRemote(ctx context.Context, serverURL, email string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	if err := client.RemoveOperator(ctx, email); err != nil {
 		return fmt.Errorf("failed to remove operator: %w", err)
 	}

@@ -53,7 +53,10 @@ var dpuListCmd = &cobra.Command{
 }
 
 func listDPUsRemote(ctx context.Context, serverURL string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	dpus, err := client.ListDPUs(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list DPUs from server: %w", err)
@@ -175,7 +178,10 @@ func addDPURemote(ctx context.Context, serverURL, name, host string, port int, o
 		return fmt.Errorf("could not determine DPU name. Use --name to specify one")
 	}
 
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	dpu, err := client.AddDPU(ctx, name, host, port)
 	if err != nil {
 		return fmt.Errorf("failed to add DPU to server: %w", err)
@@ -208,7 +214,10 @@ var dpuRemoveCmd = &cobra.Command{
 }
 
 func removeDPURemote(ctx context.Context, serverURL, nameOrID string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	if err := client.RemoveDPU(ctx, nameOrID); err != nil {
 		return fmt.Errorf("failed to remove DPU from server: %w", err)
 	}
@@ -227,7 +236,10 @@ var dpuInfoCmd = &cobra.Command{
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		dpu, err := client.GetDPU(cmd.Context(), args[0])
 		if err != nil {
 			return clierror.DeviceNotFound(args[0])
@@ -306,7 +318,10 @@ func runDPUHealth(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	dpu, err := client.GetDPU(cmd.Context(), args[0])
 	if err != nil {
 		return fmt.Errorf("DPU not found: %s", args[0])
