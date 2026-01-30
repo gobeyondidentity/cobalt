@@ -379,6 +379,10 @@ func TestFileKeyStoreInvalidPEM(t *testing.T) {
 	if err := os.WriteFile(keyPath, []byte("not valid pem data"), 0600); err != nil {
 		t.Fatalf("failed to write file: %v", err)
 	}
+	// Set permissions so permission check passes, allowing format check to run
+	if err := setFilePermissions(keyPath); err != nil {
+		t.Fatalf("failed to set permissions: %v", err)
+	}
 
 	store := NewFileKeyStore(keyPath)
 	_, err := store.Load()
@@ -402,6 +406,10 @@ dGVzdCBkYXRh
 `
 	if err := os.WriteFile(keyPath, []byte(pemData), 0600); err != nil {
 		t.Fatalf("failed to write file: %v", err)
+	}
+	// Set permissions so permission check passes, allowing format check to run
+	if err := setFilePermissions(keyPath); err != nil {
+		t.Fatalf("failed to set permissions: %v", err)
 	}
 
 	store := NewFileKeyStore(keyPath)
@@ -469,6 +477,10 @@ func TestFileKeyStoreRejects64ByteRawKey(t *testing.T) {
 	if err := os.WriteFile(keyPath, []byte(pemData), 0600); err != nil {
 		t.Fatalf("failed to write file: %v", err)
 	}
+	// Set permissions so permission check passes, allowing format check to run
+	if err := setFilePermissions(keyPath); err != nil {
+		t.Fatalf("failed to set permissions: %v", err)
+	}
 
 	store := NewFileKeyStore(keyPath)
 	_, err := store.Load()
@@ -495,6 +507,10 @@ MC4CAQAwBQYDK2VwBCIEIHKJh6YGZoSkOl9hn7Nit8y7NbmOAUx2zGzW1lq3klqZ
 `
 	if err := os.WriteFile(keyPath, []byte(pemData), 0600); err != nil {
 		t.Fatalf("failed to write file: %v", err)
+	}
+	// Set permissions so permission check passes, allowing format check to run
+	if err := setFilePermissions(keyPath); err != nil {
+		t.Fatalf("failed to set permissions: %v", err)
 	}
 
 	store := NewFileKeyStore(keyPath)
@@ -539,6 +555,10 @@ func TestFileKeyStoreRejectsWrongSizeSeed(t *testing.T) {
 
 			if err := os.WriteFile(keyPath, []byte(pemData), 0600); err != nil {
 				t.Fatalf("failed to write file: %v", err)
+			}
+			// Set permissions so permission check passes, allowing format check to run
+			if err := setFilePermissions(keyPath); err != nil {
+				t.Fatalf("failed to set permissions: %v", err)
 			}
 
 			store := NewFileKeyStore(keyPath)
