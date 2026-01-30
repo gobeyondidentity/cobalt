@@ -24,7 +24,8 @@ func init() {
 	rootCmd.AddCommand(whoamiCmd)
 
 	initCmd.Flags().String("name", "", "Custom name for this KeyMaker")
-	initCmd.Flags().String("control-plane", "http://localhost:18080", "Server URL")
+	initCmd.Flags().String("server", "http://localhost:18080", "Control Plane URL (env: KM_SERVER)")
+	initCmd.Flags().String("control-plane", "http://localhost:18080", "Deprecated: use --server")
 	initCmd.Flags().String("invite-code", "", "Invite code (will prompt if not provided)")
 	initCmd.Flags().Bool("force", false, "Force re-initialization (removes existing config)")
 
@@ -55,17 +56,54 @@ This command:
 
 Use --force to re-initialize if already configured (removes existing keypair).
 
+Environment variables:
+  KM_SERVER   Control Plane URL (takes precedence over --server flag)
+
 Examples:
   km init
   km init --name workstation-home
   km init --force                                    # Re-initialize
-  km init --control-plane https://fabric.acme.com`,
+  km init --server https://fabric.acme.com
+  KM_SERVER=https://fabric.acme.com km init          # Using env var`,
 	RunE: runInit,
+}
+
+// getServerURL resolves the server URL using the following precedence:
+// 1. KM_SERVER environment variable
+// 2. --server flag
+// 3. --control-plane flag (deprecated)
+// 4. Default value from --server flag
+//
+// Returns the URL and a boolean indicating if the deprecated flag was used.
+func getServerURL(cmd *cobra.Command) (string, bool) {
+	// 1. Check env var first (highest precedence)
+	if url := os.Getenv("KM_SERVER"); url != "" {
+		return url, false
+	}
+
+	// 2. Check --server flag
+	if cmd.Flags().Changed("server") {
+		url, _ := cmd.Flags().GetString("server")
+		return url, false
+	}
+
+	// 3. Check deprecated --control-plane flag
+	if cmd.Flags().Changed("control-plane") {
+		url, _ := cmd.Flags().GetString("control-plane")
+		return url, true // true = show deprecation warning
+	}
+
+	// 4. Return default (from --server flag which has the default)
+	url, _ := cmd.Flags().GetString("server")
+	return url, false
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
-	controlPlane, _ := cmd.Flags().GetString("control-plane")
+	serverURL, deprecated := getServerURL(cmd)
+	if deprecated {
+		fmt.Fprintln(os.Stderr, "WARNING: --control-plane is deprecated, use --server instead")
+	}
 	inviteCode, _ := cmd.Flags().GetString("invite-code")
 
 	// Print header with version and platform info
@@ -137,12 +175,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("Binding to server...")
 	reqBody, _ := json.Marshal(bindReq)
 	resp, err := http.Post(
-		controlPlane+"/api/v1/keymakers/bind",
+		serverURL+"/api/v1/keymakers/bind",
 		"application/json",
 		strings.NewReader(string(reqBody)),
 	)
 	if err != nil {
-		return fmt.Errorf("cannot connect to server at %s: %w\nVerify the URL and check your network connection", controlPlane, err)
+		return fmt.Errorf("cannot connect to server at %s: %w\nVerify the URL and check your network connection", serverURL, err)
 	}
 	defer resp.Body.Close()
 
@@ -203,7 +241,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		KeyMakerID:      bindResp.KeyMakerID,
 		OperatorID:      bindResp.OperatorID,
 		OperatorEmail:   bindResp.OperatorEmail,
-		ControlPlaneURL: controlPlane,
+		ControlPlaneURL: serverURL,
 		PrivateKeyPath:  keyPath,
 	}
 
