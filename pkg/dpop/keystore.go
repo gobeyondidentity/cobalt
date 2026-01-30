@@ -45,7 +45,9 @@ var (
 	ErrKeyNotFound = errors.New("key not found")
 
 	// ErrInvalidPermissions indicates the key file has insecure permissions.
-	ErrInvalidPermissions = errors.New("insecure file permissions: must be 0600")
+	// On Unix: file mode must be 0600
+	// On Windows: file must not be accessible to Everyone, Users, or Authenticated Users
+	ErrInvalidPermissions = errors.New("insecure file permissions: file accessible to other users")
 
 	// ErrInvalidKeyFormat indicates the key file is not in the expected format.
 	ErrInvalidKeyFormat = errors.New("invalid key format: expected ED25519 PRIVATE KEY PEM with 32-byte seed")
@@ -67,10 +69,10 @@ func NewFileKeyStore(path string) *FileKeyStore {
 
 // Load loads the private key from the file.
 // Returns ErrKeyNotFound if the file doesn't exist.
-// Returns ErrInvalidPermissions if the file has permissions other than 0600.
+// Returns ErrInvalidPermissions if the file is accessible to other users.
 func (s *FileKeyStore) Load() (ed25519.PrivateKey, error) {
 	// Check if file exists
-	info, err := os.Stat(s.path)
+	_, err := os.Stat(s.path)
 	if os.IsNotExist(err) {
 		return nil, ErrKeyNotFound
 	}
@@ -78,10 +80,9 @@ func (s *FileKeyStore) Load() (ed25519.PrivateKey, error) {
 		return nil, fmt.Errorf("stat key file: %w", err)
 	}
 
-	// Check permissions (Unix only, skip on Windows)
-	mode := info.Mode().Perm()
-	if mode != 0600 {
-		return nil, fmt.Errorf("%w: got %04o, want 0600", ErrInvalidPermissions, mode)
+	// Check permissions (platform-specific)
+	if err := checkFilePermissions(s.path); err != nil {
+		return nil, err
 	}
 
 	// Read file
@@ -109,7 +110,7 @@ func (s *FileKeyStore) Load() (ed25519.PrivateKey, error) {
 	return ed25519.NewKeyFromSeed(block.Bytes), nil
 }
 
-// Save saves the private key to the file with 0600 permissions.
+// Save saves the private key to the file with owner-only permissions.
 // Creates parent directories if they don't exist.
 func (s *FileKeyStore) Save(key ed25519.PrivateKey) error {
 	// Create parent directory
@@ -125,9 +126,14 @@ func (s *FileKeyStore) Save(key ed25519.PrivateKey) error {
 	}
 	data := pem.EncodeToMemory(block)
 
-	// Write with restricted permissions
+	// Write file (0600 on Unix, default on Windows)
 	if err := os.WriteFile(s.path, data, 0600); err != nil {
 		return fmt.Errorf("write key file: %w", err)
+	}
+
+	// Set proper permissions (platform-specific)
+	if err := setFilePermissions(s.path); err != nil {
+		return fmt.Errorf("set key file permissions: %w", err)
 	}
 
 	return nil
@@ -157,7 +163,7 @@ func NewFileKIDStore(path string) *FileKIDStore {
 // Load loads the kid from the file.
 func (s *FileKIDStore) Load() (string, error) {
 	// Check if file exists
-	info, err := os.Stat(s.path)
+	_, err := os.Stat(s.path)
 	if os.IsNotExist(err) {
 		return "", ErrKIDNotFound
 	}
@@ -165,10 +171,9 @@ func (s *FileKIDStore) Load() (string, error) {
 		return "", fmt.Errorf("stat kid file: %w", err)
 	}
 
-	// Check permissions
-	mode := info.Mode().Perm()
-	if mode != 0600 {
-		return "", fmt.Errorf("%w: got %04o, want 0600", ErrInvalidPermissions, mode)
+	// Check permissions (platform-specific)
+	if err := checkFilePermissions(s.path); err != nil {
+		return "", err
 	}
 
 	data, err := os.ReadFile(s.path)
@@ -179,15 +184,21 @@ func (s *FileKIDStore) Load() (string, error) {
 	return string(data), nil
 }
 
-// Save saves the kid to the file with 0600 permissions.
+// Save saves the kid to the file with owner-only permissions.
 func (s *FileKIDStore) Save(kid string) error {
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create kid directory: %w", err)
 	}
 
+	// Write file (0600 on Unix, default on Windows)
 	if err := os.WriteFile(s.path, []byte(kid), 0600); err != nil {
 		return fmt.Errorf("write kid file: %w", err)
+	}
+
+	// Set proper permissions (platform-specific)
+	if err := setFilePermissions(s.path); err != nil {
+		return fmt.Errorf("set kid file permissions: %w", err)
 	}
 
 	return nil
@@ -199,20 +210,12 @@ func (s *FileKIDStore) Exists() bool {
 	return err == nil
 }
 
-// CheckFilePermissions verifies a file has 0600 permissions.
+// CheckFilePermissions verifies a file has owner-only access.
+// On Unix: file mode must be 0600
+// On Windows: file must not be accessible to Everyone, Users, or Authenticated Users
 // Returns nil if permissions are correct, error otherwise.
 func CheckFilePermissions(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-
-	mode := info.Mode().Perm()
-	if mode != 0600 {
-		return fmt.Errorf("%w: got %04o, want 0600", ErrInvalidPermissions, mode)
-	}
-
-	return nil
+	return checkFilePermissions(path)
 }
 
 // DefaultKeyPaths returns the default key and kid paths for each client type.
