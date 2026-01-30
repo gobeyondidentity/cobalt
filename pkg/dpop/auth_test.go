@@ -1,6 +1,7 @@
 package dpop
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -515,14 +516,17 @@ func TestURLEncodedBypass(t *testing.T) {
 }
 
 func TestMiddlewarePanicRecovery(t *testing.T) {
-	t.Log("Testing middleware panic returns 500 and does not call handler")
+	t.Log("Testing middleware panic returns 500, does not call handler, and logs stack trace")
 
 	// Create a validator that panics
 	panicValidator := &panicValidator{}
 	lookup := &mockIdentityLookup{}
 	cache := &mockJTICache{}
 
-	middleware := newTestMiddleware(panicValidator, lookup, cache)
+	// Create middleware with a logger that captures output
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelError}))
+	middleware := NewAuthMiddleware(panicValidator, lookup, cache, WithLogger(logger))
 
 	handlerCalled := false
 	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -533,15 +537,33 @@ func TestMiddlewarePanicRecovery(t *testing.T) {
 	req.Header.Set("DPoP", "trigger-panic")
 	rec := httptest.NewRecorder()
 
+	t.Log("Triggering panic in validator")
 	handler.ServeHTTP(rec, req)
 
+	t.Log("Verifying response status is 500")
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500 after panic, got %d", rec.Code)
 	}
+
+	t.Log("Verifying handler was not called after panic")
 	if handlerCalled {
 		t.Error("handler should not have been called after panic")
 	}
-	t.Log("Middleware panic correctly recovered with 500")
+
+	t.Log("Verifying stack trace was logged")
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "panic in auth middleware") {
+		t.Error("expected panic error message in logs")
+	}
+	if !strings.Contains(logOutput, "stack=") {
+		t.Error("expected stack trace in logs")
+	}
+	// Stack trace should contain the panic source function
+	if !strings.Contains(logOutput, "panicValidator") {
+		t.Error("expected stack trace to contain panic source (panicValidator)")
+	}
+
+	t.Log("Middleware panic correctly recovered with 500 and logged stack trace")
 }
 
 type panicValidator struct{}

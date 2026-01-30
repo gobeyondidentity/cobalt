@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -144,6 +145,7 @@ func (m *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 					"error", err,
 					"method", r.Method,
 					"path", r.URL.Path,
+					"stack", string(debug.Stack()),
 				)
 				m.writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 				// Do NOT call next - request must not proceed
