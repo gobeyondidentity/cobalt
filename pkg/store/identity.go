@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -657,4 +658,257 @@ func (s *Store) DeleteInviteCode(id string) error {
 		return fmt.Errorf("invite code not found: %s", id)
 	}
 	return nil
+}
+
+// ----- DPoP Key Lookup Methods -----
+
+// KeyFingerprint computes SHA256 of raw public key bytes, returns hex-encoded string.
+// Used for duplicate key detection and DPoP binding.
+func KeyFingerprint(publicKey []byte) string {
+	hash := sha256.Sum256(publicKey)
+	return hex.EncodeToString(hash[:])
+}
+
+// ----- Admin Key Methods -----
+
+// CreateAdminKey stores a new admin key binding.
+func (s *Store) CreateAdminKey(ak *AdminKey) error {
+	_, err := s.db.Exec(
+		`INSERT INTO admin_keys (id, operator_id, name, public_key, kid, key_fingerprint, status)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		ak.ID, ak.OperatorID, ak.Name, ak.PublicKey, ak.Kid, ak.KeyFingerprint, ak.Status,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create admin key: %w", err)
+	}
+	return nil
+}
+
+// GetAdminKey retrieves an admin key by ID.
+func (s *Store) GetAdminKey(id string) (*AdminKey, error) {
+	row := s.db.QueryRow(
+		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
+		 FROM admin_keys WHERE id = ?`,
+		id,
+	)
+	return s.scanAdminKey(row)
+}
+
+// GetAdminKeyByKid retrieves an admin key by its DPoP key identifier.
+// Used for O(1) lookup during DPoP token validation.
+func (s *Store) GetAdminKeyByKid(kid string) (*AdminKey, error) {
+	row := s.db.QueryRow(
+		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
+		 FROM admin_keys WHERE kid = ?`,
+		kid,
+	)
+	return s.scanAdminKey(row)
+}
+
+// ListAdminKeysByOperator returns all admin keys for an operator.
+func (s *Store) ListAdminKeysByOperator(operatorID string) ([]*AdminKey, error) {
+	rows, err := s.db.Query(
+		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
+		 FROM admin_keys WHERE operator_id = ? ORDER BY bound_at DESC`,
+		operatorID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list admin keys: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []*AdminKey
+	for rows.Next() {
+		ak, err := s.scanAdminKeyRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, ak)
+	}
+	return keys, rows.Err()
+}
+
+// UpdateAdminKeyLastSeen updates the last seen timestamp for an admin key.
+func (s *Store) UpdateAdminKeyLastSeen(id string) error {
+	now := time.Now().Unix()
+	result, err := s.db.Exec(
+		`UPDATE admin_keys SET last_seen = ? WHERE id = ?`,
+		now, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update admin key last seen: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("admin key not found: %s", id)
+	}
+	return nil
+}
+
+// RevokeAdminKey marks an admin key as revoked.
+func (s *Store) RevokeAdminKey(id string) error {
+	result, err := s.db.Exec(
+		`UPDATE admin_keys SET status = 'revoked' WHERE id = ?`,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to revoke admin key: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("admin key not found: %s", id)
+	}
+	return nil
+}
+
+func (s *Store) scanAdminKey(row *sql.Row) (*AdminKey, error) {
+	var ak AdminKey
+	var boundAt int64
+	var lastSeen sql.NullInt64
+	var name sql.NullString
+
+	err := row.Scan(&ak.ID, &ak.OperatorID, &name, &ak.PublicKey, &ak.Kid,
+		&ak.KeyFingerprint, &ak.Status, &boundAt, &lastSeen)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("admin key not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan admin key: %w", err)
+	}
+
+	if name.Valid {
+		ak.Name = name.String
+	}
+	ak.BoundAt = time.Unix(boundAt, 0)
+	if lastSeen.Valid {
+		t := time.Unix(lastSeen.Int64, 0)
+		ak.LastSeen = &t
+	}
+
+	return &ak, nil
+}
+
+func (s *Store) scanAdminKeyRows(rows *sql.Rows) (*AdminKey, error) {
+	var ak AdminKey
+	var boundAt int64
+	var lastSeen sql.NullInt64
+	var name sql.NullString
+
+	err := rows.Scan(&ak.ID, &ak.OperatorID, &name, &ak.PublicKey, &ak.Kid,
+		&ak.KeyFingerprint, &ak.Status, &boundAt, &lastSeen)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan admin key: %w", err)
+	}
+
+	if name.Valid {
+		ak.Name = name.String
+	}
+	ak.BoundAt = time.Unix(boundAt, 0)
+	if lastSeen.Valid {
+		t := time.Unix(lastSeen.Int64, 0)
+		ak.LastSeen = &t
+	}
+
+	return &ak, nil
+}
+
+// ----- KeyMaker DPoP Lookup Methods -----
+
+// GetKeyMakerByKid retrieves a KeyMaker by its DPoP key identifier.
+// Used for O(1) lookup during DPoP token validation.
+func (s *Store) GetKeyMakerByKid(kid string) (*KeyMaker, error) {
+	row := s.db.QueryRow(
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, kid, key_fingerprint
+		 FROM keymakers WHERE kid = ?`,
+		kid,
+	)
+	return s.scanKeyMakerWithDPoP(row)
+}
+
+func (s *Store) scanKeyMakerWithDPoP(row *sql.Row) (*KeyMaker, error) {
+	var km KeyMaker
+	var boundAt int64
+	var lastSeen sql.NullInt64
+	var kid sql.NullString
+	var keyFingerprint sql.NullString
+
+	err := row.Scan(&km.ID, &km.OperatorID, &km.Name, &km.Platform, &km.SecureElement,
+		&km.DeviceFingerprint, &km.PublicKey, &boundAt, &lastSeen, &km.Status, &kid, &keyFingerprint)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("keymaker not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan keymaker: %w", err)
+	}
+
+	km.BoundAt = time.Unix(boundAt, 0)
+	if lastSeen.Valid {
+		t := time.Unix(lastSeen.Int64, 0)
+		km.LastSeen = &t
+	}
+	if kid.Valid {
+		km.Kid = kid.String
+	}
+	if keyFingerprint.Valid {
+		km.KeyFingerprint = keyFingerprint.String
+	}
+
+	return &km, nil
+}
+
+// ----- DPU DPoP Lookup Methods -----
+
+// GetDPUByKid retrieves a DPU by its DPoP key identifier.
+// Used for O(1) lookup during DPoP token validation.
+func (s *Store) GetDPUByKid(kid string) (*DPU, error) {
+	row := s.db.QueryRow(
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint
+		 FROM dpus WHERE kid = ?`,
+		kid,
+	)
+	return s.scanDPUWithDPoP(row)
+}
+
+func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
+	var dpu DPU
+	var lastSeen sql.NullInt64
+	var createdAt int64
+	var tenantID sql.NullString
+	var labelsJSON string
+	var publicKey []byte
+	var kid sql.NullString
+	var keyFingerprint sql.NullString
+
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen,
+		&createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("DPU not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan DPU: %w", err)
+	}
+
+	if lastSeen.Valid {
+		t := time.Unix(lastSeen.Int64, 0)
+		dpu.LastSeen = &t
+	}
+	dpu.CreatedAt = time.Unix(createdAt, 0)
+	if tenantID.Valid {
+		dpu.TenantID = &tenantID.String
+	}
+	dpu.Labels = make(map[string]string)
+	if labelsJSON != "" {
+		json.Unmarshal([]byte(labelsJSON), &dpu.Labels)
+	}
+	dpu.PublicKey = publicKey
+	if kid.Valid {
+		dpu.Kid = &kid.String
+	}
+	if keyFingerprint.Valid {
+		dpu.KeyFingerprint = &keyFingerprint.String
+	}
+
+	return &dpu, nil
 }
