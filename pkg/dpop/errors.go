@@ -89,6 +89,14 @@ func ErrInvalidIAT(ageSeconds, maxAgeSeconds int64) *DPoPError {
 	}
 }
 
+// ErrIATNonPositive creates an error when iat is zero or negative.
+func ErrIATNonPositive() *DPoPError {
+	return &DPoPError{
+		Code:    ErrCodeInvalidIAT,
+		Message: "iat must be positive",
+	}
+}
+
 // ErrMethodMismatch creates an error when htm doesn't match the request method.
 func ErrMethodMismatch(expected, actual string) *DPoPError {
 	return &DPoPError{
