@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -294,6 +295,9 @@ func TestIsEncryptionEnabled_Encryption(t *testing.T) {
 // ----- Tests for auto-generated encryption key -----
 
 func TestDefaultKeyPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("XDG_DATA_HOME is a Unix/Linux path standard, not applicable on Windows")
+	}
 	// Test with XDG_DATA_HOME set
 	originalXDG := os.Getenv("XDG_DATA_HOME")
 	defer func() {
@@ -400,6 +404,9 @@ func TestLoadOrGenerateKey_EnvVarOverride(t *testing.T) {
 }
 
 func TestLoadOrGenerateKey_FilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Mode().Perm() does not reflect Windows ACLs")
+	}
 	tmpDir := t.TempDir()
 	os.Unsetenv(envKeyName)
 

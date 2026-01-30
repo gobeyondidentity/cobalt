@@ -76,9 +76,10 @@ func TestGetKnownHostsPath(t *testing.T) {
 	t.Run("returns path in user home directory", func(t *testing.T) {
 		path := getKnownHostsPath()
 
-		// Should end with .ssh/known_hosts
-		if !strings.HasSuffix(path, ".ssh/known_hosts") {
-			t.Errorf("path should end with .ssh/known_hosts, got %q", path)
+		// Should end with .ssh/known_hosts (use filepath.Join for cross-platform)
+		expectedSuffix := filepath.Join(".ssh", "known_hosts")
+		if !strings.HasSuffix(path, expectedSuffix) {
+			t.Errorf("path should end with %s, got %q", expectedSuffix, path)
 		}
 
 		// Should be an absolute path

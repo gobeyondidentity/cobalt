@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -938,6 +939,9 @@ func TestLocalAPI_MandatoryStoreWhenLocalAPIEnabled(t *testing.T) {
 	// The actual enforcement is in cmd/aegis/main.go, but we test the store.Open behavior here
 
 	t.Run("StoreOpenFailsOnInvalidPath", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Unix path test not applicable on Windows")
+		}
 		t.Log("Attempting to open store at invalid path")
 		_, err := store.Open("/nonexistent/path/that/should/fail/aegis.db")
 		if err == nil {
