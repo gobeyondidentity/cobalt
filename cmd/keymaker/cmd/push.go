@@ -65,6 +65,9 @@ Examples:
 			return clierror.TokenExpired()
 		}
 
+		// Use DPoP-enabled HTTP client for push requests
+		pushHTTPClient = getDPoPHTTPClient(config.ControlPlaneURL)
+
 		fmt.Printf("Pushing CA '%s' to %s...\n", caName, targetDPU)
 
 		// Call server push endpoint

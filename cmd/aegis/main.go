@@ -21,6 +21,7 @@ import (
 	"github.com/nmelo/secure-infra/internal/aegis"
 	"github.com/nmelo/secure-infra/internal/aegis/localapi"
 	"github.com/nmelo/secure-infra/internal/version"
+	"github.com/nmelo/secure-infra/pkg/dpop"
 	"github.com/nmelo/secure-infra/pkg/store"
 	"github.com/nmelo/secure-infra/pkg/transport"
 	"google.golang.org/grpc"
@@ -177,9 +178,22 @@ func main() {
 	log.Println("Agent stopped")
 }
 
+// aegisLogger implements dpop.Logger for logging DPoP warnings.
+type aegisLogger struct{}
+
+func (l *aegisLogger) Warn(msg string) {
+	log.Printf("WARNING: %s", msg)
+}
+
 // startLocalAPI initializes and starts the local HTTP API server.
 func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Server) (*localapi.Server, error) {
 	log.Printf("Starting local API for Host Agent communication...")
+
+	// Initialize DPoP client for authenticated nexus API requests
+	dpopClient, err := initDPoPClient(cfg.ControlPlaneURL)
+	if err != nil {
+		return nil, fmt.Errorf("DPoP initialization failed: %w", err)
+	}
 
 	// Initialize state persistence store
 	// When local-api is enabled, the store is mandatory for state persistence
@@ -198,6 +212,7 @@ func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Se
 		AllowedHostnames: cfg.AllowedHostnames,
 		AllowTmfifoNet:   *allowTmfifoNet,
 		Store:            stateStore,
+		DPoPClient:       dpopClient,
 		AttestationFetcher: func(ctx context.Context) (*localapi.AttestationInfo, error) {
 			return fetchAttestation(ctx, agentServer)
 		},
@@ -219,6 +234,43 @@ func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Se
 	log.Printf("DPU Name: %s", cfg.DPUName)
 
 	return server, nil
+}
+
+// initDPoPClient initializes the DPoP client for authenticated nexus API requests.
+// Returns an error if aegis is not enrolled (key/kid files don't exist).
+func initDPoPClient(controlPlaneURL string) (*dpop.Client, error) {
+	// Check if aegis is enrolled by verifying key and kid exist
+	keyPath, kidPath := dpop.DefaultKeyPaths("aegis")
+	keyStore := dpop.NewFileKeyStore(keyPath)
+	kidStore := dpop.NewFileKIDStore(kidPath)
+
+	idCfg := dpop.IdentityConfig{
+		KeyStore:  keyStore,
+		KIDStore:  kidStore,
+		ServerURL: controlPlaneURL,
+	}
+
+	if !dpop.IsEnrolled(idCfg) {
+		return nil, fmt.Errorf("aegis is not enrolled. Key file (%s) or kid file (%s) not found. "+
+			"Please run the enrollment process first", keyPath, kidPath)
+	}
+
+	log.Printf("DPoP: loading identity from %s", keyPath)
+
+	// Create DPoP client from configuration
+	dpopCfg := dpop.ClientConfig{
+		ClientType: "aegis",
+		ServerURL:  controlPlaneURL,
+		Logger:     &aegisLogger{},
+	}
+
+	client, _, kid, err := dpop.NewClientFromConfig(dpopCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DPoP client: %w", err)
+	}
+
+	log.Printf("DPoP: identity loaded successfully (kid=%s)", kid)
+	return client, nil
 }
 
 // tryStartTransportListener attempts to create a transport listener for Host Agent communication.
