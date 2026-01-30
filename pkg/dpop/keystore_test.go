@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -85,6 +86,10 @@ func TestFileKeyStoreNotFound(t *testing.T) {
 }
 
 func TestFileKeyStoreInvalidPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based test not applicable on Windows; see permissions_windows_test.go")
+	}
+
 	t.Log("Testing FileKeyStore rejects file with 0644 permissions")
 
 	tmpDir := t.TempDir()
@@ -113,6 +118,10 @@ func TestFileKeyStoreInvalidPermissions(t *testing.T) {
 }
 
 func TestFileKeyStoreInvalidPermissions0666(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based test not applicable on Windows; see permissions_windows_test.go")
+	}
+
 	t.Log("Testing FileKeyStore rejects file with 0666 permissions")
 
 	tmpDir := t.TempDir()
@@ -232,6 +241,10 @@ func TestFileKIDStoreNotFound(t *testing.T) {
 }
 
 func TestFileKIDStoreInvalidPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based test not applicable on Windows; see permissions_windows_test.go")
+	}
+
 	t.Log("Testing FileKIDStore rejects file with 0644 permissions")
 
 	tmpDir := t.TempDir()
@@ -403,17 +416,23 @@ func TestCheckFilePermissions(t *testing.T) {
 	// Test correct permissions
 	goodPath := filepath.Join(tmpDir, "good")
 	os.WriteFile(goodPath, []byte("test"), 0600)
-
-	if err := CheckFilePermissions(goodPath); err != nil {
-		t.Errorf("expected no error for 0600, got: %v", err)
+	// On Windows, we need to explicitly set restrictive DACL
+	if err := setFilePermissions(goodPath); err != nil {
+		t.Fatalf("failed to set permissions: %v", err)
 	}
 
-	// Test incorrect permissions
-	badPath := filepath.Join(tmpDir, "bad")
-	os.WriteFile(badPath, []byte("test"), 0644)
+	if err := CheckFilePermissions(goodPath); err != nil {
+		t.Errorf("expected no error for properly secured file, got: %v", err)
+	}
 
-	if err := CheckFilePermissions(badPath); err == nil {
-		t.Error("expected error for 0644 permissions")
+	// Test incorrect permissions (Unix-specific test using chmod)
+	if runtime.GOOS != "windows" {
+		badPath := filepath.Join(tmpDir, "bad")
+		os.WriteFile(badPath, []byte("test"), 0644)
+
+		if err := CheckFilePermissions(badPath); err == nil {
+			t.Error("expected error for 0644 permissions")
+		}
 	}
 
 	// Test nonexistent file
