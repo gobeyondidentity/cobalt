@@ -9,6 +9,8 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+
+	"github.com/go-jose/go-jose/v4"
 )
 
 // GenerateKeyPair generates a new Ed25519 key pair using cryptographically
@@ -131,4 +133,56 @@ func JWKToPublicKey(jwk *JWK) (ed25519.PublicKey, error) {
 	}
 
 	return ed25519.PublicKey(keyBytes), nil
+}
+
+// PublicKeyToJoseJWK converts an Ed25519 public key to a go-jose JSONWebKey.
+// This is used for embedding JWK in DPoP headers during enrollment.
+func PublicKeyToJoseJWK(publicKey ed25519.PublicKey) jose.JSONWebKey {
+	return jose.JSONWebKey{
+		Key:       publicKey,
+		Algorithm: string(jose.EdDSA),
+	}
+}
+
+// JoseJWKToPublicKey converts a go-jose JSONWebKey to an Ed25519 public key.
+// Performs strict validation that the key is an Ed25519 public key.
+//
+// Returns an error if:
+//   - key is not an Ed25519 public key
+//   - key is nil
+func JoseJWKToPublicKey(jwk jose.JSONWebKey) (ed25519.PublicKey, error) {
+	if jwk.Key == nil {
+		return nil, fmt.Errorf("invalid JWK: key is nil")
+	}
+
+	pubKey, ok := jwk.Key.(ed25519.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("invalid JWK: expected Ed25519 public key, got %T", jwk.Key)
+	}
+
+	if len(pubKey) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("invalid JWK: public key has wrong length %d, expected %d", len(pubKey), ed25519.PublicKeySize)
+	}
+
+	return pubKey, nil
+}
+
+// JWKToJoseJWK converts our custom JWK struct to a go-jose JSONWebKey.
+// This allows converting from the legacy JWK format to go-jose format.
+func JWKToJoseJWK(jwk *JWK) (jose.JSONWebKey, error) {
+	pubKey, err := JWKToPublicKey(jwk)
+	if err != nil {
+		return jose.JSONWebKey{}, err
+	}
+	return PublicKeyToJoseJWK(pubKey), nil
+}
+
+// JoseJWKToJWK converts a go-jose JSONWebKey to our custom JWK struct.
+// This allows converting from go-jose format to the legacy JWK format.
+func JoseJWKToJWK(jwk jose.JSONWebKey) (*JWK, error) {
+	pubKey, err := JoseJWKToPublicKey(jwk)
+	if err != nil {
+		return nil, err
+	}
+	return PublicKeyToJWK(pubKey), nil
 }

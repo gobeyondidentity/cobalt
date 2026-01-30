@@ -1007,6 +1007,319 @@ func TestTimingAttack_SignatureVerification(t *testing.T) {
 }
 
 // =============================================================================
+// Test Category 8: go-jose Specific Security Tests
+// =============================================================================
+// These tests verify security properties specific to the go-jose refactoring.
+// They ensure that go-jose is configured correctly and handles edge cases.
+// =============================================================================
+
+func TestGoJose_UnknownCritHeader(t *testing.T) {
+	// Attack scenario: Attacker includes an unknown critical header extension.
+	// Per RFC 7515 Section 4.1.11, if "crit" contains an unknown header, the JWT
+	// MUST be rejected.
+	//
+	// Expected behavior: Proof rejected by go-jose.
+	// Why it matters: Prevents unknown extension attacks.
+	t.Log("Testing unknown crit header rejection")
+
+	pub, priv := testKeyPair(t)
+	kid := "test-key"
+	v := NewValidator(DefaultValidatorConfig())
+	keyLookup := func(k string) ed25519.PublicKey {
+		if k == kid {
+			return pub
+		}
+		return nil
+	}
+
+	// Create a header with crit extension
+	headerMap := map[string]interface{}{
+		"typ":    TypeDPoP,
+		"alg":    AlgEdDSA,
+		"kid":    kid,
+		"crit":   []string{"x-evil-extension"},
+		"x-evil-extension": "malicious-value",
+	}
+	headerJSON, _ := json.Marshal(headerMap)
+	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
+
+	claims := validClaims()
+	claimsJSON, _ := json.Marshal(claims)
+	claimsB64 := base64.RawURLEncoding.EncodeToString(claimsJSON)
+
+	signingInput := headerB64 + "." + claimsB64
+	signature := ed25519.Sign(priv, []byte(signingInput))
+	signatureB64 := base64.RawURLEncoding.EncodeToString(signature)
+	proof := signingInput + "." + signatureB64
+
+	t.Log("Validating proof with unknown crit header")
+	_, err := v.ValidateProof(proof, "POST", "https://example.com/api/push", keyLookup)
+
+	if err == nil {
+		t.Fatal("SECURITY VULNERABILITY: proof with unknown crit header was accepted")
+	}
+	t.Logf("Correctly rejected unknown crit header: %v", err)
+}
+
+func TestGoJose_Base64PaddingRejection(t *testing.T) {
+	// Attack scenario: Attacker sends proof with standard base64 padding (=).
+	// JWTs MUST use base64url encoding WITHOUT padding per RFC 7515.
+	//
+	// Expected behavior: Proof rejected.
+	// Why it matters: Non-standard encoding could bypass validation in some parsers.
+	t.Log("Testing base64 padding rejection")
+
+	v := NewValidator(DefaultValidatorConfig())
+	keyLookup := func(k string) ed25519.PublicKey { return nil }
+
+	// Create a proof with = padding in the header
+	paddedProof := "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwia2lkIjoidGVzdCJ9==.eyJqdGkiOiJ0ZXN0In0.c2ln"
+
+	t.Log("Validating proof with base64 padding")
+	_, err := v.ValidateProof(paddedProof, "POST", "https://example.com/api", keyLookup)
+
+	if err == nil {
+		t.Fatal("SECURITY VULNERABILITY: proof with base64 padding was accepted")
+	}
+	if ErrorCode(err) != ErrCodeInvalidProof {
+		t.Errorf("expected error code %s, got %s", ErrCodeInvalidProof, ErrorCode(err))
+	}
+	t.Logf("Correctly rejected base64 padding: %v", err)
+}
+
+func TestGoJose_JWKWrongKeyType(t *testing.T) {
+	// Attack scenario: During enrollment, attacker sends a JWK with wrong kty/crv
+	// (e.g., EC key instead of OKP/Ed25519).
+	//
+	// Expected behavior: Proof rejected with appropriate error.
+	// Why it matters: Prevents key type confusion attacks.
+	t.Log("Testing JWK with wrong key type rejection")
+
+	// This test validates the JWKToPublicKey function which is called during enrollment
+	// when the server extracts the public key from the JWK in the header.
+
+	// Test EC key type (wrong)
+	ecJWK := &JWK{
+		Kty: "EC",
+		Crv: "P-256",
+		X:   base64.RawURLEncoding.EncodeToString(make([]byte, 32)),
+	}
+	_, err := JWKToPublicKey(ecJWK)
+	if err == nil {
+		t.Error("SECURITY VULNERABILITY: EC key type was accepted")
+	}
+	t.Logf("Correctly rejected EC key type: %v", err)
+
+	// Test RSA key type (wrong)
+	rsaJWK := &JWK{
+		Kty: "RSA",
+		Crv: "",
+		X:   base64.RawURLEncoding.EncodeToString(make([]byte, 256)),
+	}
+	_, err = JWKToPublicKey(rsaJWK)
+	if err == nil {
+		t.Error("SECURITY VULNERABILITY: RSA key type was accepted")
+	}
+	t.Logf("Correctly rejected RSA key type: %v", err)
+
+	// Test OKP with wrong curve (Ed448 instead of Ed25519)
+	wrongCurveJWK := &JWK{
+		Kty: "OKP",
+		Crv: "Ed448",
+		X:   base64.RawURLEncoding.EncodeToString(make([]byte, 57)), // Ed448 key size
+	}
+	_, err = JWKToPublicKey(wrongCurveJWK)
+	if err == nil {
+		t.Error("SECURITY VULNERABILITY: Ed448 curve was accepted")
+	}
+	t.Logf("Correctly rejected Ed448 curve: %v", err)
+}
+
+func TestGoJose_OversizedProofDoSPrevention(t *testing.T) {
+	// Attack scenario: Attacker sends a 1MB proof to cause memory exhaustion.
+	// The size check MUST happen BEFORE any parsing to prevent DoS.
+	//
+	// Expected behavior: Proof rejected quickly without allocating significant memory.
+	// Why it matters: Prevents DoS via memory exhaustion.
+	t.Log("Testing oversized proof DoS prevention (size check before parse)")
+
+	v := NewValidator(DefaultValidatorConfig())
+	keyLookup := func(k string) ed25519.PublicKey { return nil }
+
+	// Create a 1MB proof
+	largePayload := strings.Repeat("a", 1024*1024)
+	proof := "eyJhbGciOiJFZERTQSIsInR5cCI6ImRwb3ArandsIn0." + largePayload + ".signature"
+
+	// Measure time to reject
+	start := time.Now()
+	_, err := v.ValidateProof(proof, "POST", "https://example.com/api", keyLookup)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("SECURITY VULNERABILITY: oversized proof was accepted")
+	}
+
+	// Should be rejected very quickly (< 1ms) since size check is first
+	if elapsed > 10*time.Millisecond {
+		t.Errorf("Size check took too long (%v), may indicate DoS vulnerability", elapsed)
+	}
+
+	t.Logf("Rejected 1MB proof in %v", elapsed)
+}
+
+func TestGoJose_WireFormatInterop(t *testing.T) {
+	// Test wire format compatibility: proofs generated with go-jose should validate
+	// with the old code path (if preserved), and vice versa.
+	// This test ensures the refactoring doesn't break existing clients.
+	t.Log("Testing wire format interoperability")
+
+	pub, priv := testKeyPair(t)
+	kid := "test-key"
+
+	// Generate proof with new go-jose code
+	proof, err := GenerateProof(priv, "POST", "https://example.com/api/push", kid)
+	if err != nil {
+		t.Fatalf("failed to generate proof: %v", err)
+	}
+
+	// Verify with VerifyProof (which uses raw ed25519.Verify)
+	if !VerifyProof(proof, pub) {
+		t.Error("go-jose generated proof doesn't verify with raw ed25519")
+	}
+
+	// Verify structure
+	header, payload, _, err := ParseProof(proof)
+	if err != nil {
+		t.Fatalf("failed to parse proof: %v", err)
+	}
+
+	// Check header fields
+	if header["typ"] != "dpop+jwt" {
+		t.Errorf("typ: expected dpop+jwt, got %v", header["typ"])
+	}
+	if header["alg"] != "EdDSA" {
+		t.Errorf("alg: expected EdDSA, got %v", header["alg"])
+	}
+	if header["kid"] != kid {
+		t.Errorf("kid: expected %s, got %v", kid, header["kid"])
+	}
+
+	// Check payload fields
+	if payload["htm"] != "POST" {
+		t.Errorf("htm: expected POST, got %v", payload["htm"])
+	}
+	if payload["htu"] != "https://example.com/api/push" {
+		t.Errorf("htu: expected https://example.com/api/push, got %v", payload["htu"])
+	}
+	if payload["jti"] == nil || payload["jti"] == "" {
+		t.Error("jti is missing or empty")
+	}
+	if payload["iat"] == nil {
+		t.Error("iat is missing")
+	}
+
+	t.Log("Wire format interoperability verified")
+}
+
+func TestGoJose_EnrollmentJWKFormat(t *testing.T) {
+	// Test that enrollment proofs (with embedded JWK) work correctly
+	t.Log("Testing enrollment proof with embedded JWK")
+
+	pub, priv := testKeyPair(t)
+
+	// Generate enrollment proof (no kid, includes JWK)
+	proof, err := GenerateProof(priv, "POST", "https://example.com/enroll", "")
+	if err != nil {
+		t.Fatalf("failed to generate enrollment proof: %v", err)
+	}
+
+	// Parse and verify JWK structure
+	header, _, _, err := ParseProof(proof)
+	if err != nil {
+		t.Fatalf("failed to parse proof: %v", err)
+	}
+
+	// Check that jwk is present and kid is not
+	if header["kid"] != nil && header["kid"] != "" {
+		t.Errorf("enrollment proof should not have kid, got %v", header["kid"])
+	}
+
+	jwk, ok := header["jwk"].(map[string]interface{})
+	if !ok {
+		t.Fatal("jwk should be present in enrollment proof header")
+	}
+
+	// Verify JWK fields
+	if jwk["kty"] != "OKP" {
+		t.Errorf("jwk.kty: expected OKP, got %v", jwk["kty"])
+	}
+	if jwk["alg"] != "EdDSA" {
+		t.Errorf("jwk.alg: expected EdDSA, got %v", jwk["alg"])
+	}
+
+	// Verify the embedded public key matches
+	xB64, ok := jwk["x"].(string)
+	if !ok {
+		t.Fatal("jwk.x is missing or not a string")
+	}
+	xBytes, err := base64.RawURLEncoding.DecodeString(xB64)
+	if err != nil {
+		t.Fatalf("failed to decode jwk.x: %v", err)
+	}
+	if len(xBytes) != ed25519.PublicKeySize {
+		t.Errorf("jwk.x has wrong length: %d", len(xBytes))
+	}
+
+	// Compare with original public key
+	for i := range pub {
+		if pub[i] != xBytes[i] {
+			t.Error("embedded public key doesn't match original")
+			break
+		}
+	}
+
+	// Verify signature
+	if !VerifyProof(proof, pub) {
+		t.Error("enrollment proof signature verification failed")
+	}
+
+	t.Log("Enrollment JWK format verified")
+}
+
+func TestGoJose_ValidatorAcceptsGoJoseProof(t *testing.T) {
+	// End-to-end test: generate with go-jose, validate with go-jose validator
+	t.Log("Testing end-to-end: generate and validate with go-jose")
+
+	pub, priv := testKeyPair(t)
+	kid := "test-key"
+	v := NewValidator(DefaultValidatorConfig())
+	keyLookup := func(k string) ed25519.PublicKey {
+		if k == kid {
+			return pub
+		}
+		return nil
+	}
+
+	// Generate proof
+	proof, err := GenerateProof(priv, "POST", "https://example.com/api/push", kid)
+	if err != nil {
+		t.Fatalf("failed to generate proof: %v", err)
+	}
+
+	// Validate proof
+	gotKid, err := v.ValidateProof(proof, "POST", "https://example.com/api/push", keyLookup)
+	if err != nil {
+		t.Fatalf("validation failed: %v", err)
+	}
+
+	if gotKid != kid {
+		t.Errorf("expected kid %q, got %q", kid, gotKid)
+	}
+
+	t.Log("End-to-end go-jose flow verified")
+}
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 

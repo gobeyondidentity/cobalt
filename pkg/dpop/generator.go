@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/google/uuid"
 )
 
@@ -46,6 +48,15 @@ func (g *Ed25519Generator) SignRequest(req *http.Request, kid string) error {
 	return nil
 }
 
+// dpopClaims represents the DPoP-specific JWT claims.
+// This type is used with go-jose's jwt package for proper serialization.
+type dpopClaims struct {
+	JTI string `json:"jti"`
+	HTM string `json:"htm"`
+	HTU string `json:"htu"`
+	IAT int64  `json:"iat"`
+}
+
 // GenerateProof creates a DPoP proof JWT for an HTTP request.
 //
 // The proof binds the request to the caller's private key, preventing token theft
@@ -61,53 +72,50 @@ func (g *Ed25519Generator) SignRequest(req *http.Request, kid string) error {
 //
 // Returns the signed JWT string in format: base64url(header).base64url(payload).base64url(signature)
 func GenerateProof(privateKey ed25519.PrivateKey, method, uri string, kid string) (string, error) {
-	// Derive public key from private key for JWK embedding
-	publicKey := privateKey.Public().(ed25519.PublicKey)
-
-	// Build header with either kid or jwk
-	header := Header{
-		Typ: TypeDPoP,
-		Alg: AlgEdDSA,
-	}
-	if kid != "" {
-		header.Kid = kid
-	} else {
-		header.JWK = PublicKeyToJWK(publicKey)
-	}
-
 	// Normalize URI per RFC 9449
 	normalizedURI, err := NormalizeURI(uri)
 	if err != nil {
 		return "", fmt.Errorf("failed to normalize URI: %w", err)
 	}
 
-	// Build claims with unique jti
-	claims := Claims{
+	// Build signer options
+	signerOpts := (&jose.SignerOptions{}).WithType("dpop+jwt")
+
+	// If kid is provided, use it; otherwise embed JWK
+	if kid != "" {
+		signerOpts = signerOpts.WithHeader("kid", kid)
+	} else {
+		// Derive public key from private key for JWK embedding
+		publicKey := privateKey.Public().(ed25519.PublicKey)
+		jwk := jose.JSONWebKey{
+			Key:       publicKey,
+			Algorithm: string(jose.EdDSA),
+		}
+		signerOpts = signerOpts.WithHeader("jwk", jwk)
+	}
+
+	// Create signer
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.EdDSA, Key: privateKey}, signerOpts)
+	if err != nil {
+		return "", fmt.Errorf("failed to create signer: %w", err)
+	}
+
+	// Build claims
+	claims := dpopClaims{
 		JTI: uuid.New().String(),
 		HTM: method, // Preserve exact case
 		HTU: normalizedURI,
 		IAT: time.Now().Unix(),
 	}
 
-	// Encode header and payload
-	headerJSON, err := json.Marshal(header)
+	// Create signed JWT
+	builder := jwt.Signed(signer).Claims(claims)
+	proof, err := builder.Serialize()
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal header: %w", err)
-	}
-	payloadJSON, err := json.Marshal(claims)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal claims: %w", err)
+		return "", fmt.Errorf("failed to serialize proof: %w", err)
 	}
 
-	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
-	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
-
-	// Create signing input and sign
-	signingInput := headerB64 + "." + payloadB64
-	signature := ed25519.Sign(privateKey, []byte(signingInput))
-	signatureB64 := base64.RawURLEncoding.EncodeToString(signature)
-
-	return signingInput + "." + signatureB64, nil
+	return proof, nil
 }
 
 // SignRequest adds a DPoP header to an http.Request.

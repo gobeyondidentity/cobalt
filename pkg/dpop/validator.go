@@ -2,10 +2,10 @@ package dpop
 
 import (
 	"crypto/ed25519"
-	"encoding/base64"
-	"encoding/json"
-	"strings"
 	"time"
+
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 )
 
 const (
@@ -47,78 +47,89 @@ func NewValidator(config ValidatorConfig) *Validator {
 	return &Validator{config: config}
 }
 
+// validatorClaims represents the claims we extract from DPoP proofs.
+type validatorClaims struct {
+	JTI string `json:"jti"`
+	HTM string `json:"htm"`
+	HTU string `json:"htu"`
+	IAT int64  `json:"iat"`
+}
+
 // ValidateProof validates a DPoP proof and returns the kid if valid.
 // The keyLookup function is called to retrieve the public key for the kid.
 // Returns (kid, nil) on success, or ("", error) on failure.
 //
 // Validation order (per security requirements):
 // 1. Empty check: proof cannot be empty string (returns dpop.missing_proof)
-// 2. Format check: exactly 3 base64url parts separated by dots
-// 3. Size limit: reject proofs > 8KB total
-// 4. Parse header: base64url decode, JSON unmarshal
-// 5. typ check: must equal "dpop+jwt" exactly
-// 6. alg check: must equal "EdDSA" exactly (algorithm confusion prevention)
-// 7. Parse payload: base64url decode, JSON unmarshal
-// 8. kid presence: kid must be non-empty in header
-// 9. Key lookup: call keyLookup(kid); if nil, return ErrUnknownKey
-// 10. Signature verify: ed25519.Verify(publicKey, signingInput, signature)
-// 11. htm check: must match method parameter (case-sensitive)
-// 12. htu check: must match normalized uri parameter
-// 13. iat check: must be within ClockSkew of current time
+// 2. Size limit: reject proofs > 8KB BEFORE any parsing (DoS prevention)
+// 3. Parse with go-jose: ONLY accept EdDSA algorithm (algorithm confusion prevention)
+// 4. typ check: must equal "dpop+jwt" exactly
+// 5. kid presence: kid must be non-empty in header
+// 6. Key lookup: call keyLookup(kid); if nil, return ErrUnknownKey
+// 7. Signature verify: via go-jose Claims extraction with public key
+// 8. htm check: must match method parameter (case-sensitive)
+// 9. htu check: must match normalized uri parameter
+// 10. iat check: must be within ClockSkew of current time
 func (v *Validator) ValidateProof(proof, method, uri string, keyLookup KeyLookup) (string, error) {
 	// Step 1: Check proof is not empty
 	if proof == "" {
 		return "", ErrMissingProof()
 	}
 
-	// Step 2: Format check - exactly 3 parts
-	parts := strings.Split(proof, ".")
-	if len(parts) != 3 {
-		return "", ErrInvalidProof("JWT must have exactly 3 parts")
-	}
-
-	// Check for empty parts
-	if parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return "", ErrInvalidProof("JWT parts cannot be empty")
-	}
-
-	// Step 2: Size limit
+	// Step 2: Size limit BEFORE any parsing (DoS prevention)
+	// CRITICAL: This must happen before go-jose parsing to prevent memory exhaustion
 	if len(proof) > maxProofSize {
 		return "", ErrInvalidProof("proof exceeds maximum size of 8KB")
 	}
 
-	// Step 3: Parse header
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	// Step 3: Parse with go-jose, using ONLY EdDSA algorithm
+	// CRITICAL: The algorithm allowlist prevents algorithm confusion attacks (CVE-2015-2951)
+	// We ONLY accept EdDSA - any other algorithm in the header will be rejected
+	parsedJWT, err := jwt.ParseSigned(proof, []jose.SignatureAlgorithm{jose.EdDSA})
 	if err != nil {
-		return "", ErrInvalidProof("invalid base64url encoding in header")
+		return "", ErrInvalidProof("failed to parse JWT: " + err.Error())
 	}
 
-	var header Header
-	if err := json.Unmarshal(headerBytes, &header); err != nil {
-		return "", ErrInvalidProof("invalid JSON in header")
+	// Verify we have at least one signature
+	if len(parsedJWT.Headers) == 0 {
+		return "", ErrInvalidProof("JWT has no headers")
 	}
+
+	// Get the first (and should be only) header
+	header := parsedJWT.Headers[0]
 
 	// Step 4: typ check - must equal "dpop+jwt" exactly
-	if header.Typ != TypeDPoP {
+	// CRITICAL: go-jose doesn't enforce typ, so we must check explicitly
+	typ, ok := header.ExtraHeaders["typ"]
+	if !ok {
+		return "", ErrInvalidProof("typ must be \"dpop+jwt\"")
+	}
+	typStr, ok := typ.(string)
+	if !ok || typStr != TypeDPoP {
 		return "", ErrInvalidProof("typ must be \"dpop+jwt\"")
 	}
 
-	// Step 5: alg check - must equal "EdDSA" exactly
-	// CRITICAL: This is hardcoded to prevent algorithm confusion attacks.
-	// We NEVER use the alg from the header to select the verification algorithm.
-	if header.Alg != AlgEdDSA {
-		return "", ErrInvalidProof("alg must be \"EdDSA\"")
+	// Step 5: kid presence check
+	if header.KeyID == "" {
+		return "", ErrInvalidProof("kid is required in header")
 	}
 
-	// Step 6: Parse payload
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return "", ErrInvalidProof("invalid base64url encoding in payload")
+	// Step 6: Key lookup
+	publicKey := keyLookup(header.KeyID)
+	if publicKey == nil {
+		return "", ErrUnknownKey(header.KeyID)
 	}
 
-	var claims Claims
-	if err := json.Unmarshal(payloadBytes, &claims); err != nil {
-		return "", ErrInvalidProof("invalid JSON in payload")
+	// Validate public key length
+	if len(publicKey) != ed25519.PublicKeySize {
+		return "", ErrInvalidProof("invalid public key size")
+	}
+
+	// Step 7: Signature verification and claims extraction
+	// go-jose verifies the signature when extracting claims
+	var claims validatorClaims
+	if err := parsedJWT.Claims(publicKey, &claims); err != nil {
+		return "", ErrInvalidSignature()
 	}
 
 	// Check required claims presence
@@ -129,47 +140,12 @@ func (v *Validator) ValidateProof(proof, method, uri string, keyLookup KeyLookup
 		return "", ErrInvalidProof("htu claim is required")
 	}
 
-	// Step 7: kid presence check
-	if header.Kid == "" {
-		return "", ErrInvalidProof("kid is required in header")
-	}
-
-	// Step 8: Key lookup
-	publicKey := keyLookup(header.Kid)
-	if publicKey == nil {
-		return "", ErrUnknownKey(header.Kid)
-	}
-
-	// Validate public key length
-	if len(publicKey) != ed25519.PublicKeySize {
-		return "", ErrInvalidProof("invalid public key size")
-	}
-
-	// Step 9: Signature verification
-	signatureBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return "", ErrInvalidProof("invalid base64url encoding in signature")
-	}
-
-	// Ed25519 signature must be exactly 64 bytes
-	if len(signatureBytes) != ed25519.SignatureSize {
-		return "", ErrInvalidSignature()
-	}
-
-	// The signing input is "header.payload" (the first two parts)
-	signingInput := parts[0] + "." + parts[1]
-
-	// Use ed25519.Verify which is inherently constant-time
-	if !ed25519.Verify(publicKey, []byte(signingInput), signatureBytes) {
-		return "", ErrInvalidSignature()
-	}
-
-	// Step 10: htm check - must match method parameter (case-sensitive)
+	// Step 8: htm check - must match method parameter (case-sensitive)
 	if claims.HTM != method {
 		return "", ErrMethodMismatch(claims.HTM, method)
 	}
 
-	// Step 11: htu check - must match normalized uri parameter
+	// Step 9: htu check - must match normalized uri parameter
 	normalizedProofURI, err := NormalizeURI(claims.HTU)
 	if err != nil {
 		return "", ErrInvalidProof("invalid htu URL")
@@ -182,7 +158,7 @@ func (v *Validator) ValidateProof(proof, method, uri string, keyLookup KeyLookup
 		return "", ErrURIMismatch(normalizedProofURI, normalizedRequestURI)
 	}
 
-	// Step 12: iat check - must be within acceptable window
+	// Step 10: iat check - must be within acceptable window
 	now := time.Now().Unix()
 	iat := claims.IAT
 
@@ -204,5 +180,5 @@ func (v *Validator) ValidateProof(proof, method, uri string, keyLookup KeyLookup
 		return "", ErrInvalidIAT(-futureOffset, maxAge)
 	}
 
-	return header.Kid, nil
+	return header.KeyID, nil
 }
