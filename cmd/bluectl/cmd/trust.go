@@ -73,7 +73,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 
 		req := createTrustRequest{
 			SourceHost:    sourceHostname,
@@ -137,7 +140,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		relationships, err := client.ListTrust(cmd.Context(), tenantFilter)
 		if err != nil {
 			return fmt.Errorf("failed to list trust relationships: %w", err)
@@ -189,7 +195,10 @@ Examples:
 			return err
 		}
 
-		client := NewNexusClient(serverURL)
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		if err := client.DeleteTrust(cmd.Context(), trustID); err != nil {
 			return fmt.Errorf("failed to delete trust relationship: %w", err)
 		}

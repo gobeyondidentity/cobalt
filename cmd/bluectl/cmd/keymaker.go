@@ -62,7 +62,10 @@ Examples:
 }
 
 func listKeyMakersRemote(ctx context.Context, serverURL, operatorFilter string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 
 	// If filtering by email, we need to resolve to operator ID
 	var operatorID string
@@ -129,7 +132,10 @@ Examples:
 }
 
 func revokeKeyMakerRemote(ctx context.Context, serverURL, id string, skipConfirm bool) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 
 	// Get KeyMaker details first for confirmation and output
 	km, err := client.GetKeyMaker(ctx, id)

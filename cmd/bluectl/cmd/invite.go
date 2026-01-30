@@ -37,7 +37,10 @@ Examples:
 }
 
 func removeInviteRemote(ctx context.Context, serverURL, code string) error {
-	client := NewNexusClient(serverURL)
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
 	if err := client.RemoveInviteCode(ctx, code); err != nil {
 		return fmt.Errorf("failed to remove invite: %w", err)
 	}

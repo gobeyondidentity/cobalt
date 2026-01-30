@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1556,5 +1557,144 @@ func TestNexusClient_DPoP_FreshProofPerRequest(t *testing.T) {
 
 	if jti1 == jti2 {
 		t.Errorf("expected different jti for each request, but both were %s", jti1)
+	}
+}
+
+// ----- NewNexusClientWithDPoP Tests -----
+
+func TestNewNexusClientWithDPoPFromPaths_LoadsFromFiles(t *testing.T) {
+	t.Log("Testing that newNexusClientWithDPoPFromPaths loads keys from files")
+
+	// Create temp directory
+	tmpDir := t.TempDir()
+
+	// Generate test key
+	_, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	// Create key and kid files
+	keyPath := filepath.Join(tmpDir, "key.pem")
+	kidPath := filepath.Join(tmpDir, "kid")
+	testKID := "test-kid-from-file"
+
+	t.Log("Saving key to file")
+	keyStore := dpop.NewFileKeyStore(keyPath)
+	if err := keyStore.Save(privKey); err != nil {
+		t.Fatalf("failed to save key: %v", err)
+	}
+
+	t.Log("Saving kid to file")
+	kidStore := dpop.NewFileKIDStore(kidPath)
+	if err := kidStore.Save(testKID); err != nil {
+		t.Fatalf("failed to save kid: %v", err)
+	}
+
+	// Set up test server to verify DPoP header
+	var receivedDPoPHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedDPoPHeader = r.Header.Get("DPoP")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]dpuResponse{})
+	}))
+	defer server.Close()
+
+	t.Log("Creating client with DPoP from paths")
+	client, err := newNexusClientWithDPoPFromPaths(server.URL, keyPath, kidPath)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	t.Log("Verifying DPoP is enabled")
+	if !client.IsDPoPEnabled() {
+		t.Error("expected DPoP to be enabled")
+	}
+
+	t.Log("Making request to verify DPoP header is sent")
+	_, err = client.ListDPUs(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Log("Verifying DPoP header was present")
+	if receivedDPoPHeader == "" {
+		t.Error("expected DPoP header to be present")
+		return
+	}
+
+	t.Log("Verifying kid in DPoP proof matches")
+	header, _, _, err := dpop.ParseProof(receivedDPoPHeader)
+	if err != nil {
+		t.Fatalf("failed to parse DPoP proof: %v", err)
+	}
+
+	if header["kid"] != testKID {
+		t.Errorf("expected kid=%s, got %v", testKID, header["kid"])
+	}
+}
+
+func TestNewNexusClientWithDPoPFromPaths_NoFilesReturnsUnauthenticated(t *testing.T) {
+	t.Log("Testing that missing key files returns unauthenticated client")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "nonexistent", "key.pem")
+	kidPath := filepath.Join(tmpDir, "nonexistent", "kid")
+
+	client, err := newNexusClientWithDPoPFromPaths("http://localhost:8080", keyPath, kidPath)
+	if err != nil {
+		t.Fatalf("expected no error for missing files, got: %v", err)
+	}
+
+	t.Log("Verifying DPoP is disabled for pre-enrollment client")
+	if client.IsDPoPEnabled() {
+		t.Error("expected DPoP to be disabled when no files exist")
+	}
+}
+
+func TestNewNexusClientWithDPoPFromPaths_MismatchedFilesReturnsError(t *testing.T) {
+	t.Log("Testing that mismatched key/kid files returns error")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "key.pem")
+	kidPath := filepath.Join(tmpDir, "kid")
+
+	// Create only the key file (not the kid file)
+	_, privKey, _ := ed25519.GenerateKey(nil)
+	keyStore := dpop.NewFileKeyStore(keyPath)
+	if err := keyStore.Save(privKey); err != nil {
+		t.Fatalf("failed to save key: %v", err)
+	}
+
+	t.Log("Creating client with key but no kid file")
+	_, err := newNexusClientWithDPoPFromPaths("http://localhost:8080", keyPath, kidPath)
+	if err == nil {
+		t.Error("expected error when key exists but kid is missing")
+		return
+	}
+
+	if !strings.Contains(err.Error(), "kid file missing") {
+		t.Errorf("expected error about missing kid file, got: %v", err)
+	}
+
+	// Now test the opposite: kid exists but key doesn't
+	t.Log("Creating client with kid but no key file")
+	tmpDir2 := t.TempDir()
+	keyPath2 := filepath.Join(tmpDir2, "key.pem")
+	kidPath2 := filepath.Join(tmpDir2, "kid")
+
+	kidStore := dpop.NewFileKIDStore(kidPath2)
+	if err := kidStore.Save("test-kid"); err != nil {
+		t.Fatalf("failed to save kid: %v", err)
+	}
+
+	_, err = newNexusClientWithDPoPFromPaths("http://localhost:8080", keyPath2, kidPath2)
+	if err == nil {
+		t.Error("expected error when kid exists but key is missing")
+		return
+	}
+
+	if !strings.Contains(err.Error(), "key file missing") {
+		t.Errorf("expected error about missing key file, got: %v", err)
 	}
 }

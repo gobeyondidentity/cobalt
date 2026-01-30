@@ -109,7 +109,10 @@ the DPU's firmware integrity.`,
 			return err
 		}
 
-		nexusClient := NewNexusClient(serverURL)
+		nexusClient, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		dpu, err := nexusClient.GetDPU(cmd.Context(), args[0])
 		if err != nil {
 			return fmt.Errorf("DPU not found: %s", args[0])
@@ -208,7 +211,10 @@ compared against reference values from a CoRIM.`,
 			return err
 		}
 
-		nexusClient := NewNexusClient(serverURL)
+		nexusClient, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		dpu, err := nexusClient.GetDPU(cmd.Context(), args[0])
 		if err != nil {
 			return fmt.Errorf("DPU not found: %s", args[0])
@@ -281,7 +287,10 @@ This command:
 			return err
 		}
 
-		nexusClient := NewNexusClient(serverURL)
+		nexusClient, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 		dpu, err := nexusClient.GetDPU(cmd.Context(), args[0])
 		if err != nil {
 			return fmt.Errorf("DPU not found: %s", args[0])

@@ -32,6 +32,60 @@ func NewNexusClient(baseURL string) *NexusClient {
 	}
 }
 
+// NewNexusClientWithDPoP creates a NexusClient with DPoP authentication if keys exist.
+// It loads the key from ~/.bluectl/key.pem and kid from ~/.bluectl/kid.
+// If keys don't exist (pre-enrollment), it returns an unauthenticated client.
+// Returns an error if keys exist but cannot be loaded (permission issues, corrupt files).
+func NewNexusClientWithDPoP(baseURL string) (*NexusClient, error) {
+	keyPath, kidPath := dpop.DefaultKeyPaths("bluectl")
+	return newNexusClientWithDPoPFromPaths(baseURL, keyPath, kidPath)
+}
+
+// newNexusClientWithDPoPFromPaths is the internal implementation that accepts explicit paths.
+// This allows testing with temporary directories.
+func newNexusClientWithDPoPFromPaths(baseURL, keyPath, kidPath string) (*NexusClient, error) {
+	// Create base client
+	client := NewNexusClient(baseURL)
+
+	// Create key stores
+	keyStore := dpop.NewFileKeyStore(keyPath)
+	kidStore := dpop.NewFileKIDStore(kidPath)
+
+	// Check if both exist; if neither exists, return unauthenticated (pre-enrollment)
+	keyExists := keyStore.Exists()
+	kidExists := kidStore.Exists()
+
+	if !keyExists && !kidExists {
+		return client, nil
+	}
+
+	// If only one exists, something is wrong
+	if !keyExists {
+		return nil, fmt.Errorf("kid file exists but key file missing: %s", keyPath)
+	}
+	if !kidExists {
+		return nil, fmt.Errorf("key file exists but kid file missing: %s", kidPath)
+	}
+
+	// Load key (will check permissions)
+	key, err := keyStore.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load key: %w", err)
+	}
+
+	// Load kid
+	kid, err := kidStore.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load kid: %w", err)
+	}
+
+	// Create generator and enable DPoP
+	proofGen := dpop.NewEd25519Generator(key)
+	client.SetDPoP(proofGen, kid)
+
+	return client, nil
+}
+
 // SetDPoP configures DPoP authentication for the client.
 // proofGen is the DPoP proof generator, and kid is the server-assigned key identifier.
 func (c *NexusClient) SetDPoP(proofGen dpop.ProofGenerator, kid string) {
