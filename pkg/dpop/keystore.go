@@ -2,7 +2,6 @@ package dpop
 
 import (
 	"crypto/ed25519"
-	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -48,8 +47,8 @@ var (
 	// ErrInvalidPermissions indicates the key file has insecure permissions.
 	ErrInvalidPermissions = errors.New("insecure file permissions: must be 0600")
 
-	// ErrInvalidKeyFormat indicates the key file is not valid PEM-encoded Ed25519.
-	ErrInvalidKeyFormat = errors.New("invalid key format: expected PEM-encoded Ed25519 private key")
+	// ErrInvalidKeyFormat indicates the key file is not in the expected format.
+	ErrInvalidKeyFormat = errors.New("invalid key format: expected ED25519 PRIVATE KEY PEM with 32-byte seed")
 
 	// ErrKIDNotFound indicates the kid does not exist in storage.
 	ErrKIDNotFound = errors.New("kid not found")
@@ -97,33 +96,17 @@ func (s *FileKeyStore) Load() (ed25519.PrivateKey, error) {
 		return nil, ErrInvalidKeyFormat
 	}
 
-	// Expect PRIVATE KEY type (PKCS8) or ED25519 PRIVATE KEY
-	if block.Type != "PRIVATE KEY" && block.Type != "ED25519 PRIVATE KEY" {
-		return nil, fmt.Errorf("%w: unexpected PEM type %q", ErrInvalidKeyFormat, block.Type)
+	// Only accept ED25519 PRIVATE KEY type (what Save() writes)
+	if block.Type != "ED25519 PRIVATE KEY" {
+		return nil, fmt.Errorf("%w: got PEM type %q", ErrInvalidKeyFormat, block.Type)
 	}
 
-	// Parse the key bytes
-	// Ed25519 private key is 64 bytes (32 seed + 32 public)
-	// or 32 bytes (seed only, need to derive)
-	keyBytes := block.Bytes
-
-	switch len(keyBytes) {
-	case ed25519.PrivateKeySize: // 64 bytes - full private key
-		return ed25519.PrivateKey(keyBytes), nil
-	case ed25519.SeedSize: // 32 bytes - seed only
-		return ed25519.NewKeyFromSeed(keyBytes), nil
-	default:
-		// Try PKCS8 format using proper ASN.1 parsing
-		key, err := x509.ParsePKCS8PrivateKey(keyBytes)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInvalidKeyFormat, err)
-		}
-		ed25519Key, ok := key.(ed25519.PrivateKey)
-		if !ok {
-			return nil, fmt.Errorf("%w: not an Ed25519 key", ErrInvalidKeyFormat)
-		}
-		return ed25519Key, nil
+	// Only accept 32-byte seed (what Save() writes)
+	if len(block.Bytes) != ed25519.SeedSize {
+		return nil, fmt.Errorf("%w: got %d bytes", ErrInvalidKeyFormat, len(block.Bytes))
 	}
+
+	return ed25519.NewKeyFromSeed(block.Bytes), nil
 }
 
 // Save saves the private key to the file with 0600 permissions.

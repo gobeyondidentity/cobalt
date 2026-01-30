@@ -2,6 +2,8 @@ package dpop
 
 import (
 	"crypto/ed25519"
+	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -323,17 +325,15 @@ func TestGenerateKey(t *testing.T) {
 	t.Log("Generated keypair is valid")
 }
 
-func TestFileKeyStoreLoadPKCS8Format(t *testing.T) {
-	t.Log("Testing FileKeyStore can load Ed25519 key in seed format")
+func TestFileKeyStoreRoundTrip(t *testing.T) {
+	t.Log("Testing FileKeyStore round-trip: generate, save, load")
 
 	tmpDir := t.TempDir()
-	keyPath := filepath.Join(tmpDir, "pkcs8-key.pem")
+	keyPath := filepath.Join(tmpDir, "seed-key.pem")
 
 	// Create and save a key
 	_, privKey, _ := GenerateKey()
 
-	// For now, test that our seed-based format works correctly
-	// Full PKCS8 support would require ASN.1 parsing
 	store := NewFileKeyStore(keyPath)
 	if err := store.Save(privKey); err != nil {
 		t.Fatalf("failed to save key: %v", err)
@@ -348,7 +348,7 @@ func TestFileKeyStoreLoadPKCS8Format(t *testing.T) {
 		t.Error("loaded key does not match original")
 	}
 
-	t.Log("Key format loading successful")
+	t.Log("Round-trip successful")
 }
 
 func TestFileKeyStoreInvalidPEM(t *testing.T) {
@@ -422,4 +422,115 @@ func TestCheckFilePermissions(t *testing.T) {
 	}
 
 	t.Log("CheckFilePermissions works correctly")
+}
+
+// =============================================================================
+// Rejection Tests: Verify Load() only accepts what Save() writes
+// =============================================================================
+
+func TestFileKeyStoreRejects64ByteRawKey(t *testing.T) {
+	t.Log("Testing FileKeyStore rejects 64-byte raw key (only accepts 32-byte seed)")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "raw64.pem")
+
+	// Create a 64-byte key (full private key format)
+	_, privKey, _ := GenerateKey()
+
+	// Write as ED25519 PRIVATE KEY but with 64 bytes instead of 32
+	pemData := "-----BEGIN ED25519 PRIVATE KEY-----\n" +
+		base64Encode(privKey) + "\n" +
+		"-----END ED25519 PRIVATE KEY-----\n"
+
+	if err := os.WriteFile(keyPath, []byte(pemData), 0600); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	store := NewFileKeyStore(keyPath)
+	_, err := store.Load()
+	if err == nil {
+		t.Fatal("expected error for 64-byte key, got nil")
+	}
+	if !errors.Is(err, ErrInvalidKeyFormat) {
+		t.Errorf("expected ErrInvalidKeyFormat, got: %v", err)
+	}
+	t.Logf("64-byte raw key correctly rejected: %v", err)
+}
+
+func TestFileKeyStoreRejectsPKCS8Format(t *testing.T) {
+	t.Log("Testing FileKeyStore rejects PKCS8 format (PRIVATE KEY PEM type)")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "pkcs8.pem")
+
+	// Write a PEM block with PRIVATE KEY type (PKCS8 style)
+	// Content doesn't matter since we reject based on PEM type
+	pemData := `-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEIHKJh6YGZoSkOl9hn7Nit8y7NbmOAUx2zGzW1lq3klqZ
+-----END PRIVATE KEY-----
+`
+	if err := os.WriteFile(keyPath, []byte(pemData), 0600); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	store := NewFileKeyStore(keyPath)
+	_, err := store.Load()
+	if err == nil {
+		t.Fatal("expected error for PKCS8 format, got nil")
+	}
+	if !errors.Is(err, ErrInvalidKeyFormat) {
+		t.Errorf("expected ErrInvalidKeyFormat, got: %v", err)
+	}
+	t.Logf("PKCS8 format correctly rejected: %v", err)
+}
+
+func TestFileKeyStoreRejectsWrongSizeSeed(t *testing.T) {
+	t.Log("Testing FileKeyStore rejects wrong size seeds (31 and 33 bytes)")
+
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name string
+		size int
+	}{
+		{"31 bytes (too small)", 31},
+		{"33 bytes (too large)", 33},
+		{"16 bytes (way too small)", 16},
+		{"64 bytes (full key, not seed)", 64},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			keyPath := filepath.Join(tmpDir, "wrong-size.pem")
+
+			// Create wrong-sized data
+			wrongSizeData := make([]byte, tc.size)
+			for i := range wrongSizeData {
+				wrongSizeData[i] = byte(i)
+			}
+
+			pemData := "-----BEGIN ED25519 PRIVATE KEY-----\n" +
+				base64Encode(wrongSizeData) + "\n" +
+				"-----END ED25519 PRIVATE KEY-----\n"
+
+			if err := os.WriteFile(keyPath, []byte(pemData), 0600); err != nil {
+				t.Fatalf("failed to write file: %v", err)
+			}
+
+			store := NewFileKeyStore(keyPath)
+			_, err := store.Load()
+			if err == nil {
+				t.Fatalf("expected error for %d-byte content, got nil", tc.size)
+			}
+			if !errors.Is(err, ErrInvalidKeyFormat) {
+				t.Errorf("expected ErrInvalidKeyFormat, got: %v", err)
+			}
+			t.Logf("%s correctly rejected: %v", tc.name, err)
+		})
+	}
+}
+
+// base64Encode is a helper for tests
+func base64Encode(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
 }
