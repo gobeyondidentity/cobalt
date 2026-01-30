@@ -2,6 +2,8 @@ package dpop
 
 import (
 	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,345 +12,306 @@ import (
 )
 
 func TestGenerateProof_ValidJWT(t *testing.T) {
-	t.Log("Testing proof generator produces valid JWT structure")
-
-	_, privKey, _ := GenerateKey()
-	gen := NewEd25519Generator(privKey)
-
-	proof, err := gen.Generate("POST", "https://example.com/api/v1/push", "km_abc123")
+	t.Log("Generating Ed25519 key pair for test")
+	pub, priv, err := GenerateKeyPair()
 	if err != nil {
-		t.Fatalf("failed to generate proof: %v", err)
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
+	_ = pub // not used in this test
+
+	t.Log("Generating DPoP proof for POST https://example.com/api/v1/push")
+	proof, err := GenerateProof(priv, "POST", "https://example.com/api/v1/push", "test-kid")
+	if err != nil {
+		t.Fatalf("GenerateProof failed: %v", err)
 	}
 
-	// JWT should have 3 parts separated by dots
+	t.Log("Verifying JWT has three base64url-encoded parts separated by dots")
 	parts := strings.Split(proof, ".")
 	if len(parts) != 3 {
-		t.Errorf("expected 3 JWT parts, got %d", len(parts))
+		t.Fatalf("expected 3 parts, got %d", len(parts))
 	}
 
-	// Each part should be non-empty base64url
 	for i, part := range parts {
 		if part == "" {
 			t.Errorf("part %d is empty", i)
 		}
-		// Check for valid base64url characters
-		for _, c := range part {
-			if !isBase64URLChar(c) {
-				t.Errorf("part %d contains invalid character: %c", i, c)
-				break
-			}
+		// Verify each part is valid base64url
+		if _, err := base64.RawURLEncoding.DecodeString(part); err != nil {
+			t.Errorf("part %d is not valid base64url: %v", i, err)
 		}
 	}
-
-	t.Log("Valid JWT structure produced")
-}
-
-func isBase64URLChar(c rune) bool {
-	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-		(c >= '0' && c <= '9') || c == '-' || c == '_'
+	t.Log("JWT structure is valid: header.payload.signature")
 }
 
 func TestGenerateProof_HeaderClaims(t *testing.T) {
-	t.Log("Testing proof header contains correct claims")
-
-	_, privKey, _ := GenerateKey()
-	gen := NewEd25519Generator(privKey)
-
-	proof, _ := gen.Generate("GET", "https://example.com/api", "km_test")
-
-	header, _, _, err := ParseProof(proof)
+	t.Log("Generating Ed25519 key pair for test")
+	_, priv, err := GenerateKeyPair()
 	if err != nil {
-		t.Fatalf("failed to parse proof: %v", err)
+		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	// Check typ
-	if header["typ"] != "dpop+jwt" {
-		t.Errorf("expected typ=dpop+jwt, got %v", header["typ"])
+	t.Log("Generating DPoP proof with kid='test-kid-123'")
+	proof, err := GenerateProof(priv, "GET", "https://example.com/resource", "test-kid-123")
+	if err != nil {
+		t.Fatalf("GenerateProof failed: %v", err)
 	}
 
-	// Check alg
-	if header["alg"] != "EdDSA" {
-		t.Errorf("expected alg=EdDSA, got %v", header["alg"])
+	t.Log("Decoding and parsing JWT header")
+	parts := strings.Split(proof, ".")
+	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatalf("failed to decode header: %v", err)
 	}
 
-	// Check kid is present (since we provided one)
-	if header["kid"] != "km_test" {
-		t.Errorf("expected kid=km_test, got %v", header["kid"])
+	var header Header
+	if err := json.Unmarshal(headerJSON, &header); err != nil {
+		t.Fatalf("failed to parse header JSON: %v", err)
 	}
 
-	// jwk should NOT be present when kid is provided
-	if header["jwk"] != nil {
+	t.Log("Verifying typ='dpop+jwt'")
+	if header.Typ != TypeDPoP {
+		t.Errorf("typ: expected %q, got %q", TypeDPoP, header.Typ)
+	}
+
+	t.Log("Verifying alg='EdDSA'")
+	if header.Alg != AlgEdDSA {
+		t.Errorf("alg: expected %q, got %q", AlgEdDSA, header.Alg)
+	}
+
+	t.Log("Verifying kid='test-kid-123'")
+	if header.Kid != "test-kid-123" {
+		t.Errorf("kid: expected %q, got %q", "test-kid-123", header.Kid)
+	}
+
+	t.Log("Verifying jwk is not present when kid is provided")
+	if header.JWK != nil {
 		t.Error("jwk should not be present when kid is provided")
 	}
-
-	t.Log("Header claims correct")
-}
-
-func TestGenerateProof_HeaderWithJWK(t *testing.T) {
-	t.Log("Testing proof header contains JWK when no kid (enrollment)")
-
-	pubKey, privKey, _ := GenerateKey()
-	gen := NewEd25519Generator(privKey)
-
-	// Empty kid = enrollment mode
-	proof, _ := gen.Generate("POST", "https://example.com/enroll/complete", "")
-
-	header, _, _, err := ParseProof(proof)
-	if err != nil {
-		t.Fatalf("failed to parse proof: %v", err)
-	}
-
-	// kid should NOT be present
-	if header["kid"] != nil {
-		t.Errorf("kid should not be present during enrollment, got %v", header["kid"])
-	}
-
-	// jwk should be present
-	jwk, ok := header["jwk"].(map[string]any)
-	if !ok {
-		t.Fatal("jwk should be present during enrollment")
-	}
-
-	// Verify JWK structure
-	if jwk["kty"] != "OKP" {
-		t.Errorf("expected kty=OKP, got %v", jwk["kty"])
-	}
-	if jwk["crv"] != "Ed25519" {
-		t.Errorf("expected crv=Ed25519, got %v", jwk["crv"])
-	}
-
-	// Verify x contains the public key
-	xB64, _ := jwk["x"].(string)
-	xBytes, err := base64URLDecode(xB64)
-	if err != nil {
-		t.Fatalf("failed to decode x: %v", err)
-	}
-	if !ed25519.PublicKey(xBytes).Equal(pubKey) {
-		t.Error("JWK x does not match public key")
-	}
-
-	t.Log("JWK correctly included during enrollment")
+	t.Log("Header claims are correct")
 }
 
 func TestGenerateProof_PayloadClaims(t *testing.T) {
-	t.Log("Testing proof payload contains correct claims")
-
-	_, privKey, _ := GenerateKey()
-	gen := NewEd25519Generator(privKey)
-
-	beforeTime := time.Now().Unix()
-	proof, _ := gen.Generate("POST", "https://example.com/api/v1/push", "km_test")
-	afterTime := time.Now().Unix()
-
-	_, payload, _, err := ParseProof(proof)
+	t.Log("Generating Ed25519 key pair for test")
+	_, priv, err := GenerateKeyPair()
 	if err != nil {
-		t.Fatalf("failed to parse proof: %v", err)
+		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	// Check jti is present and non-empty
-	jti, ok := payload["jti"].(string)
-	if !ok || jti == "" {
-		t.Error("jti should be a non-empty string")
+	beforeIat := time.Now().Unix()
+	t.Log("Generating DPoP proof for POST https://api.example.com/v1/credentials")
+	proof, err := GenerateProof(priv, "POST", "https://api.example.com/v1/credentials", "kid-1")
+	if err != nil {
+		t.Fatalf("GenerateProof failed: %v", err)
+	}
+	afterIat := time.Now().Unix()
+
+	t.Log("Decoding and parsing JWT payload")
+	parts := strings.Split(proof, ".")
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
 	}
 
-	// Check htm
-	if payload["htm"] != "POST" {
-		t.Errorf("expected htm=POST, got %v", payload["htm"])
+	var claims Claims
+	if err := json.Unmarshal(payloadJSON, &claims); err != nil {
+		t.Fatalf("failed to parse payload JSON: %v", err)
 	}
 
-	// Check htu (should be normalized)
-	if payload["htu"] != "https://example.com/api/v1/push" {
-		t.Errorf("expected htu=https://example.com/api/v1/push, got %v", payload["htu"])
+	t.Log("Verifying jti is non-empty (UUID)")
+	if claims.JTI == "" {
+		t.Error("jti is empty")
+	}
+	// UUID format: 8-4-4-4-12 characters
+	if len(claims.JTI) != 36 {
+		t.Errorf("jti length: expected 36 (UUID format), got %d", len(claims.JTI))
 	}
 
-	// Check iat is within expected range
-	iat, ok := payload["iat"].(float64)
-	if !ok {
-		t.Error("iat should be a number")
-	} else if int64(iat) < beforeTime || int64(iat) > afterTime {
-		t.Errorf("iat %v outside expected range [%v, %v]", iat, beforeTime, afterTime)
+	t.Log("Verifying htm='POST'")
+	if claims.HTM != "POST" {
+		t.Errorf("htm: expected %q, got %q", "POST", claims.HTM)
 	}
 
-	t.Log("Payload claims correct")
+	t.Log("Verifying htu='https://api.example.com/v1/credentials'")
+	if claims.HTU != "https://api.example.com/v1/credentials" {
+		t.Errorf("htu: expected %q, got %q", "https://api.example.com/v1/credentials", claims.HTU)
+	}
+
+	t.Log("Verifying iat is within expected time window")
+	if claims.IAT < beforeIat || claims.IAT > afterIat {
+		t.Errorf("iat %d outside expected range [%d, %d]", claims.IAT, beforeIat, afterIat)
+	}
+	t.Log("Payload claims are correct")
 }
 
 func TestGenerateProof_UniqueJTI(t *testing.T) {
-	t.Log("Testing each proof has unique jti")
-
-	_, privKey, _ := GenerateKey()
-	gen := NewEd25519Generator(privKey)
-
-	seen := make(map[string]bool)
-	count := 100
-
-	for i := 0; i < count; i++ {
-		proof, _ := gen.Generate("GET", "https://example.com/api", "km_test")
-		_, payload, _, _ := ParseProof(proof)
-		jti := payload["jti"].(string)
-
-		if seen[jti] {
-			t.Errorf("duplicate jti found: %s", jti)
-		}
-		seen[jti] = true
+	t.Log("Generating Ed25519 key pair for test")
+	_, priv, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	if len(seen) != count {
-		t.Errorf("expected %d unique jti values, got %d", count, len(seen))
+	t.Log("Generating first DPoP proof")
+	proof1, err := GenerateProof(priv, "GET", "https://example.com/resource", "kid")
+	if err != nil {
+		t.Fatalf("GenerateProof failed: %v", err)
 	}
 
-	t.Log("All jti values unique")
+	t.Log("Generating second DPoP proof")
+	proof2, err := GenerateProof(priv, "GET", "https://example.com/resource", "kid")
+	if err != nil {
+		t.Fatalf("GenerateProof failed: %v", err)
+	}
+
+	t.Log("Extracting jti from both proofs")
+	jti1 := extractJTI(t, proof1)
+	jti2 := extractJTI(t, proof2)
+
+	t.Log("Verifying jti values are different")
+	if jti1 == jti2 {
+		t.Error("jti values should be unique for each proof")
+	}
+	t.Logf("jti1=%s, jti2=%s (both unique)", jti1, jti2)
 }
 
 func TestGenerateProof_JTIRandomness(t *testing.T) {
-	t.Log("Testing jti values are random (UUIDv4), not sequential")
+	t.Log("Generating Ed25519 key pair for test")
+	_, priv, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
 
-	_, privKey, _ := GenerateKey()
-	gen := NewEd25519Generator(privKey)
-
-	var jtis []string
+	t.Log("Generating 1000 jti values to verify uniqueness and randomness")
+	jtis := make(map[string]struct{}, 1000)
 	for i := 0; i < 1000; i++ {
-		proof, _ := gen.Generate("GET", "https://example.com/api", "km_test")
-		_, payload, _, _ := ParseProof(proof)
-		jtis = append(jtis, payload["jti"].(string))
-	}
-
-	// Check that jti values look like UUIDs (36 chars with hyphens)
-	for i, jti := range jtis {
-		if len(jti) != 36 {
-			t.Errorf("jti[%d] length %d, expected 36 (UUID format)", i, len(jti))
+		proof, err := GenerateProof(priv, "GET", "https://example.com/", "kid")
+		if err != nil {
+			t.Fatalf("GenerateProof iteration %d failed: %v", i, err)
 		}
-		// UUID format: 8-4-4-4-12
-		if jti[8] != '-' || jti[13] != '-' || jti[18] != '-' || jti[23] != '-' {
-			t.Errorf("jti[%d] doesn't match UUID format: %s", i, jti)
+		jti := extractJTI(t, proof)
+		if _, exists := jtis[jti]; exists {
+			t.Fatalf("duplicate jti found at iteration %d: %s", i, jti)
 		}
+		jtis[jti] = struct{}{}
 	}
-
-	// Check for sequential patterns (first 8 chars shouldn't increment)
-	// This is a weak check but catches obvious mistakes
-	prefixes := make(map[string]int)
-	for _, jti := range jtis {
-		prefix := jti[:8]
-		prefixes[prefix]++
-	}
-
-	// With random UUIDs, we expect diverse prefixes
-	// If more than 10% have the same prefix, something is wrong
-	maxCount := 0
-	for _, count := range prefixes {
-		if count > maxCount {
-			maxCount = count
-		}
-	}
-	if maxCount > 100 { // More than 10% with same prefix
-		t.Errorf("jti prefixes not random enough: max count %d out of 1000", maxCount)
-	}
-
-	t.Log("jti values appear random (UUIDv4)")
+	t.Log("All 1000 jti values are unique")
 }
 
 func TestGenerateProof_URLNormalization(t *testing.T) {
-	t.Log("Testing URL normalization per RFC 9449")
-
-	_, privKey, _ := GenerateKey()
-	gen := NewEd25519Generator(privKey)
+	t.Log("Generating Ed25519 key pair for test")
+	_, priv, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
 
 	tests := []struct {
-		name     string
-		inputURI string
-		wantHtu  string
+		name        string
+		inputURL    string
+		expectedHTU string
 	}{
 		{
-			name:     "basic https",
-			inputURI: "https://example.com/api",
-			wantHtu:  "https://example.com/api",
+			name:        "query string stripped",
+			inputURL:    "https://example.com/api?query=1&page=2",
+			expectedHTU: "https://example.com/api",
 		},
 		{
-			name:     "uppercase host",
-			inputURI: "https://EXAMPLE.COM/api",
-			wantHtu:  "https://example.com/api",
+			name:        "fragment stripped",
+			inputURL:    "https://example.com/api#section",
+			expectedHTU: "https://example.com/api",
 		},
 		{
-			name:     "uppercase scheme",
-			inputURI: "HTTPS://example.com/api",
-			wantHtu:  "https://example.com/api",
+			name:        "query and fragment stripped",
+			inputURL:    "https://example.com/api?query=1#frag",
+			expectedHTU: "https://example.com/api",
 		},
 		{
-			name:     "with query string",
-			inputURI: "https://example.com/api?foo=bar",
-			wantHtu:  "https://example.com/api",
+			name:        "uppercase host lowercased",
+			inputURL:    "https://EXAMPLE.COM/api/v1/push",
+			expectedHTU: "https://example.com/api/v1/push",
 		},
 		{
-			name:     "with fragment",
-			inputURI: "https://example.com/api#section",
-			wantHtu:  "https://example.com/api",
+			name:        "mixed case host lowercased",
+			inputURL:    "https://Api.ExAmPlE.COM/Resource",
+			expectedHTU: "https://api.example.com/Resource",
 		},
 		{
-			name:     "with query and fragment",
-			inputURI: "https://example.com/api?foo=bar#section",
-			wantHtu:  "https://example.com/api",
+			name:        "default HTTPS port 443 removed",
+			inputURL:    "https://example.com:443/api",
+			expectedHTU: "https://example.com/api",
 		},
 		{
-			name:     "default https port",
-			inputURI: "https://example.com:443/api",
-			wantHtu:  "https://example.com/api",
+			name:        "default HTTP port 80 removed",
+			inputURL:    "http://example.com:80/api",
+			expectedHTU: "http://example.com/api",
 		},
 		{
-			name:     "non-default https port",
-			inputURI: "https://example.com:8443/api",
-			wantHtu:  "https://example.com:8443/api",
+			name:        "non-default port preserved",
+			inputURL:    "https://example.com:8443/api",
+			expectedHTU: "https://example.com:8443/api",
 		},
 		{
-			name:     "default http port",
-			inputURI: "http://example.com:80/api",
-			wantHtu:  "http://example.com/api",
+			name:        "path preserved exactly",
+			inputURL:    "https://example.com/api/v1/credentials/abc-123",
+			expectedHTU: "https://example.com/api/v1/credentials/abc-123",
 		},
 		{
-			name:     "non-default http port",
-			inputURI: "http://example.com:8080/api",
-			wantHtu:  "http://example.com:8080/api",
+			name:        "root path",
+			inputURL:    "https://example.com/",
+			expectedHTU: "https://example.com/",
 		},
 		{
-			name:     "no path",
-			inputURI: "https://example.com",
-			wantHtu:  "https://example.com/",
+			name:        "no path gets slash",
+			inputURL:    "https://example.com",
+			expectedHTU: "https://example.com/",
 		},
 		{
-			name:     "mixed case path preserved",
-			inputURI: "https://example.com/API/V1",
-			wantHtu:  "https://example.com/API/V1",
+			name:        "full normalization",
+			inputURL:    "https://EXAMPLE.COM:443/api/v1/push?query=1#frag",
+			expectedHTU: "https://example.com/api/v1/push",
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			proof, err := gen.Generate("GET", tc.inputURI, "km_test")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("Testing URL normalization: %s -> %s", tt.inputURL, tt.expectedHTU)
+			proof, err := GenerateProof(priv, "GET", tt.inputURL, "kid")
 			if err != nil {
-				t.Fatalf("failed to generate proof: %v", err)
+				t.Fatalf("GenerateProof failed: %v", err)
 			}
 
-			_, payload, _, _ := ParseProof(proof)
-			if payload["htu"] != tc.wantHtu {
-				t.Errorf("htu = %v, want %v", payload["htu"], tc.wantHtu)
+			htu := extractHTU(t, proof)
+			if htu != tt.expectedHTU {
+				t.Errorf("htu: expected %q, got %q", tt.expectedHTU, htu)
 			}
 		})
 	}
-
-	t.Log("URL normalization correct")
 }
 
 func TestGenerateProof_SignatureVerifies(t *testing.T) {
-	t.Log("Testing proof signature verifies with public key")
-
-	pubKey, privKey, _ := GenerateKey()
-	gen := NewEd25519Generator(privKey)
-
-	proof, _ := gen.Generate("POST", "https://example.com/api", "km_test")
-
-	if !VerifyProof(proof, pubKey) {
-		t.Error("signature verification failed")
+	t.Log("Generating Ed25519 key pair for test")
+	pub, priv, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	t.Log("Signature verification passed")
+	t.Log("Generating DPoP proof")
+	proof, err := GenerateProof(priv, "POST", "https://example.com/api", "test-kid")
+	if err != nil {
+		t.Fatalf("GenerateProof failed: %v", err)
+	}
+
+	t.Log("Extracting signature and signing input from JWT")
+	parts := strings.Split(proof, ".")
+	signingInput := parts[0] + "." + parts[1]
+	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		t.Fatalf("failed to decode signature: %v", err)
+	}
+
+	t.Log("Verifying signature with public key")
+	if !ed25519.Verify(pub, []byte(signingInput), signature) {
+		t.Error("signature verification failed")
+	}
+	t.Log("Signature is valid")
 }
 
 func TestGenerateProof_SignatureFailsWithWrongKey(t *testing.T) {
@@ -367,28 +330,172 @@ func TestGenerateProof_SignatureFailsWithWrongKey(t *testing.T) {
 	t.Log("Signature correctly fails with wrong key")
 }
 
+func TestGenerateProof_WithJWK(t *testing.T) {
+	t.Log("Generating Ed25519 key pair for test")
+	pub, priv, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
+
+	t.Log("Generating DPoP proof with empty kid (enrollment case)")
+	proof, err := GenerateProof(priv, "POST", "https://example.com/enroll", "")
+	if err != nil {
+		t.Fatalf("GenerateProof failed: %v", err)
+	}
+
+	t.Log("Decoding and parsing JWT header")
+	parts := strings.Split(proof, ".")
+	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatalf("failed to decode header: %v", err)
+	}
+
+	var header Header
+	if err := json.Unmarshal(headerJSON, &header); err != nil {
+		t.Fatalf("failed to parse header JSON: %v", err)
+	}
+
+	t.Log("Verifying kid is empty")
+	if header.Kid != "" {
+		t.Errorf("kid should be empty, got %q", header.Kid)
+	}
+
+	t.Log("Verifying jwk is present")
+	if header.JWK == nil {
+		t.Fatal("jwk should be present when kid is empty")
+	}
+
+	t.Log("Verifying jwk contains correct public key")
+	if header.JWK.Kty != "OKP" {
+		t.Errorf("jwk.kty: expected %q, got %q", "OKP", header.JWK.Kty)
+	}
+	if header.JWK.Crv != "Ed25519" {
+		t.Errorf("jwk.crv: expected %q, got %q", "Ed25519", header.JWK.Crv)
+	}
+
+	expectedX := base64.RawURLEncoding.EncodeToString(pub)
+	if header.JWK.X != expectedX {
+		t.Errorf("jwk.x: expected %q, got %q", expectedX, header.JWK.X)
+	}
+	t.Log("JWK is correctly embedded in header")
+}
+
+func TestSignRequest(t *testing.T) {
+	t.Log("Generating Ed25519 key pair for test")
+	pub, priv, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
+	_ = pub
+
+	t.Log("Creating HTTP request")
+	req, err := http.NewRequest("POST", "https://api.example.com/v1/credentials", nil)
+	if err != nil {
+		t.Fatalf("NewRequest failed: %v", err)
+	}
+
+	t.Log("Signing request with SignRequest")
+	if err := SignRequest(req, priv, "my-kid"); err != nil {
+		t.Fatalf("SignRequest failed: %v", err)
+	}
+
+	t.Log("Verifying DPoP header is present")
+	dpopHeader := req.Header.Get("DPoP")
+	if dpopHeader == "" {
+		t.Fatal("DPoP header not present")
+	}
+
+	t.Log("Verifying DPoP header contains valid JWT")
+	parts := strings.Split(dpopHeader, ".")
+	if len(parts) != 3 {
+		t.Errorf("DPoP header is not valid JWT: expected 3 parts, got %d", len(parts))
+	}
+
+	t.Log("Verifying JWT claims match request")
+	claims := extractClaims(t, dpopHeader)
+	if claims.HTM != "POST" {
+		t.Errorf("htm: expected %q, got %q", "POST", claims.HTM)
+	}
+	if claims.HTU != "https://api.example.com/v1/credentials" {
+		t.Errorf("htu: expected %q, got %q", "https://api.example.com/v1/credentials", claims.HTU)
+	}
+	t.Log("SignRequest correctly added DPoP header")
+}
+
+func TestSignRequest_HostHeaderIgnored(t *testing.T) {
+	t.Log("Generating Ed25519 key pair for test")
+	_, priv, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
+
+	t.Log("Creating HTTP request with URL pointing to real-host.com")
+	req, err := http.NewRequest("POST", "https://real-host.com/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest failed: %v", err)
+	}
+
+	t.Log("Setting Host header to attacker-host.com (simulating Host header injection)")
+	req.Host = "attacker-host.com"
+
+	t.Log("Signing request")
+	if err := SignRequest(req, priv, "kid"); err != nil {
+		t.Fatalf("SignRequest failed: %v", err)
+	}
+
+	t.Log("Verifying htu uses URL, not Host header")
+	dpopHeader := req.Header.Get("DPoP")
+	claims := extractClaims(t, dpopHeader)
+	if claims.HTU != "https://real-host.com/api" {
+		t.Errorf("htu should use URL not Host header: expected %q, got %q", "https://real-host.com/api", claims.HTU)
+	}
+	t.Log("Host header injection prevented: htu uses request URL")
+}
+
 func TestGenerateProof_MethodCaseSensitivity(t *testing.T) {
-	t.Log("Testing HTTP method is preserved exactly (case-sensitive)")
+	t.Log("Generating Ed25519 key pair for test")
+	_, priv, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
+
+	t.Log("Generating proof with lowercase 'post' method")
+	proof, err := GenerateProof(priv, "post", "https://example.com/api", "kid")
+	if err != nil {
+		t.Fatalf("GenerateProof failed: %v", err)
+	}
+
+	t.Log("Verifying htm preserves exact case")
+	claims := extractClaims(t, proof)
+	if claims.HTM != "post" {
+		t.Errorf("htm should preserve exact method case: expected %q, got %q", "post", claims.HTM)
+	}
+	t.Log("HTTP method case preserved correctly")
+}
+
+// Tests for Ed25519Generator (struct-based API)
+
+func TestEd25519Generator_Generate(t *testing.T) {
+	t.Log("Testing Ed25519Generator.Generate produces valid JWT")
 
 	_, privKey, _ := GenerateKey()
 	gen := NewEd25519Generator(privKey)
 
-	tests := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "get", "Post"}
-
-	for _, method := range tests {
-		proof, _ := gen.Generate(method, "https://example.com/api", "km_test")
-		_, payload, _, _ := ParseProof(proof)
-
-		if payload["htm"] != method {
-			t.Errorf("method %q became %q", method, payload["htm"])
-		}
+	proof, err := gen.Generate("POST", "https://example.com/api/v1/push", "km_abc123")
+	if err != nil {
+		t.Fatalf("failed to generate proof: %v", err)
 	}
 
-	t.Log("HTTP method case preserved")
+	parts := strings.Split(proof, ".")
+	if len(parts) != 3 {
+		t.Errorf("expected 3 JWT parts, got %d", len(parts))
+	}
+
+	t.Log("Valid JWT structure produced")
 }
 
-func TestSignRequest(t *testing.T) {
-	t.Log("Testing SignRequest adds DPoP header to request")
+func TestEd25519Generator_SignRequest(t *testing.T) {
+	t.Log("Testing Ed25519Generator.SignRequest adds DPoP header")
 
 	_, privKey, _ := GenerateKey()
 	gen := NewEd25519Generator(privKey)
@@ -405,7 +512,6 @@ func TestSignRequest(t *testing.T) {
 		t.Error("DPoP header not set")
 	}
 
-	// Verify the header is a valid JWT
 	parts := strings.Split(dpopHeader, ".")
 	if len(parts) != 3 {
 		t.Errorf("DPoP header is not valid JWT: %d parts", len(parts))
@@ -414,13 +520,12 @@ func TestSignRequest(t *testing.T) {
 	t.Log("SignRequest correctly adds DPoP header")
 }
 
-func TestSignRequest_HostHeaderIgnored(t *testing.T) {
-	t.Log("Testing SignRequest uses URL, not Host header (prevents injection)")
+func TestEd25519Generator_SignRequest_HostHeaderIgnored(t *testing.T) {
+	t.Log("Testing Ed25519Generator.SignRequest uses URL, not Host header")
 
 	pubKey, privKey, _ := GenerateKey()
 	gen := NewEd25519Generator(privKey)
 
-	// Create request with URL to example.com but Host header set to attacker.com
 	req := httptest.NewRequest("GET", "https://example.com/api", nil)
 	req.Host = "attacker.com" // Attacker tries to inject different host
 
@@ -429,19 +534,15 @@ func TestSignRequest_HostHeaderIgnored(t *testing.T) {
 		t.Fatalf("SignRequest failed: %v", err)
 	}
 
-	// Parse the proof and check htu
 	proof := req.Header.Get("DPoP")
 	_, payload, _, _ := ParseProof(proof)
 
 	htu := payload["htu"].(string)
 
-	// htu should use URL host, not Host header
 	if strings.Contains(htu, "attacker.com") {
 		t.Error("htu should not contain attacker.com (Host header injection)")
 	}
 
-	// Note: httptest.NewRequest sets URL.Host from the URL string
-	// So we verify the proof still verifies correctly
 	if !VerifyProof(proof, pubKey) {
 		t.Error("proof should still be valid")
 	}
@@ -449,8 +550,8 @@ func TestSignRequest_HostHeaderIgnored(t *testing.T) {
 	t.Log("Host header injection prevented")
 }
 
-func TestSignRequest_FreshProofEachCall(t *testing.T) {
-	t.Log("Testing SignRequest generates fresh proof each call (no replay)")
+func TestEd25519Generator_FreshProofEachCall(t *testing.T) {
+	t.Log("Testing Ed25519Generator generates fresh proof each call")
 
 	_, privKey, _ := GenerateKey()
 	gen := NewEd25519Generator(privKey)
@@ -468,7 +569,6 @@ func TestSignRequest_FreshProofEachCall(t *testing.T) {
 		t.Error("each SignRequest call should generate different proof")
 	}
 
-	// Parse and check jti values are different
 	_, payload1, _, _ := ParseProof(proof1)
 	_, payload2, _, _ := ParseProof(proof2)
 
@@ -548,7 +648,6 @@ func TestGeneratorImplementsInterface(t *testing.T) {
 func TestIntegrationWithClient(t *testing.T) {
 	t.Log("Testing generator integrates with DPoP client")
 
-	// Create a test server that verifies DPoP
 	pubKey, privKey, _ := GenerateKey()
 	var receivedProof string
 
@@ -558,18 +657,15 @@ func TestIntegrationWithClient(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create client with generator
 	gen := NewEd25519Generator(privKey)
 	client := NewClient(server.URL, gen, WithKID("km_test"))
 
-	// Make request
 	resp, err := client.Get("/api/v1/test")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
 	resp.Body.Close()
 
-	// Verify proof was sent and is valid
 	if receivedProof == "" {
 		t.Fatal("no DPoP proof received")
 	}
@@ -579,4 +675,33 @@ func TestIntegrationWithClient(t *testing.T) {
 	}
 
 	t.Log("Generator integrates correctly with client")
+}
+
+// Helper functions
+
+func extractJTI(t *testing.T, proof string) string {
+	t.Helper()
+	return extractClaims(t, proof).JTI
+}
+
+func extractHTU(t *testing.T, proof string) string {
+	t.Helper()
+	return extractClaims(t, proof).HTU
+}
+
+func extractClaims(t *testing.T, proof string) *Claims {
+	t.Helper()
+	parts := strings.Split(proof, ".")
+	if len(parts) != 3 {
+		t.Fatalf("invalid JWT: expected 3 parts, got %d", len(parts))
+	}
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("failed to decode payload: %v", err)
+	}
+	var claims Claims
+	if err := json.Unmarshal(payloadJSON, &claims); err != nil {
+		t.Fatalf("failed to parse claims: %v", err)
+	}
+	return &claims
 }

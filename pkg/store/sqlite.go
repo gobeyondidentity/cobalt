@@ -15,15 +15,18 @@ import (
 
 // DPU represents a registered DPU in the store.
 type DPU struct {
-	ID        string
-	Name      string
-	Host      string
-	Port      int
-	Status    string
-	LastSeen  *time.Time
-	CreatedAt time.Time
-	TenantID  *string
-	Labels    map[string]string
+	ID             string
+	Name           string
+	Host           string
+	Port           int
+	Status         string
+	LastSeen       *time.Time
+	CreatedAt      time.Time
+	TenantID       *string
+	Labels         map[string]string
+	PublicKey      []byte  // DPoP public key (set during enrollment)
+	Kid            *string // Key ID for DPoP lookup
+	KeyFingerprint *string // SHA256 hex of public key
 }
 
 // Tenant represents a logical grouping of DPUs.
@@ -94,6 +97,22 @@ type KeyMaker struct {
 	BoundAt           time.Time
 	LastSeen          *time.Time
 	Status            string // active, revoked
+	Kid               string // DPoP key identifier (equal to ID for keymakers)
+	KeyFingerprint    string // SHA256 hex of public key for duplicate detection
+}
+
+// AdminKey represents a file-based admin credential for system operations.
+// Used by operators who authenticate via SSH keys or similar file-based credentials.
+type AdminKey struct {
+	ID             string
+	OperatorID     string
+	Name           string
+	PublicKey      []byte
+	Kid            string // DPoP key identifier (equal to ID for admin keys)
+	KeyFingerprint string // SHA256 hex of public key, UNIQUE constraint prevents duplicates
+	Status         string // active, revoked
+	BoundAt        time.Time
+	LastSeen       *time.Time
 }
 
 // Authorization grants an operator access to specific CAs and devices.
@@ -308,6 +327,21 @@ func (s *Store) migrate() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_keymakers_operator ON keymakers(operator_id);
 
+	-- Admin Keys (DPoP-bound admin credentials)
+	CREATE TABLE IF NOT EXISTS admin_keys (
+		id TEXT PRIMARY KEY,
+		operator_id TEXT NOT NULL REFERENCES operators(id),
+		name TEXT,
+		public_key BLOB NOT NULL,
+		kid TEXT UNIQUE,
+		key_fingerprint TEXT NOT NULL UNIQUE,
+		status TEXT NOT NULL DEFAULT 'active',
+		bound_at INTEGER DEFAULT (strftime('%s', 'now')),
+		last_seen INTEGER
+	);
+	CREATE INDEX IF NOT EXISTS idx_admin_keys_kid ON admin_keys(kid);
+	CREATE INDEX IF NOT EXISTS idx_admin_keys_operator ON admin_keys(operator_id);
+
 	-- Invite Codes (hashed, never plaintext)
 	CREATE TABLE IF NOT EXISTS invite_codes (
 		id TEXT PRIMARY KEY,
@@ -432,6 +466,12 @@ func (s *Store) migrate() error {
 		"ALTER TABLE trust_relationships ADD COLUMN source_host TEXT DEFAULT ''",
 		"ALTER TABLE trust_relationships ADD COLUMN target_host TEXT DEFAULT ''",
 		"ALTER TABLE trust_relationships ADD COLUMN target_cert_serial INTEGER",
+		// DPoP key lookup columns
+		"ALTER TABLE keymakers ADD COLUMN kid TEXT",
+		"ALTER TABLE keymakers ADD COLUMN key_fingerprint TEXT",
+		"ALTER TABLE dpus ADD COLUMN public_key BLOB",
+		"ALTER TABLE dpus ADD COLUMN kid TEXT",
+		"ALTER TABLE dpus ADD COLUMN key_fingerprint TEXT",
 	}
 
 	for _, m := range migrations {
@@ -444,6 +484,10 @@ func (s *Store) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_dpus_tenant ON dpus(tenant_id);
 	CREATE INDEX IF NOT EXISTS idx_trust_source_host ON trust_relationships(source_host);
 	CREATE INDEX IF NOT EXISTS idx_trust_target_host ON trust_relationships(target_host);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_keymakers_kid ON keymakers(kid);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_keymakers_key_fingerprint ON keymakers(key_fingerprint);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_dpus_kid ON dpus(kid);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_dpus_key_fingerprint ON dpus(key_fingerprint);
 	`
 	_, err := s.db.Exec(indexes)
 	return err
@@ -486,7 +530,7 @@ func (s *Store) Remove(idOrName string) error {
 // Get retrieves a DPU by ID or name.
 func (s *Store) Get(idOrName string) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels FROM dpus WHERE id = ? OR name = ?`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint FROM dpus WHERE id = ? OR name = ?`,
 		idOrName, idOrName,
 	)
 	return s.scanDPU(row)
@@ -495,7 +539,7 @@ func (s *Store) Get(idOrName string) (*DPU, error) {
 // GetDPUByAddress returns a DPU with the given host:port, or nil if not found.
 func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels FROM dpus WHERE host = ? AND port = ?`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint FROM dpus WHERE host = ? AND port = ?`,
 		host, port,
 	)
 
@@ -504,8 +548,11 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	var createdAt int64
 	var tenantID sql.NullString
 	var labelsJSON string
+	var publicKey []byte
+	var kid sql.NullString
+	var keyFingerprint sql.NullString
 
-	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON)
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -525,6 +572,13 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	if labelsJSON != "" {
 		json.Unmarshal([]byte(labelsJSON), &dpu.Labels)
 	}
+	dpu.PublicKey = publicKey
+	if kid.Valid {
+		dpu.Kid = &kid.String
+	}
+	if keyFingerprint.Valid {
+		dpu.KeyFingerprint = &keyFingerprint.String
+	}
 
 	return &dpu, nil
 }
@@ -532,7 +586,7 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 // List returns all registered DPUs.
 func (s *Store) List() ([]*DPU, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels FROM dpus ORDER BY name`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint FROM dpus ORDER BY name`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list DPUs: %w", err)
@@ -596,8 +650,11 @@ func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	var createdAt int64
 	var tenantID sql.NullString
 	var labelsJSON string
+	var publicKey []byte
+	var kid sql.NullString
+	var keyFingerprint sql.NullString
 
-	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON)
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("DPU not found")
 	}
@@ -617,6 +674,13 @@ func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	if labelsJSON != "" {
 		json.Unmarshal([]byte(labelsJSON), &dpu.Labels)
 	}
+	dpu.PublicKey = publicKey
+	if kid.Valid {
+		dpu.Kid = &kid.String
+	}
+	if keyFingerprint.Valid {
+		dpu.KeyFingerprint = &keyFingerprint.String
+	}
 
 	return &dpu, nil
 }
@@ -627,8 +691,11 @@ func (s *Store) scanDPURows(rows *sql.Rows) (*DPU, error) {
 	var createdAt int64
 	var tenantID sql.NullString
 	var labelsJSON string
+	var publicKey []byte
+	var kid sql.NullString
+	var keyFingerprint sql.NullString
 
-	err := rows.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON)
+	err := rows.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan DPU: %w", err)
 	}
@@ -644,6 +711,13 @@ func (s *Store) scanDPURows(rows *sql.Rows) (*DPU, error) {
 	dpu.Labels = make(map[string]string)
 	if labelsJSON != "" {
 		json.Unmarshal([]byte(labelsJSON), &dpu.Labels)
+	}
+	dpu.PublicKey = publicKey
+	if kid.Valid {
+		dpu.Kid = &kid.String
+	}
+	if keyFingerprint.Valid {
+		dpu.KeyFingerprint = &keyFingerprint.String
 	}
 
 	return &dpu, nil
@@ -768,7 +842,7 @@ func (s *Store) UnassignDPUFromTenant(dpuID string) error {
 // ListDPUsByTenant returns all DPUs for a specific tenant.
 func (s *Store) ListDPUsByTenant(tenantID string) ([]*DPU, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels FROM dpus WHERE tenant_id = ? ORDER BY name`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint FROM dpus WHERE tenant_id = ? ORDER BY name`,
 		tenantID,
 	)
 	if err != nil {

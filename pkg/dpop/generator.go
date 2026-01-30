@@ -28,56 +28,7 @@ func NewEd25519Generator(privateKey ed25519.PrivateKey) *Ed25519Generator {
 // The kid parameter is the server-assigned key identifier (empty during enrollment).
 // Returns a signed JWT string.
 func (g *Ed25519Generator) Generate(method, uri, kid string) (string, error) {
-	// Normalize the URI per RFC 9449
-	normalizedURI, err := normalizeURI(uri)
-	if err != nil {
-		return "", fmt.Errorf("normalize uri: %w", err)
-	}
-
-	// Build header
-	header := map[string]any{
-		"typ": "dpop+jwt",
-		"alg": "EdDSA",
-	}
-
-	if kid != "" {
-		// Post-enrollment: use kid
-		header["kid"] = kid
-	} else {
-		// Enrollment: include jwk (public key)
-		header["jwk"] = publicKeyToJWK(g.privateKey.Public().(ed25519.PublicKey))
-	}
-
-	// Build payload
-	payload := map[string]any{
-		"jti": uuid.New().String(), // UUIDv4 - random, not sequential
-		"htm": method,              // HTTP method exactly as provided
-		"htu": normalizedURI,       // Normalized URI
-		"iat": time.Now().Unix(),   // Current Unix timestamp
-	}
-
-	// Encode header and payload
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		return "", fmt.Errorf("marshal header: %w", err)
-	}
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal payload: %w", err)
-	}
-
-	headerB64 := base64URLEncode(headerJSON)
-	payloadB64 := base64URLEncode(payloadJSON)
-
-	// Create signing input (header.payload)
-	signingInput := headerB64 + "." + payloadB64
-
-	// Sign with Ed25519
-	signature := ed25519.Sign(g.privateKey, []byte(signingInput))
-	signatureB64 := base64URLEncode(signature)
-
-	// Return complete JWT
-	return signingInput + "." + signatureB64, nil
+	return GenerateProof(g.privateKey, method, uri, kid)
 }
 
 // SignRequest adds a DPoP header to an HTTP request.
@@ -95,33 +46,119 @@ func (g *Ed25519Generator) SignRequest(req *http.Request, kid string) error {
 	return nil
 }
 
-// normalizeURI normalizes a URI per RFC 9449 Section 4.1:
-// - Lowercase scheme and host
-// - Include port only if non-default
-// - Path only (no query string or fragment)
+// GenerateProof creates a DPoP proof JWT for an HTTP request.
+//
+// The proof binds the request to the caller's private key, preventing token theft
+// and replay attacks. Per RFC 9449, the proof contains:
+//   - Header: typ="dpop+jwt", alg="EdDSA", and either kid (post-enrollment) or jwk (enrollment)
+//   - Payload: jti (unique ID), htm (HTTP method), htu (normalized URI), iat (timestamp)
+//
+// Parameters:
+//   - privateKey: Ed25519 private key for signing (64 bytes)
+//   - method: HTTP method (e.g., "POST", "GET") used exactly as provided
+//   - uri: Full URL of the request (will be normalized per RFC 9449)
+//   - kid: Server-assigned key identifier; if empty, public key is embedded as jwk
+//
+// Returns the signed JWT string in format: base64url(header).base64url(payload).base64url(signature)
+func GenerateProof(privateKey ed25519.PrivateKey, method, uri string, kid string) (string, error) {
+	// Derive public key from private key for JWK embedding
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+
+	// Build header with either kid or jwk
+	header := Header{
+		Typ: TypeDPoP,
+		Alg: AlgEdDSA,
+	}
+	if kid != "" {
+		header.Kid = kid
+	} else {
+		header.JWK = PublicKeyToJWK(publicKey)
+	}
+
+	// Normalize URI per RFC 9449
+	normalizedURI, err := normalizeURI(uri)
+	if err != nil {
+		return "", fmt.Errorf("failed to normalize URI: %w", err)
+	}
+
+	// Build claims with unique jti
+	claims := Claims{
+		JTI: uuid.New().String(),
+		HTM: method, // Preserve exact case
+		HTU: normalizedURI,
+		IAT: time.Now().Unix(),
+	}
+
+	// Encode header and payload
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal header: %w", err)
+	}
+	payloadJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal claims: %w", err)
+	}
+
+	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
+
+	// Create signing input and sign
+	signingInput := headerB64 + "." + payloadB64
+	signature := ed25519.Sign(privateKey, []byte(signingInput))
+	signatureB64 := base64.RawURLEncoding.EncodeToString(signature)
+
+	return signingInput + "." + signatureB64, nil
+}
+
+// SignRequest adds a DPoP header to an http.Request.
+//
+// This is a convenience function that generates a proof and attaches it to the request.
+// The htu is derived from the request's URL, not the Host header, to prevent
+// Host header injection attacks.
+//
+// Parameters:
+//   - req: HTTP request to sign (URL and Method are used)
+//   - privateKey: Ed25519 private key for signing
+//   - kid: Server-assigned key identifier; if empty, public key is embedded
+func SignRequest(req *http.Request, privateKey ed25519.PrivateKey, kid string) error {
+	// Use the request URL directly, not the Host header
+	uri := req.URL.String()
+
+	proof, err := GenerateProof(privateKey, req.Method, uri, kid)
+	if err != nil {
+		return fmt.Errorf("failed to generate DPoP proof: %w", err)
+	}
+
+	req.Header.Set("DPoP", proof)
+	return nil
+}
+
+// normalizeURI normalizes a URI per RFC 9449 Section 4.2:
+//   - Lowercase scheme and host
+//   - Keep path exactly as-is
+//   - Remove query string and fragment
+//   - Remove default port (443 for https, 80 for http)
 func normalizeURI(rawURI string) (string, error) {
-	u, err := url.Parse(rawURI)
+	parsed, err := url.Parse(rawURI)
 	if err != nil {
 		return "", err
 	}
 
-	// Lowercase scheme
-	scheme := strings.ToLower(u.Scheme)
+	// Lowercase scheme and host
+	scheme := strings.ToLower(parsed.Scheme)
+	host := strings.ToLower(parsed.Hostname())
 
-	// Lowercase host
-	host := strings.ToLower(u.Hostname())
-
-	// Handle port
-	port := u.Port()
+	// Handle port: remove default ports
+	port := parsed.Port()
 	if port != "" {
-		// Include port only if non-default
-		if (scheme == "https" && port != "443") || (scheme == "http" && port != "80") {
+		isDefaultPort := (scheme == "https" && port == "443") || (scheme == "http" && port == "80")
+		if !isDefaultPort {
 			host = host + ":" + port
 		}
 	}
 
 	// Path only (no query or fragment)
-	path := u.Path
+	path := parsed.Path
 	if path == "" {
 		path = "/"
 	}
@@ -144,15 +181,6 @@ func buildRequestURI(req *http.Request) string {
 	}
 
 	return scheme + "://" + host + req.URL.Path
-}
-
-// publicKeyToJWK converts an Ed25519 public key to a JWK map.
-func publicKeyToJWK(pub ed25519.PublicKey) map[string]string {
-	return map[string]string{
-		"kty": "OKP",
-		"crv": "Ed25519",
-		"x":   base64URLEncode(pub),
-	}
 }
 
 // base64URLEncode encodes data using base64url encoding without padding.
