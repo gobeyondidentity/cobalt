@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.11] - 2026-01-30
+
+### Added
+- **DPoP Authentication System** for client-to-server authentication (si-d2y):
+  - Core library with types, errors, and key utilities (si-d2y.1.5)
+  - Proof generator for client authentication (si-d2y.1.6)
+  - Proof validator with security-focused validation (si-d2y.1.7)
+  - JTI replay cache for proof validation (si-d2y.1.8)
+  - HTTP middleware for nexus API authentication (si-d2y.1.9)
+  - DB schema for DPoP key lookup (si-d2y.1.4)
+  - KeyStore and DPoP Client for client integration (si-d2y.1.10)
+  - Security test suite with comprehensive attack vector coverage (si-d2y.1.11)
+- **Windows CI Support**: Added Windows runner for cross-platform test verification (si-l80)
+- **Platform-Specific Permission Checks**: File permission validation adapted for Windows vs Unix (si-d2y.1.15)
+
+### Changed
+- **DPoP JWT Primitives**: Refactored to use go-jose library instead of manual JWT handling (si-d2y.1.12)
+- **KeyStore Simplification**: Load only what we save, removing unnecessary complexity (si-d2y.1.13)
+- **URL Normalization**: Consolidated into single NormalizeURI function for consistency
+- **CLI DPoP Integration**: bluectl and km now use DPoP authentication when configured (si-d2y.1.10)
+
+### Fixed
+- **Windows Test Compatibility**: Multiple fixes for cross-platform test execution (si-d2y.1.15):
+  - Format tests with Linux-only build tags
+  - Mode().Perm() checks wrapped for Windows
+  - Unix socket and credential tests guarded with build constraints
+- **PKCS8 Parsing**: Now uses x509.ParsePKCS8PrivateKey for correct key deserialization
+- **JTI Cache Key**: Uses actual jti claim instead of full proof for replay detection
+- **IAT Validation**: Added ErrIATNonPositive for clearer zero/negative timestamp errors
+- **Panic Recovery**: Stack traces now included for debugging
+
+## [0.6.10] - 2026-01-29
+
+### Added
+- **KeyMaker Revocation**: Revoked KeyMakers can no longer push credentials or sign certificates
+- **Host Posture Retrieval**: Query host security posture via aegis agent
+- **Operator Suspension Enforcement**: Suspended operators blocked from authorization checks and credential push
+- **E2E Test Suite** covering critical security paths:
+  - Host posture collection (si-4f8.14)
+  - Operator suspension enforcement (si-4f8.15)
+  - CA lifecycle operations (si-4f8.10)
+  - KeyMaker revocation (si-4f8.16)
+  - SSH access flows (si-4f8.13)
+  - Mid-push restart recovery (si-4f8.12)
+  - DPU metadata preservation and re-registration (si-4f8.11)
+  - Multi-tenant isolation (si-4f8.9)
+  - Attestation gating (si-4f8.8)
+  - Authorization enforcement (si-4f8.7)
+  - Operator onboarding (si-4f8.6)
+- **sshd Test Harness**: Containerized sshd for integration testing (si-4f8.17)
+
+### Changed
+- **km push**: Refactored to use nexus server API instead of direct store access (si-4f8.20)
+
+### Fixed
+- **Credential Delivery Race**: Fixed timing issue in E2E credential delivery tests
+- **bluectl dpu add**: Fixed double-port bug in DPU registration
+- **Operator Grant CLI**: Fixed regression in grant command (si-4f8.4)
+- **Test Stability**: Fixed race conditions and bugs in operator suspension, onboarding, and CA lifecycle tests
+
 ## [0.6.9] - 2026-01-28
 
 ### Breaking Changes
