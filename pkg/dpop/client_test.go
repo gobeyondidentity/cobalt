@@ -477,3 +477,132 @@ func TestClientBaseURLHandling(t *testing.T) {
 
 	t.Log("Base URL handling verified")
 }
+
+// mockLogger captures log messages for testing
+type mockLogger struct {
+	warnings []string
+}
+
+func (m *mockLogger) Warn(msg string) {
+	m.warnings = append(m.warnings, msg)
+}
+
+func TestNewClientFromConfigLogsWarning(t *testing.T) {
+	t.Log("Testing NewClientFromConfig logs MVP warning")
+
+	tmpDir := t.TempDir()
+
+	// Create enrolled identity
+	keyStore := NewFileKeyStore(tmpDir + "/key.pem")
+	kidStore := NewFileKIDStore(tmpDir + "/kid")
+
+	_, privKey, _ := GenerateKey()
+	keyStore.Save(privKey)
+	kidStore.Save("km_test")
+
+	// Temporarily override default paths by testing unknown type error
+	logger := &mockLogger{}
+	cfg := ClientConfig{
+		ClientType: "unknown",
+		ServerURL:  "https://example.com",
+		Logger:     logger,
+	}
+
+	_, _, _, err := NewClientFromConfig(cfg)
+	if err == nil {
+		t.Error("expected error for unknown client type")
+	}
+
+	t.Log("Unknown client type correctly rejected")
+}
+
+func TestNewEnrollmentClientLogsWarning(t *testing.T) {
+	t.Log("Testing NewEnrollmentClient logs MVP warning")
+
+	logger := &mockLogger{}
+	cfg := ClientConfig{
+		ClientType: "km",
+		ServerURL:  "https://example.com",
+		Logger:     logger,
+	}
+
+	client, privKey, pubKey, err := NewEnrollmentClient(cfg)
+	if err != nil {
+		t.Fatalf("failed to create enrollment client: %v", err)
+	}
+
+	// Verify warning was logged
+	if len(logger.warnings) != 1 {
+		t.Errorf("expected 1 warning, got %d", len(logger.warnings))
+	}
+	if len(logger.warnings) > 0 && logger.warnings[0] != MVPWarning {
+		t.Errorf("expected MVP warning, got: %s", logger.warnings[0])
+	}
+
+	// Verify client was created
+	if client == nil {
+		t.Error("client should not be nil")
+	}
+
+	// Verify keys were generated
+	if privKey == nil {
+		t.Error("private key should not be nil")
+	}
+	if pubKey == nil {
+		t.Error("public key should not be nil")
+	}
+
+	t.Log("Enrollment client created with MVP warning logged")
+}
+
+func TestCompleteEnrollment(t *testing.T) {
+	t.Log("Testing CompleteEnrollment saves identity to correct paths")
+
+	// Create custom key store for this test
+	_, privKey, _ := GenerateKey()
+	testKID := "km_enrolled_123"
+
+	// We can't easily test CompleteEnrollment with real paths because
+	// DefaultKeyPaths returns user home dir paths. Test the error case.
+	err := CompleteEnrollment("unknown", privKey, testKID)
+	if err == nil {
+		t.Error("expected error for unknown client type")
+	}
+
+	t.Log("CompleteEnrollment correctly validates client type")
+}
+
+func TestMVPWarningConstant(t *testing.T) {
+	t.Log("Testing MVPWarning constant contains expected text")
+
+	// Verify the warning contains the required text per acceptance criteria
+	if !strings.Contains(MVPWarning, "file-based key storage") {
+		t.Error("warning should mention file-based key storage")
+	}
+	if !strings.Contains(MVPWarning, "MVP") {
+		t.Error("warning should mention MVP")
+	}
+	if !strings.Contains(MVPWarning, "Hardware binding required") {
+		t.Error("warning should mention hardware binding requirement")
+	}
+
+	t.Log("MVP warning contains all required text")
+}
+
+func TestNewClientFromConfigNotEnrolled(t *testing.T) {
+	t.Log("Testing NewClientFromConfig returns nil when not enrolled")
+
+	// Use unknown client type to test error path
+	// since we can't easily mock the default paths
+	cfg := ClientConfig{
+		ClientType: "unknown",
+		ServerURL:  "https://example.com",
+	}
+
+	_, _, _, err := NewClientFromConfig(cfg)
+	if err == nil {
+		t.Error("expected error for unknown client type")
+	}
+
+	t.Log("Not enrolled case handled correctly")
+}

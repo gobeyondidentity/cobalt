@@ -247,3 +247,122 @@ func SaveIdentity(cfg IdentityConfig, key ed25519.PrivateKey, kid string) error 
 func IsEnrolled(cfg IdentityConfig) bool {
 	return cfg.KeyStore.Exists() && cfg.KIDStore.Exists()
 }
+
+// MVPWarning returns the warning message for file-based key storage.
+// CLI clients should log this at startup when using FileKeyStore.
+const MVPWarning = "Using file-based key storage (MVP mode). Hardware binding required for production."
+
+// Logger is a simple logging interface for DPoP warnings.
+type Logger interface {
+	Warn(msg string)
+}
+
+// ClientConfig holds configuration for creating a DPoP client.
+type ClientConfig struct {
+	// ClientType is one of: "km", "bluectl", "aegis"
+	ClientType string
+	// ServerURL is the nexus API base URL
+	ServerURL string
+	// Logger for warnings (optional, uses default if nil)
+	Logger Logger
+	// HTTPClient is the underlying HTTP client (optional)
+	HTTPClient *http.Client
+}
+
+// NewClientFromConfig creates a DPoP client from configuration.
+// Loads existing identity if enrolled, returns nil key if not enrolled.
+// Logs MVP warning for file-based key storage.
+func NewClientFromConfig(cfg ClientConfig) (*Client, ed25519.PrivateKey, string, error) {
+	// Get default paths for client type
+	keyPath, kidPath := DefaultKeyPaths(cfg.ClientType)
+	if keyPath == "" {
+		return nil, nil, "", fmt.Errorf("unknown client type: %s", cfg.ClientType)
+	}
+
+	// Create stores
+	keyStore := NewFileKeyStore(keyPath)
+	kidStore := NewFileKIDStore(kidPath)
+
+	// Log MVP warning for file-based keys
+	if cfg.Logger != nil {
+		cfg.Logger.Warn(MVPWarning)
+	}
+
+	idCfg := IdentityConfig{
+		KeyStore:  keyStore,
+		KIDStore:  kidStore,
+		ServerURL: cfg.ServerURL,
+	}
+
+	// Check if enrolled
+	if !IsEnrolled(idCfg) {
+		// Not enrolled yet, caller must handle enrollment
+		return nil, nil, "", nil
+	}
+
+	// Load identity
+	privKey, kid, err := LoadIdentity(idCfg)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("load identity: %w", err)
+	}
+
+	// Create proof generator
+	proofGen := NewEd25519Generator(privKey)
+
+	// Create client options
+	var opts []ClientOption
+	opts = append(opts, WithKID(kid))
+	if cfg.HTTPClient != nil {
+		opts = append(opts, WithHTTPClient(cfg.HTTPClient))
+	}
+
+	// Create client
+	client := NewClient(cfg.ServerURL, proofGen, opts...)
+
+	return client, privKey, kid, nil
+}
+
+// NewEnrollmentClient creates a DPoP client for enrollment (no existing identity).
+// Generates a new keypair and returns the client, private key, and public key.
+// Logs MVP warning for file-based key storage.
+func NewEnrollmentClient(cfg ClientConfig) (*Client, ed25519.PrivateKey, ed25519.PublicKey, error) {
+	// Log MVP warning for file-based keys
+	if cfg.Logger != nil {
+		cfg.Logger.Warn(MVPWarning)
+	}
+
+	// Generate new keypair
+	pubKey, privKey, err := GenerateKey()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("generate key: %w", err)
+	}
+
+	// Create proof generator (no kid during enrollment)
+	proofGen := NewEd25519Generator(privKey)
+
+	// Create client options
+	var opts []ClientOption
+	if cfg.HTTPClient != nil {
+		opts = append(opts, WithHTTPClient(cfg.HTTPClient))
+	}
+
+	// Create client (no kid yet)
+	client := NewClient(cfg.ServerURL, proofGen, opts...)
+
+	return client, privKey, pubKey, nil
+}
+
+// CompleteEnrollment saves the identity after successful enrollment.
+func CompleteEnrollment(clientType string, privKey ed25519.PrivateKey, kid string) error {
+	keyPath, kidPath := DefaultKeyPaths(clientType)
+	if keyPath == "" {
+		return fmt.Errorf("unknown client type: %s", clientType)
+	}
+
+	cfg := IdentityConfig{
+		KeyStore: NewFileKeyStore(keyPath),
+		KIDStore: NewFileKIDStore(kidPath),
+	}
+
+	return SaveIdentity(cfg, privKey, kid)
+}
