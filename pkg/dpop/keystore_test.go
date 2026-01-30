@@ -37,14 +37,16 @@ func TestFileKeyStoreSaveAndLoad(t *testing.T) {
 		t.Error("key file should exist after save")
 	}
 
-	// Verify permissions
-	t.Log("Verifying file permissions are 0600")
-	info, err := os.Stat(keyPath)
-	if err != nil {
-		t.Fatalf("failed to stat key file: %v", err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Errorf("expected permissions 0600, got %04o", info.Mode().Perm())
+	// Verify permissions (Unix only - Windows Mode().Perm() returns 0666 regardless of ACLs)
+	if runtime.GOOS != "windows" {
+		t.Log("Verifying file permissions are 0600")
+		info, err := os.Stat(keyPath)
+		if err != nil {
+			t.Fatalf("failed to stat key file: %v", err)
+		}
+		if info.Mode().Perm() != 0600 {
+			t.Errorf("expected permissions 0600, got %04o", info.Mode().Perm())
+		}
 	}
 
 	// Load the key
@@ -163,17 +165,18 @@ func TestFileKeyStoreCreatesParentDirectories(t *testing.T) {
 		t.Fatalf("failed to save key: %v", err)
 	}
 
-	// Verify parent dir permissions
-	parentDir := filepath.Dir(keyPath)
-	info, err := os.Stat(parentDir)
-	if err != nil {
-		t.Fatalf("failed to stat parent dir: %v", err)
+	// Verify parent dir permissions (Unix only - Windows Mode().Perm() doesn't reflect ACLs)
+	if runtime.GOOS != "windows" {
+		parentDir := filepath.Dir(keyPath)
+		info, err := os.Stat(parentDir)
+		if err != nil {
+			t.Fatalf("failed to stat parent dir: %v", err)
+		}
+		if info.Mode().Perm() != 0700 {
+			t.Errorf("expected parent dir permissions 0700, got %04o", info.Mode().Perm())
+		}
+		t.Log("Parent directories created with correct permissions")
 	}
-	if info.Mode().Perm() != 0700 {
-		t.Errorf("expected parent dir permissions 0700, got %04o", info.Mode().Perm())
-	}
-
-	t.Log("Parent directories created with correct permissions")
 }
 
 func TestFileKIDStoreSaveAndLoad(t *testing.T) {
@@ -195,13 +198,15 @@ func TestFileKIDStoreSaveAndLoad(t *testing.T) {
 		t.Error("kid file should exist after save")
 	}
 
-	// Verify permissions
-	info, err := os.Stat(kidPath)
-	if err != nil {
-		t.Fatalf("failed to stat kid file: %v", err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Errorf("expected permissions 0600, got %04o", info.Mode().Perm())
+	// Verify permissions (Unix only - Windows Mode().Perm() returns 0666 regardless of ACLs)
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(kidPath)
+		if err != nil {
+			t.Fatalf("failed to stat kid file: %v", err)
+		}
+		if info.Mode().Perm() != 0600 {
+			t.Errorf("expected permissions 0600, got %04o", info.Mode().Perm())
+		}
 	}
 
 	t.Log("Loading kid from file")
