@@ -8,13 +8,16 @@ import (
 )
 
 func TestGetServerURL_EnvVar(t *testing.T) {
-	t.Log("Testing KM_SERVER env var takes precedence over flags")
+	t.Log("Testing KM_SERVER env var takes precedence over flags (but triggers deprecation)")
 
 	// Create a new init command for testing
 	cmd := *initCmd // Copy the command
 	cmd.ResetFlags()
 	cmd.Flags().String("server", "http://localhost:18080", "Control Plane URL")
 	cmd.Flags().String("control-plane", "http://localhost:18080", "Deprecated: use --server")
+
+	// Clear any env vars that might interfere
+	os.Unsetenv("SERVER_URL")
 
 	// Set env var
 	os.Setenv("KM_SERVER", "http://env-server.example.com")
@@ -28,10 +31,67 @@ func TestGetServerURL_EnvVar(t *testing.T) {
 	if url != "http://env-server.example.com" {
 		t.Errorf("Expected URL from env var 'http://env-server.example.com', got %q", url)
 	}
-	if deprecated {
-		t.Error("Expected no deprecation warning when using env var")
+	// KM_SERVER is now deprecated, so it should return deprecated=true
+	if !deprecated {
+		t.Error("Expected deprecation warning when using KM_SERVER (it's deprecated)")
 	}
-	t.Log("Env var correctly takes precedence over flags")
+	t.Log("KM_SERVER correctly takes precedence over flags and triggers deprecation")
+}
+
+func TestGetServerURL_ServerURLEnvVar(t *testing.T) {
+	t.Log("Testing SERVER_URL env var takes precedence over KM_SERVER")
+
+	// Create a new init command for testing
+	cmd := *initCmd // Copy the command
+	cmd.ResetFlags()
+	cmd.Flags().String("server", "http://localhost:18080", "Control Plane URL")
+	cmd.Flags().String("control-plane", "http://localhost:18080", "Deprecated: use --server")
+
+	// Set both env vars
+	os.Setenv("SERVER_URL", "http://server-url.example.com")
+	os.Setenv("KM_SERVER", "http://km-server.example.com")
+	defer func() {
+		os.Unsetenv("SERVER_URL")
+		os.Unsetenv("KM_SERVER")
+	}()
+
+	// Set flags to different values
+	cmd.Flags().Set("server", "http://flag-server.example.com")
+
+	url, deprecated := getServerURL(&cmd)
+
+	if url != "http://server-url.example.com" {
+		t.Errorf("Expected URL from SERVER_URL 'http://server-url.example.com', got %q", url)
+	}
+	if deprecated {
+		t.Error("Expected no deprecation warning when using SERVER_URL env var")
+	}
+	t.Log("SERVER_URL correctly takes precedence over KM_SERVER")
+}
+
+func TestGetServerURL_KMServerDeprecationWarning(t *testing.T) {
+	t.Log("Testing KM_SERVER triggers deprecation warning when SERVER_URL not set")
+
+	// Create a new init command for testing
+	cmd := *initCmd // Copy the command
+	cmd.ResetFlags()
+	cmd.Flags().String("server", "http://localhost:18080", "Control Plane URL")
+	cmd.Flags().String("control-plane", "http://localhost:18080", "Deprecated: use --server")
+
+	// Clear SERVER_URL, set only KM_SERVER
+	os.Unsetenv("SERVER_URL")
+	os.Setenv("KM_SERVER", "http://km-server.example.com")
+	defer os.Unsetenv("KM_SERVER")
+
+	url, deprecated := getServerURL(&cmd)
+
+	if url != "http://km-server.example.com" {
+		t.Errorf("Expected URL from KM_SERVER 'http://km-server.example.com', got %q", url)
+	}
+	if !deprecated {
+		t.Error("Expected deprecation warning when using KM_SERVER without SERVER_URL")
+	}
+	t.Log("KM_SERVER triggers deprecation warning as expected")
 }
 
 func TestGetServerURL_ServerFlag(t *testing.T) {
@@ -44,6 +104,7 @@ func TestGetServerURL_ServerFlag(t *testing.T) {
 	cmd.Flags().String("control-plane", "http://localhost:18080", "Deprecated: use --server")
 
 	// Ensure no env var interference
+	os.Unsetenv("SERVER_URL")
 	os.Unsetenv("KM_SERVER")
 
 	// Set --server flag
@@ -70,6 +131,7 @@ func TestGetServerURL_ControlPlaneFlag(t *testing.T) {
 	cmd.Flags().String("control-plane", "http://localhost:18080", "Deprecated: use --server")
 
 	// Ensure no env var interference
+	os.Unsetenv("SERVER_URL")
 	os.Unsetenv("KM_SERVER")
 
 	// Set only --control-plane flag
@@ -96,6 +158,7 @@ func TestGetServerURL_Default(t *testing.T) {
 	cmd.Flags().String("control-plane", "http://localhost:18080", "Deprecated: use --server")
 
 	// Ensure no env var interference
+	os.Unsetenv("SERVER_URL")
 	os.Unsetenv("KM_SERVER")
 
 	// Don't set any flags (use defaults)
@@ -120,6 +183,7 @@ func TestGetServerURL_ServerOverridesControlPlane(t *testing.T) {
 	cmd.Flags().String("control-plane", "http://localhost:18080", "Deprecated: use --server")
 
 	// Ensure no env var interference
+	os.Unsetenv("SERVER_URL")
 	os.Unsetenv("KM_SERVER")
 
 	// Set both flags
@@ -181,7 +245,16 @@ func TestInitCmd_HelpShowsServer(t *testing.T) {
 }
 
 func TestInitCmd_LongDescriptionMentionsEnvVar(t *testing.T) {
-	t.Log("Verifying Long description mentions KM_SERVER env var")
+	t.Log("Verifying Long description mentions SERVER_URL env var as primary")
+
+	if !strings.Contains(initCmd.Long, "SERVER_URL") {
+		t.Errorf("Expected Long description to mention SERVER_URL env var, got:\n%s", initCmd.Long)
+	}
+	t.Log("Long description correctly mentions SERVER_URL")
+}
+
+func TestInitCmd_LongDescriptionMentionsKMServer(t *testing.T) {
+	t.Log("Verifying Long description mentions KM_SERVER env var as deprecated")
 
 	if !strings.Contains(initCmd.Long, "KM_SERVER") {
 		t.Errorf("Expected Long description to mention KM_SERVER env var, got:\n%s", initCmd.Long)

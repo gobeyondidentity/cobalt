@@ -90,6 +90,7 @@ func TestConfig_LoadFromEnv(t *testing.T) {
 	// Helper to clean up env vars after each test
 	cleanupEnv := func() {
 		os.Unsetenv("FC_BMC_PASSWORD")
+		os.Unsetenv("SERVER_URL")
 		os.Unsetenv("CONTROL_PLANE_URL")
 		os.Unsetenv("DPU_NAME")
 		os.Unsetenv("DPU_ID")
@@ -211,6 +212,70 @@ func TestConfig_LoadFromEnv(t *testing.T) {
 		}
 		if cfg.DPUName != "existing-dpu" {
 			t.Errorf("DPUName changed unexpectedly to %q", cfg.DPUName)
+		}
+	})
+
+	t.Run("SERVER_URL takes precedence over CONTROL_PLANE_URL", func(t *testing.T) {
+		cleanupEnv()
+		defer cleanupEnv()
+
+		t.Log("Setting both SERVER_URL and CONTROL_PLANE_URL env vars")
+		os.Setenv("SERVER_URL", "https://new.example.com")
+		os.Setenv("CONTROL_PLANE_URL", "https://legacy.example.com")
+
+		cfg := &Config{ListenAddr: ":18051"}
+
+		t.Log("Calling LoadFromEnv to populate config")
+		err := cfg.LoadFromEnv()
+		if err != nil {
+			t.Fatalf("LoadFromEnv() unexpected error: %v", err)
+		}
+
+		t.Log("Verifying SERVER_URL value was used")
+		if cfg.ControlPlaneURL != "https://new.example.com" {
+			t.Errorf("ControlPlaneURL = %q, want %q (SERVER_URL should take precedence)", cfg.ControlPlaneURL, "https://new.example.com")
+		}
+	})
+
+	t.Run("CONTROL_PLANE_URL works when SERVER_URL is not set (backward compatibility)", func(t *testing.T) {
+		cleanupEnv()
+		defer cleanupEnv()
+
+		t.Log("Setting only CONTROL_PLANE_URL env var (legacy)")
+		os.Setenv("CONTROL_PLANE_URL", "https://legacy.example.com")
+
+		cfg := &Config{ListenAddr: ":18051"}
+
+		t.Log("Calling LoadFromEnv to populate config")
+		err := cfg.LoadFromEnv()
+		if err != nil {
+			t.Fatalf("LoadFromEnv() unexpected error: %v", err)
+		}
+
+		t.Log("Verifying CONTROL_PLANE_URL value was used for backward compatibility")
+		if cfg.ControlPlaneURL != "https://legacy.example.com" {
+			t.Errorf("ControlPlaneURL = %q, want %q", cfg.ControlPlaneURL, "https://legacy.example.com")
+		}
+	})
+
+	t.Run("SERVER_URL alone sets ControlPlaneURL", func(t *testing.T) {
+		cleanupEnv()
+		defer cleanupEnv()
+
+		t.Log("Setting only SERVER_URL env var")
+		os.Setenv("SERVER_URL", "https://server-url.example.com")
+
+		cfg := &Config{ListenAddr: ":18051"}
+
+		t.Log("Calling LoadFromEnv to populate config")
+		err := cfg.LoadFromEnv()
+		if err != nil {
+			t.Fatalf("LoadFromEnv() unexpected error: %v", err)
+		}
+
+		t.Log("Verifying SERVER_URL value was used")
+		if cfg.ControlPlaneURL != "https://server-url.example.com" {
+			t.Errorf("ControlPlaneURL = %q, want %q", cfg.ControlPlaneURL, "https://server-url.example.com")
 		}
 	})
 }

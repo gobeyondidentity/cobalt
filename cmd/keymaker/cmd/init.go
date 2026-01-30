@@ -57,43 +57,50 @@ This command:
 Use --force to re-initialize if already configured (removes existing keypair).
 
 Environment variables:
-  KM_SERVER   Control Plane URL (takes precedence over --server flag)
+  SERVER_URL  Control Plane URL (preferred, takes precedence over all other options)
+  KM_SERVER   Control Plane URL (deprecated, use SERVER_URL instead)
 
 Examples:
   km init
   km init --name workstation-home
   km init --force                                    # Re-initialize
   km init --server https://fabric.acme.com
-  KM_SERVER=https://fabric.acme.com km init          # Using env var`,
+  SERVER_URL=https://fabric.acme.com km init         # Using env var`,
 	RunE: runInit,
 }
 
 // getServerURL resolves the server URL using the following precedence:
-// 1. KM_SERVER environment variable
-// 2. --server flag
-// 3. --control-plane flag (deprecated)
-// 4. Default value from --server flag
+// 1. SERVER_URL environment variable (preferred)
+// 2. KM_SERVER environment variable (deprecated)
+// 3. --server flag
+// 4. --control-plane flag (deprecated)
+// 5. Default value from --server flag
 //
-// Returns the URL and a boolean indicating if the deprecated flag was used.
+// Returns the URL and a boolean indicating if a deprecated option was used.
 func getServerURL(cmd *cobra.Command) (string, bool) {
-	// 1. Check env var first (highest precedence)
-	if url := os.Getenv("KM_SERVER"); url != "" {
+	// 1. Check SERVER_URL env var first (highest precedence)
+	if url := os.Getenv("SERVER_URL"); url != "" {
 		return url, false
 	}
 
-	// 2. Check --server flag
+	// 2. Check deprecated KM_SERVER env var
+	if url := os.Getenv("KM_SERVER"); url != "" {
+		return url, true // true = show deprecation warning
+	}
+
+	// 3. Check --server flag
 	if cmd.Flags().Changed("server") {
 		url, _ := cmd.Flags().GetString("server")
 		return url, false
 	}
 
-	// 3. Check deprecated --control-plane flag
+	// 4. Check deprecated --control-plane flag
 	if cmd.Flags().Changed("control-plane") {
 		url, _ := cmd.Flags().GetString("control-plane")
 		return url, true // true = show deprecation warning
 	}
 
-	// 4. Return default (from --server flag which has the default)
+	// 5. Return default (from --server flag which has the default)
 	url, _ := cmd.Flags().GetString("server")
 	return url, false
 }
@@ -102,7 +109,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	serverURL, deprecated := getServerURL(cmd)
 	if deprecated {
-		fmt.Fprintln(os.Stderr, "WARNING: --control-plane is deprecated, use --server instead")
+		// Check which deprecated option was used
+		if os.Getenv("KM_SERVER") != "" && os.Getenv("SERVER_URL") == "" {
+			fmt.Fprintln(os.Stderr, "WARNING: KM_SERVER is deprecated, use SERVER_URL instead")
+		} else {
+			fmt.Fprintln(os.Stderr, "WARNING: --control-plane is deprecated, use --server instead")
+		}
 	}
 	inviteCode, _ := cmd.Flags().GetString("invite-code")
 

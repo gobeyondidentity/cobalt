@@ -62,7 +62,11 @@ func (c *Config) LoadFromEnv() error {
 	}
 
 	// Local API configuration from environment
-	if url := os.Getenv("CONTROL_PLANE_URL"); url != "" {
+	// SERVER_URL takes precedence over CONTROL_PLANE_URL (deprecated)
+	if url := os.Getenv("SERVER_URL"); url != "" {
+		c.ControlPlaneURL = url
+	} else if url := os.Getenv("CONTROL_PLANE_URL"); url != "" {
+		fmt.Fprintln(os.Stderr, "WARNING: CONTROL_PLANE_URL is deprecated, use SERVER_URL instead")
 		c.ControlPlaneURL = url
 	}
 	if name := os.Getenv("DPU_NAME"); name != "" {

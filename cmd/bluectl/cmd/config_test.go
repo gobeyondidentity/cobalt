@@ -73,6 +73,10 @@ func TestGetServerFlagPrecedence(t *testing.T) {
 	originalFlag := serverFlag
 	defer func() { serverFlag = originalFlag }()
 
+	// Clear any env vars that might interfere
+	os.Unsetenv("SERVER_URL")
+	os.Unsetenv("BLUECTL_SERVER")
+
 	// Set flag value
 	serverFlag = "http://flag-server.com:18080"
 
@@ -80,6 +84,74 @@ func TestGetServerFlagPrecedence(t *testing.T) {
 	if server != "http://flag-server.com:18080" {
 		t.Errorf("GetServer() = %q, want %q", server, "http://flag-server.com:18080")
 	}
+}
+
+func TestGetServerServerURLEnvVar(t *testing.T) {
+	t.Log("Testing SERVER_URL env var takes precedence over BLUECTL_SERVER and config file")
+
+	// Save original flag value and clear it
+	originalFlag := serverFlag
+	defer func() { serverFlag = originalFlag }()
+	serverFlag = ""
+
+	// Clear any interfering env vars, then set both
+	os.Setenv("SERVER_URL", "http://server-url.example.com")
+	os.Setenv("BLUECTL_SERVER", "http://bluectl-server.example.com")
+	defer func() {
+		os.Unsetenv("SERVER_URL")
+		os.Unsetenv("BLUECTL_SERVER")
+	}()
+
+	server := GetServer()
+	if server != "http://server-url.example.com" {
+		t.Errorf("GetServer() = %q, want %q (SERVER_URL should take precedence)", server, "http://server-url.example.com")
+	}
+	t.Log("SERVER_URL correctly takes precedence over BLUECTL_SERVER")
+}
+
+func TestGetServerBluectlServerEnvVar(t *testing.T) {
+	t.Log("Testing BLUECTL_SERVER env var works when SERVER_URL not set (backward compatibility)")
+
+	// Save original flag value and clear it
+	originalFlag := serverFlag
+	defer func() { serverFlag = originalFlag }()
+	serverFlag = ""
+
+	// Clear SERVER_URL, set only BLUECTL_SERVER
+	os.Unsetenv("SERVER_URL")
+	os.Setenv("BLUECTL_SERVER", "http://bluectl-server.example.com")
+	defer os.Unsetenv("BLUECTL_SERVER")
+
+	server := GetServer()
+	if server != "http://bluectl-server.example.com" {
+		t.Errorf("GetServer() = %q, want %q", server, "http://bluectl-server.example.com")
+	}
+	t.Log("BLUECTL_SERVER correctly used for backward compatibility")
+}
+
+func TestGetServerFlagOverridesEnvVars(t *testing.T) {
+	t.Log("Testing --server flag takes precedence over all env vars")
+
+	// Save original flag value
+	originalFlag := serverFlag
+	defer func() { serverFlag = originalFlag }()
+
+	// Set both env vars
+	os.Setenv("SERVER_URL", "http://server-url.example.com")
+	os.Setenv("BLUECTL_SERVER", "http://bluectl-server.example.com")
+	defer func() {
+		os.Unsetenv("SERVER_URL")
+		os.Unsetenv("BLUECTL_SERVER")
+	}()
+
+	// Set flag value
+	serverFlag = "http://flag-server.example.com"
+
+	server := GetServer()
+	if server != "http://flag-server.example.com" {
+		t.Errorf("GetServer() = %q, want %q (flag should take precedence over env vars)", server, "http://flag-server.example.com")
+	}
+	t.Log("--server flag correctly takes precedence over env vars")
 }
 
 func TestGetServerFromConfig(t *testing.T) {
