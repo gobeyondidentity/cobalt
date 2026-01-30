@@ -1,0 +1,425 @@
+package dpop
+
+import (
+	"crypto/ed25519"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestFileKeyStoreSaveAndLoad(t *testing.T) {
+	t.Log("Testing FileKeyStore save and load round-trip")
+
+	// Create temp directory
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "test-key.pem")
+
+	store := NewFileKeyStore(keyPath)
+
+	// Generate a key
+	t.Log("Generating Ed25519 keypair")
+	_, privKey, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	// Save the key
+	t.Log("Saving key to file")
+	if err := store.Save(privKey); err != nil {
+		t.Fatalf("failed to save key: %v", err)
+	}
+
+	// Verify file exists
+	if !store.Exists() {
+		t.Error("key file should exist after save")
+	}
+
+	// Verify permissions
+	t.Log("Verifying file permissions are 0600")
+	info, err := os.Stat(keyPath)
+	if err != nil {
+		t.Fatalf("failed to stat key file: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("expected permissions 0600, got %04o", info.Mode().Perm())
+	}
+
+	// Load the key
+	t.Log("Loading key from file")
+	loadedKey, err := store.Load()
+	if err != nil {
+		t.Fatalf("failed to load key: %v", err)
+	}
+
+	// Verify the key matches
+	if !privKey.Equal(loadedKey) {
+		t.Error("loaded key does not match saved key")
+	}
+
+	t.Log("Save and load round-trip successful")
+}
+
+func TestFileKeyStoreNotFound(t *testing.T) {
+	t.Log("Testing FileKeyStore returns ErrKeyNotFound for missing file")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "nonexistent-key.pem")
+
+	store := NewFileKeyStore(keyPath)
+
+	if store.Exists() {
+		t.Error("key file should not exist")
+	}
+
+	_, err := store.Load()
+	if err == nil {
+		t.Error("expected error for missing key file")
+	}
+	if !IsNotFoundError(err) {
+		t.Errorf("expected ErrKeyNotFound, got: %v", err)
+	}
+
+	t.Log("Missing file correctly returns ErrKeyNotFound")
+}
+
+func TestFileKeyStoreInvalidPermissions(t *testing.T) {
+	t.Log("Testing FileKeyStore rejects file with 0644 permissions")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "insecure-key.pem")
+
+	// Create a key file with bad permissions
+	_, privKey, _ := GenerateKey()
+	store := NewFileKeyStore(keyPath)
+	store.Save(privKey)
+
+	// Change permissions to 0644 (insecure)
+	if err := os.Chmod(keyPath, 0644); err != nil {
+		t.Fatalf("failed to chmod: %v", err)
+	}
+
+	t.Log("Attempting to load key with 0644 permissions")
+	_, err := store.Load()
+	if err == nil {
+		t.Error("expected error for insecure permissions")
+	}
+	if !IsPermissionError(err) {
+		t.Errorf("expected ErrInvalidPermissions, got: %v", err)
+	}
+
+	t.Log("Insecure permissions correctly rejected")
+}
+
+func TestFileKeyStoreInvalidPermissions0666(t *testing.T) {
+	t.Log("Testing FileKeyStore rejects file with 0666 permissions")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "world-readable-key.pem")
+
+	_, privKey, _ := GenerateKey()
+	store := NewFileKeyStore(keyPath)
+	store.Save(privKey)
+
+	// Change permissions to 0666 (world-readable)
+	if err := os.Chmod(keyPath, 0666); err != nil {
+		t.Fatalf("failed to chmod: %v", err)
+	}
+
+	t.Log("Attempting to load key with 0666 permissions")
+	_, err := store.Load()
+	if err == nil {
+		t.Error("expected error for world-readable permissions")
+	}
+	if !IsPermissionError(err) {
+		t.Errorf("expected ErrInvalidPermissions, got: %v", err)
+	}
+
+	t.Log("World-readable permissions correctly rejected")
+}
+
+func TestFileKeyStoreCreatesParentDirectories(t *testing.T) {
+	t.Log("Testing FileKeyStore creates parent directories")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "nested", "dirs", "key.pem")
+
+	store := NewFileKeyStore(keyPath)
+
+	_, privKey, _ := GenerateKey()
+
+	t.Log("Saving key to nested path")
+	if err := store.Save(privKey); err != nil {
+		t.Fatalf("failed to save key: %v", err)
+	}
+
+	// Verify parent dir permissions
+	parentDir := filepath.Dir(keyPath)
+	info, err := os.Stat(parentDir)
+	if err != nil {
+		t.Fatalf("failed to stat parent dir: %v", err)
+	}
+	if info.Mode().Perm() != 0700 {
+		t.Errorf("expected parent dir permissions 0700, got %04o", info.Mode().Perm())
+	}
+
+	t.Log("Parent directories created with correct permissions")
+}
+
+func TestFileKIDStoreSaveAndLoad(t *testing.T) {
+	t.Log("Testing FileKIDStore save and load round-trip")
+
+	tmpDir := t.TempDir()
+	kidPath := filepath.Join(tmpDir, "kid")
+
+	store := NewFileKIDStore(kidPath)
+
+	testKID := "km_abc123"
+
+	t.Log("Saving kid to file")
+	if err := store.Save(testKID); err != nil {
+		t.Fatalf("failed to save kid: %v", err)
+	}
+
+	if !store.Exists() {
+		t.Error("kid file should exist after save")
+	}
+
+	// Verify permissions
+	info, err := os.Stat(kidPath)
+	if err != nil {
+		t.Fatalf("failed to stat kid file: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("expected permissions 0600, got %04o", info.Mode().Perm())
+	}
+
+	t.Log("Loading kid from file")
+	loadedKID, err := store.Load()
+	if err != nil {
+		t.Fatalf("failed to load kid: %v", err)
+	}
+
+	if loadedKID != testKID {
+		t.Errorf("expected kid %q, got %q", testKID, loadedKID)
+	}
+
+	t.Log("KID save and load round-trip successful")
+}
+
+func TestFileKIDStoreNotFound(t *testing.T) {
+	t.Log("Testing FileKIDStore returns ErrKIDNotFound for missing file")
+
+	tmpDir := t.TempDir()
+	kidPath := filepath.Join(tmpDir, "nonexistent-kid")
+
+	store := NewFileKIDStore(kidPath)
+
+	if store.Exists() {
+		t.Error("kid file should not exist")
+	}
+
+	_, err := store.Load()
+	if err == nil {
+		t.Error("expected error for missing kid file")
+	}
+	if !IsNotFoundError(err) {
+		t.Errorf("expected ErrKIDNotFound, got: %v", err)
+	}
+
+	t.Log("Missing kid file correctly returns ErrKIDNotFound")
+}
+
+func TestFileKIDStoreInvalidPermissions(t *testing.T) {
+	t.Log("Testing FileKIDStore rejects file with 0644 permissions")
+
+	tmpDir := t.TempDir()
+	kidPath := filepath.Join(tmpDir, "insecure-kid")
+
+	store := NewFileKIDStore(kidPath)
+	store.Save("km_test")
+
+	// Change permissions to 0644
+	if err := os.Chmod(kidPath, 0644); err != nil {
+		t.Fatalf("failed to chmod: %v", err)
+	}
+
+	t.Log("Attempting to load kid with 0644 permissions")
+	_, err := store.Load()
+	if err == nil {
+		t.Error("expected error for insecure permissions")
+	}
+	if !IsPermissionError(err) {
+		t.Errorf("expected ErrInvalidPermissions, got: %v", err)
+	}
+
+	t.Log("Insecure permissions correctly rejected for kid file")
+}
+
+func TestDefaultKeyPaths(t *testing.T) {
+	t.Log("Testing DefaultKeyPaths returns correct paths")
+
+	tests := []struct {
+		clientType    string
+		expectKeyDir  string
+		expectKIDDir  string
+	}{
+		{"km", ".km", ".km"},
+		{"bluectl", ".bluectl", ".bluectl"},
+		{"aegis", "/etc/aegis", "/etc/aegis"},
+	}
+
+	homeDir, _ := os.UserHomeDir()
+
+	for _, tc := range tests {
+		keyPath, kidPath := DefaultKeyPaths(tc.clientType)
+
+		if tc.clientType == "aegis" {
+			if keyPath != "/etc/aegis/key.pem" {
+				t.Errorf("aegis key path: expected /etc/aegis/key.pem, got %s", keyPath)
+			}
+			if kidPath != "/etc/aegis/kid" {
+				t.Errorf("aegis kid path: expected /etc/aegis/kid, got %s", kidPath)
+			}
+		} else {
+			expectedKeyPath := filepath.Join(homeDir, tc.expectKeyDir, "key.pem")
+			expectedKIDPath := filepath.Join(homeDir, tc.expectKIDDir, "kid")
+
+			if keyPath != expectedKeyPath {
+				t.Errorf("%s key path: expected %s, got %s", tc.clientType, expectedKeyPath, keyPath)
+			}
+			if kidPath != expectedKIDPath {
+				t.Errorf("%s kid path: expected %s, got %s", tc.clientType, expectedKIDPath, kidPath)
+			}
+		}
+	}
+
+	t.Log("Default key paths correct for all client types")
+}
+
+func TestGenerateKey(t *testing.T) {
+	t.Log("Testing GenerateKey creates valid Ed25519 keypair")
+
+	pubKey, privKey, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	// Verify sizes
+	if len(pubKey) != ed25519.PublicKeySize {
+		t.Errorf("public key size: expected %d, got %d", ed25519.PublicKeySize, len(pubKey))
+	}
+	if len(privKey) != ed25519.PrivateKeySize {
+		t.Errorf("private key size: expected %d, got %d", ed25519.PrivateKeySize, len(privKey))
+	}
+
+	// Verify they work together (sign and verify)
+	message := []byte("test message")
+	signature := ed25519.Sign(privKey, message)
+
+	if !ed25519.Verify(pubKey, message, signature) {
+		t.Error("generated keypair failed sign/verify test")
+	}
+
+	t.Log("Generated keypair is valid")
+}
+
+func TestFileKeyStoreLoadPKCS8Format(t *testing.T) {
+	t.Log("Testing FileKeyStore can load Ed25519 key in seed format")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "pkcs8-key.pem")
+
+	// Create and save a key
+	_, privKey, _ := GenerateKey()
+
+	// For now, test that our seed-based format works correctly
+	// Full PKCS8 support would require ASN.1 parsing
+	store := NewFileKeyStore(keyPath)
+	if err := store.Save(privKey); err != nil {
+		t.Fatalf("failed to save key: %v", err)
+	}
+
+	loadedKey, err := store.Load()
+	if err != nil {
+		t.Fatalf("failed to load key: %v", err)
+	}
+
+	if !privKey.Equal(loadedKey) {
+		t.Error("loaded key does not match original")
+	}
+
+	t.Log("Key format loading successful")
+}
+
+func TestFileKeyStoreInvalidPEM(t *testing.T) {
+	t.Log("Testing FileKeyStore rejects invalid PEM data")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "invalid.pem")
+
+	// Write invalid data
+	if err := os.WriteFile(keyPath, []byte("not valid pem data"), 0600); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	store := NewFileKeyStore(keyPath)
+	_, err := store.Load()
+	if err == nil {
+		t.Error("expected error for invalid PEM data")
+	}
+
+	t.Log("Invalid PEM data correctly rejected")
+}
+
+func TestFileKeyStoreWrongKeyType(t *testing.T) {
+	t.Log("Testing FileKeyStore rejects wrong key type")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "wrong-type.pem")
+
+	// Write a PEM block with wrong type
+	pemData := `-----BEGIN RSA PRIVATE KEY-----
+dGVzdCBkYXRh
+-----END RSA PRIVATE KEY-----
+`
+	if err := os.WriteFile(keyPath, []byte(pemData), 0600); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	store := NewFileKeyStore(keyPath)
+	_, err := store.Load()
+	if err == nil {
+		t.Error("expected error for wrong key type")
+	}
+
+	t.Log("Wrong key type correctly rejected")
+}
+
+func TestCheckFilePermissions(t *testing.T) {
+	t.Log("Testing CheckFilePermissions utility function")
+
+	tmpDir := t.TempDir()
+
+	// Test correct permissions
+	goodPath := filepath.Join(tmpDir, "good")
+	os.WriteFile(goodPath, []byte("test"), 0600)
+
+	if err := CheckFilePermissions(goodPath); err != nil {
+		t.Errorf("expected no error for 0600, got: %v", err)
+	}
+
+	// Test incorrect permissions
+	badPath := filepath.Join(tmpDir, "bad")
+	os.WriteFile(badPath, []byte("test"), 0644)
+
+	if err := CheckFilePermissions(badPath); err == nil {
+		t.Error("expected error for 0644 permissions")
+	}
+
+	// Test nonexistent file
+	if err := CheckFilePermissions(filepath.Join(tmpDir, "nonexistent")); err == nil {
+		t.Error("expected error for nonexistent file")
+	}
+
+	t.Log("CheckFilePermissions works correctly")
+}
