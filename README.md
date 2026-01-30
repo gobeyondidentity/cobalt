@@ -1,6 +1,6 @@
 # Secure Infrastructure
 
-**v0.6.9** | [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
+**v0.6.11** | [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 ![Demo](assets/demo-v2.gif)
 
@@ -21,6 +21,8 @@ This works because credentials are tied to specific hardware via NVIDIA BlueFiel
 - **Full audit trail**: Every credential push logged with timestamp and operator identity
 - **No credential drift**: Keys tied to specific hardware, can't accidentally spread to other machines
 - **Health-gated operations**: Distribution proceeds only when hosts pass automatic health checks
+- **Runtime posture visibility**: Query host security state (SecureBoot, disk encryption, OS/kernel versions) via `bluectl host posture`
+- **Request-bound authentication**: API requests cryptographically bound to caller's private key via DPoP (RFC 9449), preventing token theft and replay attacks
 
 ## Quick Start
 
@@ -65,9 +67,9 @@ sudo yum install bluectl km
 ### Docker
 
 ```bash
-docker pull ghcr.io/gobeyondidentity/nexus:0.6.9   # Control plane
-docker pull ghcr.io/gobeyondidentity/sentry:0.6.9  # Host agent
-docker pull ghcr.io/gobeyondidentity/aegis:0.6.9   # DPU agent
+docker pull ghcr.io/gobeyondidentity/nexus:0.6.11   # Control plane
+docker pull ghcr.io/gobeyondidentity/sentry:0.6.11  # Host agent
+docker pull ghcr.io/gobeyondidentity/aegis:0.6.11   # DPU agent
 ```
 
 For local development with Docker Compose, see [Local Dev: Docker](docs/guides/local-dev-docker.md).
