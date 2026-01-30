@@ -43,6 +43,7 @@ type Identity struct {
 type ProofValidationResult struct {
 	Valid bool
 	KID   string
+	JTI   string // The jti claim from the proof, used for replay detection
 	Error string
 	Code  string // Error code for response (e.g., "dpop.invalid_proof")
 }
@@ -181,12 +182,8 @@ func (m *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check JTI replay
-		// Note: JTI is extracted by the validator; we check it here after validation
-		// The validator returns kid, and we use that to look up identity
-		// For now, the replay check uses a separate JTI value from proof parsing
-		// This will be refined when integrating with si-d2y.1.7
-		isReplay, err := m.jtiCache.Record(result.KID + ":" + proof) // Placeholder: actual jti from proof
+		// Check JTI replay using the jti claim extracted by the validator
+		isReplay, err := m.jtiCache.Record(result.JTI)
 		if err != nil {
 			if err == ErrCacheFull {
 				m.logger.Error("jti cache full", "error", err)

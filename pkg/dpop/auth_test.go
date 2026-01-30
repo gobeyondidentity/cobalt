@@ -59,6 +59,7 @@ func TestValidProofToProtectedEndpoint(t *testing.T) {
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
 		KID:   "km_abc123",
+		JTI:   "test-jti-001",
 	}}
 	lookup := &mockIdentityLookup{identity: &Identity{
 		KID:        "km_abc123",
@@ -169,6 +170,7 @@ func TestReplayedJTI(t *testing.T) {
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
 		KID:   "km_abc123",
+		JTI:   "replayed-jti-001",
 	}}
 	lookup := &mockIdentityLookup{identity: &Identity{
 		KID:    "km_abc123",
@@ -206,6 +208,7 @@ func TestIdentitySuspended(t *testing.T) {
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
 		KID:   "km_suspended",
+		JTI:   "test-jti-suspended",
 	}}
 	lookup := &mockIdentityLookup{identity: &Identity{
 		KID:    "km_suspended",
@@ -244,6 +247,7 @@ func TestIdentityRevoked(t *testing.T) {
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
 		KID:   "km_revoked",
+		JTI:   "test-jti-revoked",
 	}}
 	lookup := &mockIdentityLookup{identity: &Identity{
 		KID:    "km_revoked",
@@ -616,6 +620,7 @@ func TestIdentityContextNotFromHeader(t *testing.T) {
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
 		KID:   "km_real",
+		JTI:   "test-jti-context",
 	}}
 	lookup := &mockIdentityLookup{identity: &Identity{
 		KID:    "km_real",
@@ -656,6 +661,7 @@ func TestDecommissionedDPU(t *testing.T) {
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
 		KID:   "dpu_decom",
+		JTI:   "test-jti-decom",
 	}}
 	lookup := &mockIdentityLookup{identity: &Identity{
 		KID:        "dpu_decom",
@@ -694,6 +700,7 @@ func TestUnknownKID(t *testing.T) {
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
 		KID:   "km_unknown",
+		JTI:   "test-jti-unknown",
 	}}
 	lookup := &mockIdentityLookup{identity: nil} // KID not found
 	cache := &mockJTICache{isReplay: false}
@@ -750,4 +757,72 @@ func TestNormalizePath(t *testing.T) {
 		}
 	}
 	t.Log("Path normalization working correctly")
+}
+
+// capturingJTICache captures the JTI passed to Record for verification.
+type capturingJTICache struct {
+	capturedJTI string
+	isReplay    bool
+	err         error
+}
+
+func (c *capturingJTICache) Record(jti string) (bool, error) {
+	c.capturedJTI = jti
+	return c.isReplay, c.err
+}
+
+func (c *capturingJTICache) Close() error {
+	return nil
+}
+
+func TestJTICacheReceivesActualJTI(t *testing.T) {
+	t.Log("Testing JTI cache receives the actual JTI claim, not the full proof string")
+
+	// The expected JTI is a UUID (36 chars), not a full JWT (hundreds of chars)
+	expectedJTI := "550e8400-e29b-41d4-a716-446655440000"
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: true,
+		KID:   "km_abc123",
+		JTI:   expectedJTI, // Validator returns extracted JTI
+	}}
+	lookup := &mockIdentityLookup{identity: &Identity{
+		KID:        "km_abc123",
+		CallerType: CallerTypeKeyMaker,
+		Status:     IdentityStatusActive,
+	}}
+	cache := &capturingJTICache{isReplay: false}
+
+	middleware := newTestMiddleware(validator, lookup, cache)
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Create a fake proof that's much longer than a UUID to verify we don't use it
+	longFakeProof := "eyJhbGciOiJFZERTQSIsInR5cCI6ImRwb3Arand0In0.eyJqdGkiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJodG0iOiJHRVQiLCJodHUiOiJodHRwczovL2FwaS5leGFtcGxlLmNvbS9hcGkvdjEvb3BlcmF0b3JzL21lIiwiaWF0IjoxNzA2NzA0MDAwfQ.signature_bytes_here_would_be_64_bytes_for_ed25519"
+
+	req := httptest.NewRequest("GET", "/api/v1/operators/me", nil)
+	req.Header.Set("DPoP", longFakeProof)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	t.Logf("Captured JTI passed to cache: %q (length: %d)", cache.capturedJTI, len(cache.capturedJTI))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	// Verify the cache received the actual JTI, not the full proof
+	if cache.capturedJTI != expectedJTI {
+		t.Errorf("JTI cache received %q, expected %q", cache.capturedJTI, expectedJTI)
+	}
+
+	// Sanity check: JTI should be UUID length (36 chars), not JWT length (hundreds)
+	if len(cache.capturedJTI) > 100 {
+		t.Errorf("JTI cache received full proof string (length %d), should receive UUID (36 chars)", len(cache.capturedJTI))
+	}
+
+	t.Log("JTI cache correctly receives the actual JTI claim, not the full proof")
 }
