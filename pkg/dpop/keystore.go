@@ -2,6 +2,7 @@ package dpop
 
 import (
 	"crypto/ed25519"
+	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -112,15 +113,16 @@ func (s *FileKeyStore) Load() (ed25519.PrivateKey, error) {
 	case ed25519.SeedSize: // 32 bytes - seed only
 		return ed25519.NewKeyFromSeed(keyBytes), nil
 	default:
-		// Try PKCS8 format (has ASN.1 wrapper)
-		// PKCS8 Ed25519 key is: SEQUENCE { SEQUENCE { OID }, OCTET STRING { seed } }
-		// The seed is at bytes 16-48 for a standard PKCS8 Ed25519 key
-		if len(keyBytes) == 48 {
-			// Standard PKCS8 Ed25519 format
-			seed := keyBytes[16:48]
-			return ed25519.NewKeyFromSeed(seed), nil
+		// Try PKCS8 format using proper ASN.1 parsing
+		key, err := x509.ParsePKCS8PrivateKey(keyBytes)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidKeyFormat, err)
 		}
-		return nil, fmt.Errorf("%w: unexpected key length %d", ErrInvalidKeyFormat, len(keyBytes))
+		ed25519Key, ok := key.(ed25519.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("%w: not an Ed25519 key", ErrInvalidKeyFormat)
+		}
+		return ed25519Key, nil
 	}
 }
 
