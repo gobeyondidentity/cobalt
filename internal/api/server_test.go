@@ -89,6 +89,181 @@ func TestAPIHealthEndpoint(t *testing.T) {
 	}
 }
 
+// TestHealthEndpoint_BootstrapStatusClosed tests health returns bootstrap_status "closed" when no bootstrap window.
+func TestHealthEndpoint_BootstrapStatusClosed(t *testing.T) {
+	t.Log("Testing /health returns bootstrap_status='closed' when no bootstrap window exists")
+
+	_, mux := setupTestServer(t)
+
+	req := httptest.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	t.Log("Verifying bootstrap_status is 'closed'")
+	if result["bootstrap_status"] != "closed" {
+		t.Errorf("expected bootstrap_status 'closed', got '%v'", result["bootstrap_status"])
+	}
+
+	t.Log("Verifying bootstrap_expires_at is NOT present")
+	if _, ok := result["bootstrap_expires_at"]; ok {
+		t.Error("expected bootstrap_expires_at to NOT be present when closed")
+	}
+
+	t.Log("Verifying bootstrap_admin_id is NOT present")
+	if _, ok := result["bootstrap_admin_id"]; ok {
+		t.Error("expected bootstrap_admin_id to NOT be present when closed")
+	}
+}
+
+// TestHealthEndpoint_BootstrapStatusOpen tests health returns bootstrap_status "open" with expiration time.
+func TestHealthEndpoint_BootstrapStatusOpen(t *testing.T) {
+	t.Log("Testing /health returns bootstrap_status='open' with expires_at when window is active")
+
+	server, mux := setupTestServer(t)
+
+	// Initialize bootstrap window
+	t.Log("Initializing bootstrap window")
+	if err := server.store.InitBootstrapWindow(); err != nil {
+		t.Fatalf("failed to init bootstrap window: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	t.Log("Verifying bootstrap_status is 'open'")
+	if result["bootstrap_status"] != "open" {
+		t.Errorf("expected bootstrap_status 'open', got '%v'", result["bootstrap_status"])
+	}
+
+	t.Log("Verifying bootstrap_expires_at is present and valid RFC3339")
+	expiresAt, ok := result["bootstrap_expires_at"].(string)
+	if !ok {
+		t.Fatal("expected bootstrap_expires_at to be a string")
+	}
+	if expiresAt == "" {
+		t.Error("expected bootstrap_expires_at to be non-empty")
+	}
+	// Verify it parses as RFC3339
+	parsedTime, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		t.Errorf("expected bootstrap_expires_at to be RFC3339 format, got error: %v", err)
+	}
+	// Should be about 10 minutes from now
+	untilExpiry := time.Until(parsedTime)
+	if untilExpiry < 9*time.Minute || untilExpiry > 11*time.Minute {
+		t.Errorf("expected bootstrap_expires_at to be ~10 minutes from now, got %v", untilExpiry)
+	}
+
+	t.Log("Verifying bootstrap_admin_id is NOT present when open")
+	if _, ok := result["bootstrap_admin_id"]; ok {
+		t.Error("expected bootstrap_admin_id to NOT be present when status is 'open'")
+	}
+}
+
+// TestHealthEndpoint_BootstrapStatusEnrolled tests health returns bootstrap_status "enrolled" with admin ID.
+func TestHealthEndpoint_BootstrapStatusEnrolled(t *testing.T) {
+	t.Log("Testing /health returns bootstrap_status='enrolled' with admin_id when admin exists")
+
+	server, mux := setupTestServer(t)
+
+	// Initialize bootstrap window and complete enrollment
+	t.Log("Completing bootstrap enrollment")
+	server.store.InitBootstrapWindow()
+	if err := server.store.CompleteBootstrap("adm_test456"); err != nil {
+		t.Fatalf("failed to complete bootstrap: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	t.Log("Verifying bootstrap_status is 'enrolled'")
+	if result["bootstrap_status"] != "enrolled" {
+		t.Errorf("expected bootstrap_status 'enrolled', got '%v'", result["bootstrap_status"])
+	}
+
+	t.Log("Verifying bootstrap_admin_id is present and correct")
+	adminID, ok := result["bootstrap_admin_id"].(string)
+	if !ok {
+		t.Fatal("expected bootstrap_admin_id to be a string")
+	}
+	if adminID != "adm_test456" {
+		t.Errorf("expected bootstrap_admin_id 'adm_test456', got '%s'", adminID)
+	}
+
+	t.Log("Verifying bootstrap_expires_at is NOT present when enrolled")
+	if _, ok := result["bootstrap_expires_at"]; ok {
+		t.Error("expected bootstrap_expires_at to NOT be present when status is 'enrolled'")
+	}
+}
+
+// TestHealthEndpoint_BootstrapStatusExpired tests health returns "closed" when window expired.
+func TestHealthEndpoint_BootstrapStatusExpired(t *testing.T) {
+	t.Log("Testing /health returns bootstrap_status='closed' when window has expired")
+
+	server, mux := setupTestServer(t)
+
+	// Initialize bootstrap window and manually expire it
+	t.Log("Creating expired bootstrap window")
+	server.store.InitBootstrapWindow()
+	expiredTime := time.Now().Add(-11 * time.Minute).Unix()
+	_, err := server.store.DB().Exec(`UPDATE bootstrap_state SET window_opened_at = ? WHERE id = 1`, expiredTime)
+	if err != nil {
+		t.Fatalf("failed to expire window: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	t.Log("Verifying bootstrap_status is 'closed' for expired window")
+	if result["bootstrap_status"] != "closed" {
+		t.Errorf("expected bootstrap_status 'closed', got '%v'", result["bootstrap_status"])
+	}
+
+	t.Log("Verifying bootstrap_expires_at is NOT present when closed")
+	if _, ok := result["bootstrap_expires_at"]; ok {
+		t.Error("expected bootstrap_expires_at to NOT be present when closed")
+	}
+}
+
 // TestTenantListEmpty tests listing tenants when none exist.
 func TestTenantListEmpty(t *testing.T) {
 	_, mux := setupTestServer(t)

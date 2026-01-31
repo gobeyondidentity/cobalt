@@ -116,22 +116,6 @@ type AdminKey struct {
 	LastSeen       *time.Time
 }
 
-// EnrollmentSession tracks challenge-response state for enrollment.
-type EnrollmentSession struct {
-	ID        string
-	InviteID  *string // NULL for DPU enrollment
-	Challenge string
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	Status    string // pending, completed, expired
-}
-
-// BootstrapState tracks the bootstrap window lifecycle.
-type BootstrapState struct {
-	ID           int
-	FirstStartAt time.Time
-	CompletedAt  *time.Time
-}
 
 // Authorization grants an operator access to specific CAs and devices.
 type Authorization struct {
@@ -464,23 +448,25 @@ func (s *Store) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_credential_queue_dpu ON credential_queue(dpu_name);
 	CREATE INDEX IF NOT EXISTS idx_credential_queue_queued ON credential_queue(queued_at);
 
-	-- Enrollment Sessions (challenge-response state)
-	CREATE TABLE IF NOT EXISTS enrollment_sessions (
-		id TEXT PRIMARY KEY,
-		invite_id TEXT REFERENCES invite_codes(id),
-		challenge TEXT NOT NULL,
-		created_at INTEGER DEFAULT (strftime('%s', 'now')),
-		expires_at INTEGER NOT NULL,
-		status TEXT NOT NULL DEFAULT 'pending'
-	);
-	CREATE INDEX IF NOT EXISTS idx_enrollment_sessions_expires ON enrollment_sessions(expires_at);
-
-	-- Bootstrap State (singleton)
+	-- Bootstrap state (singleton row for first-admin enrollment)
 	CREATE TABLE IF NOT EXISTS bootstrap_state (
 		id INTEGER PRIMARY KEY CHECK (id = 1),
-		first_start_at INTEGER NOT NULL,
-		completed_at INTEGER
+		window_opened_at INTEGER NOT NULL,
+		completed_at INTEGER,
+		first_admin_id TEXT
 	);
+
+	-- Enrollment sessions (for challenge-response flows)
+	CREATE TABLE IF NOT EXISTS enrollment_sessions (
+		id TEXT PRIMARY KEY,
+		session_type TEXT NOT NULL,
+		challenge_hash TEXT NOT NULL,
+		public_key_b64 TEXT,
+		ip_address TEXT,
+		created_at INTEGER NOT NULL,
+		expires_at INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_enrollment_sessions_expires ON enrollment_sessions(expires_at);
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
@@ -535,6 +521,12 @@ func (s *Store) migrate() error {
 // Close closes the database connection.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// DB returns the underlying database connection.
+// This should only be used in tests to manipulate state for testing edge cases.
+func (s *Store) DB() *sql.DB {
+	return s.db
 }
 
 // Add registers a new DPU.

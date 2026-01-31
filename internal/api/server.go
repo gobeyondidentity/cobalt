@@ -133,6 +133,10 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Host scan endpoint (triggers SSH key scan on host-agent)
 	mux.HandleFunc("POST /api/v1/hosts/{hostname}/scan", s.handleHostScan)
+
+	// Bootstrap routes
+	mux.HandleFunc("POST /api/v1/admin/bootstrap", s.handleAdminBootstrap)
+	mux.HandleFunc("POST /enroll/complete", s.handleEnrollComplete)
 }
 
 // ----- DPU Types -----
@@ -656,10 +660,71 @@ func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPIHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	response := map[string]interface{}{
 		"status":  "ok",
 		"version": version.Version,
-	})
+	}
+
+	// Add bootstrap status
+	bootstrapStatus, err := s.getBootstrapStatus()
+	if err == nil && bootstrapStatus != nil {
+		response["bootstrap_status"] = bootstrapStatus.Status
+		if bootstrapStatus.ExpiresAt != nil {
+			response["bootstrap_expires_at"] = bootstrapStatus.ExpiresAt.Format(time.RFC3339)
+		}
+		if bootstrapStatus.AdminID != "" {
+			response["bootstrap_admin_id"] = bootstrapStatus.AdminID
+		}
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// BootstrapHealthStatus represents the bootstrap status included in health checks.
+type BootstrapHealthStatus struct {
+	Status    string     // "open", "closed", "enrolled"
+	ExpiresAt *time.Time // Only when status is "open"
+	AdminID   string     // Only when status is "enrolled"
+}
+
+// getBootstrapStatus returns the current bootstrap status for health endpoint.
+func (s *Server) getBootstrapStatus() (*BootstrapHealthStatus, error) {
+	// Check if first admin exists
+	hasAdmin, err := s.store.HasFirstAdmin()
+	if err != nil {
+		return nil, err
+	}
+	if hasAdmin {
+		state, _ := s.store.GetBootstrapState()
+		adminID := ""
+		if state != nil && state.FirstAdminID != nil {
+			adminID = *state.FirstAdminID
+		}
+		return &BootstrapHealthStatus{
+			Status:  "enrolled",
+			AdminID: adminID,
+		}, nil
+	}
+
+	// Get bootstrap state
+	state, err := s.store.GetBootstrapState()
+	if err != nil {
+		return nil, err
+	}
+	if state == nil {
+		return &BootstrapHealthStatus{Status: "closed"}, nil
+	}
+
+	// Check if window expired
+	expiresAt := state.WindowOpenedAt.Add(BootstrapWindowDuration)
+	if time.Now().After(expiresAt) {
+		return &BootstrapHealthStatus{Status: "closed"}, nil
+	}
+
+	return &BootstrapHealthStatus{
+		Status:    "open",
+		ExpiresAt: &expiresAt,
+	}, nil
 }
 
 func (s *Server) handleGetMeasurements(w http.ResponseWriter, r *http.Request) {
