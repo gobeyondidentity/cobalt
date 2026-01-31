@@ -15,18 +15,19 @@ import (
 
 // DPU represents a registered DPU in the store.
 type DPU struct {
-	ID             string
-	Name           string
-	Host           string
-	Port           int
-	Status         string
-	LastSeen       *time.Time
-	CreatedAt      time.Time
-	TenantID       *string
-	Labels         map[string]string
-	PublicKey      []byte  // DPoP public key (set during enrollment)
-	Kid            *string // Key ID for DPoP lookup
-	KeyFingerprint *string // SHA256 hex of public key
+	ID                  string
+	Name                string
+	Host                string
+	Port                int
+	Status              string
+	LastSeen            *time.Time
+	CreatedAt           time.Time
+	TenantID            *string
+	Labels              map[string]string
+	PublicKey           []byte     // DPoP public key (set during enrollment)
+	Kid                 *string    // Key ID for DPoP lookup
+	KeyFingerprint      *string    // SHA256 hex of public key
+	EnrollmentExpiresAt *time.Time // Set on registration, cleared on enrollment
 }
 
 // Tenant represents a logical grouping of DPUs.
@@ -113,6 +114,23 @@ type AdminKey struct {
 	Status         string // active, revoked
 	BoundAt        time.Time
 	LastSeen       *time.Time
+}
+
+// EnrollmentSession tracks challenge-response state for enrollment.
+type EnrollmentSession struct {
+	ID        string
+	InviteID  *string // NULL for DPU enrollment
+	Challenge string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	Status    string // pending, completed, expired
+}
+
+// BootstrapState tracks the bootstrap window lifecycle.
+type BootstrapState struct {
+	ID           int
+	FirstStartAt time.Time
+	CompletedAt  *time.Time
 }
 
 // Authorization grants an operator access to specific CAs and devices.
@@ -445,6 +463,24 @@ func (s *Store) migrate() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_credential_queue_dpu ON credential_queue(dpu_name);
 	CREATE INDEX IF NOT EXISTS idx_credential_queue_queued ON credential_queue(queued_at);
+
+	-- Enrollment Sessions (challenge-response state)
+	CREATE TABLE IF NOT EXISTS enrollment_sessions (
+		id TEXT PRIMARY KEY,
+		invite_id TEXT REFERENCES invite_codes(id),
+		challenge TEXT NOT NULL,
+		created_at INTEGER DEFAULT (strftime('%s', 'now')),
+		expires_at INTEGER NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending'
+	);
+	CREATE INDEX IF NOT EXISTS idx_enrollment_sessions_expires ON enrollment_sessions(expires_at);
+
+	-- Bootstrap State (singleton)
+	CREATE TABLE IF NOT EXISTS bootstrap_state (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		first_start_at INTEGER NOT NULL,
+		completed_at INTEGER
+	);
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
@@ -472,6 +508,8 @@ func (s *Store) migrate() error {
 		"ALTER TABLE dpus ADD COLUMN public_key BLOB",
 		"ALTER TABLE dpus ADD COLUMN kid TEXT",
 		"ALTER TABLE dpus ADD COLUMN key_fingerprint TEXT",
+		// Enrollment expiration tracking
+		"ALTER TABLE dpus ADD COLUMN enrollment_expires_at INTEGER",
 	}
 
 	for _, m := range migrations {
@@ -488,6 +526,7 @@ func (s *Store) migrate() error {
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_keymakers_key_fingerprint ON keymakers(key_fingerprint);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_dpus_kid ON dpus(kid);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_dpus_key_fingerprint ON dpus(key_fingerprint);
+	CREATE INDEX IF NOT EXISTS idx_invite_codes_expires ON invite_codes(expires_at);
 	`
 	_, err := s.db.Exec(indexes)
 	return err
@@ -530,7 +569,7 @@ func (s *Store) Remove(idOrName string) error {
 // Get retrieves a DPU by ID or name.
 func (s *Store) Get(idOrName string) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint FROM dpus WHERE id = ? OR name = ?`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at FROM dpus WHERE id = ? OR name = ?`,
 		idOrName, idOrName,
 	)
 	return s.scanDPU(row)
@@ -539,7 +578,7 @@ func (s *Store) Get(idOrName string) (*DPU, error) {
 // GetDPUByAddress returns a DPU with the given host:port, or nil if not found.
 func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint FROM dpus WHERE host = ? AND port = ?`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at FROM dpus WHERE host = ? AND port = ?`,
 		host, port,
 	)
 
@@ -551,8 +590,9 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	var publicKey []byte
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
+	var enrollmentExpiresAt sql.NullInt64
 
-	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint)
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -579,6 +619,10 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	if keyFingerprint.Valid {
 		dpu.KeyFingerprint = &keyFingerprint.String
 	}
+	if enrollmentExpiresAt.Valid {
+		t := time.Unix(enrollmentExpiresAt.Int64, 0)
+		dpu.EnrollmentExpiresAt = &t
+	}
 
 	return &dpu, nil
 }
@@ -586,7 +630,7 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 // List returns all registered DPUs.
 func (s *Store) List() ([]*DPU, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint FROM dpus ORDER BY name`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at FROM dpus ORDER BY name`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list DPUs: %w", err)
@@ -653,8 +697,9 @@ func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	var publicKey []byte
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
+	var enrollmentExpiresAt sql.NullInt64
 
-	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint)
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("DPU not found")
 	}
@@ -681,6 +726,10 @@ func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	if keyFingerprint.Valid {
 		dpu.KeyFingerprint = &keyFingerprint.String
 	}
+	if enrollmentExpiresAt.Valid {
+		t := time.Unix(enrollmentExpiresAt.Int64, 0)
+		dpu.EnrollmentExpiresAt = &t
+	}
 
 	return &dpu, nil
 }
@@ -694,8 +743,9 @@ func (s *Store) scanDPURows(rows *sql.Rows) (*DPU, error) {
 	var publicKey []byte
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
+	var enrollmentExpiresAt sql.NullInt64
 
-	err := rows.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint)
+	err := rows.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan DPU: %w", err)
 	}
@@ -718,6 +768,10 @@ func (s *Store) scanDPURows(rows *sql.Rows) (*DPU, error) {
 	}
 	if keyFingerprint.Valid {
 		dpu.KeyFingerprint = &keyFingerprint.String
+	}
+	if enrollmentExpiresAt.Valid {
+		t := time.Unix(enrollmentExpiresAt.Int64, 0)
+		dpu.EnrollmentExpiresAt = &t
 	}
 
 	return &dpu, nil
@@ -842,7 +896,7 @@ func (s *Store) UnassignDPUFromTenant(dpuID string) error {
 // ListDPUsByTenant returns all DPUs for a specific tenant.
 func (s *Store) ListDPUsByTenant(tenantID string) ([]*DPU, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint FROM dpus WHERE tenant_id = ? ORDER BY name`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at FROM dpus WHERE tenant_id = ? ORDER BY name`,
 		tenantID,
 	)
 	if err != nil {

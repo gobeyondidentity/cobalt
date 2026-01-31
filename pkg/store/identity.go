@@ -864,7 +864,7 @@ func (s *Store) scanKeyMakerWithDPoP(row *sql.Row) (*KeyMaker, error) {
 // Used for O(1) lookup during DPoP token validation.
 func (s *Store) GetDPUByKid(kid string) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at
 		 FROM dpus WHERE kid = ?`,
 		kid,
 	)
@@ -880,9 +880,10 @@ func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
 	var publicKey []byte
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
+	var enrollmentExpiresAt sql.NullInt64
 
 	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen,
-		&createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint)
+		&createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("DPU not found")
 	}
@@ -908,6 +909,10 @@ func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
 	}
 	if keyFingerprint.Valid {
 		dpu.KeyFingerprint = &keyFingerprint.String
+	}
+	if enrollmentExpiresAt.Valid {
+		t := time.Unix(enrollmentExpiresAt.Int64, 0)
+		dpu.EnrollmentExpiresAt = &t
 	}
 
 	return &dpu, nil
