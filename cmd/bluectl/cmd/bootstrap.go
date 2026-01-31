@@ -58,14 +58,14 @@ type bootstrapResponse struct {
 	EnrollmentID string `json:"enrollment_id"`
 }
 
-// enrollCompleteRequest is the request body for POST /api/v1/enroll/complete
+// enrollCompleteRequest is the request body for POST /enroll/complete
 type enrollCompleteRequest struct {
 	EnrollmentID    string `json:"enrollment_id"`
 	PublicKey       string `json:"public_key"`
 	SignedChallenge string `json:"signed_challenge"`
 }
 
-// enrollCompleteResponse is the response from POST /api/v1/enroll/complete
+// enrollCompleteResponse is the response from POST /enroll/complete
 type enrollCompleteResponse struct {
 	ID          string `json:"id"`
 	Fingerprint string `json:"fingerprint"`
@@ -204,7 +204,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Completing enrollment...")
 
-	// POST /api/v1/enroll/complete
+	// POST /enroll/complete
 	completeReq := enrollCompleteRequest{
 		EnrollmentID:    bootResp.EnrollmentID,
 		PublicKey:       pubKeyBase64,
@@ -216,7 +216,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	completeResp, err := http.Post(
-		serverURL+"/api/v1/enroll/complete",
+		serverURL+"/enroll/complete",
 		"application/json",
 		strings.NewReader(string(completeBody)),
 	)

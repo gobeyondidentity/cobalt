@@ -19,7 +19,7 @@ import (
 
 // TestEnrollInit_ValidCode tests that a valid invite code returns a challenge.
 func TestEnrollInit_ValidCode(t *testing.T) {
-	t.Log("Testing POST /api/v1/enroll/init with valid invite code returns challenge")
+	t.Log("Testing POST /enroll/init with valid invite code returns challenge")
 
 	server, mux := setupTestServer(t)
 
@@ -43,10 +43,10 @@ func TestEnrollInit_ValidCode(t *testing.T) {
 	}
 
 	// Make enrollment init request
-	t.Log("Calling POST /api/v1/enroll/init with invite code")
+	t.Log("Calling POST /enroll/init with invite code")
 	body := EnrollInitRequest{Code: inviteResult.Plaintext}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -87,15 +87,15 @@ func TestEnrollInit_ValidCode(t *testing.T) {
 
 // TestEnrollInit_InvalidCode tests that an invalid invite code returns 401.
 func TestEnrollInit_InvalidCode(t *testing.T) {
-	t.Log("Testing POST /api/v1/enroll/init with invalid code returns 401")
+	t.Log("Testing POST /enroll/init with invalid code returns 401")
 
 	_, mux := setupTestServer(t)
 
 	// Make enrollment init request with invalid code
-	t.Log("Calling POST /api/v1/enroll/init with invalid code")
+	t.Log("Calling POST /enroll/init with invalid code")
 	body := EnrollInitRequest{Code: "invalid-code-that-does-not-exist"}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -114,7 +114,7 @@ func TestEnrollInit_InvalidCode(t *testing.T) {
 
 // TestEnrollInit_ExpiredCode tests that an expired invite code returns 401.
 func TestEnrollInit_ExpiredCode(t *testing.T) {
-	t.Log("Testing POST /api/v1/enroll/init with expired code returns 401")
+	t.Log("Testing POST /enroll/init with expired code returns 401")
 
 	server, mux := setupTestServer(t)
 
@@ -141,10 +141,10 @@ func TestEnrollInit_ExpiredCode(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Make enrollment init request
-	t.Log("Calling POST /api/v1/enroll/init with expired code")
+	t.Log("Calling POST /enroll/init with expired code")
 	body := EnrollInitRequest{Code: inviteResult.Plaintext}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -163,7 +163,7 @@ func TestEnrollInit_ExpiredCode(t *testing.T) {
 
 // TestEnrollInit_ConsumedCode tests that an already consumed invite code returns 401.
 func TestEnrollInit_ConsumedCode(t *testing.T) {
-	t.Log("Testing POST /api/v1/enroll/init with consumed code returns 401")
+	t.Log("Testing POST /enroll/init with consumed code returns 401")
 
 	server, mux := setupTestServer(t)
 
@@ -193,10 +193,10 @@ func TestEnrollInit_ConsumedCode(t *testing.T) {
 	}
 
 	// Make enrollment init request
-	t.Log("Calling POST /api/v1/enroll/init with consumed code")
+	t.Log("Calling POST /enroll/init with consumed code")
 	body := EnrollInitRequest{Code: inviteResult.Plaintext}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -215,7 +215,7 @@ func TestEnrollInit_ConsumedCode(t *testing.T) {
 
 // TestEnrollComplete_OperatorSession tests the full operator enrollment flow.
 func TestEnrollComplete_OperatorSession(t *testing.T) {
-	t.Log("Testing full operator enrollment flow: POST /api/v1/enroll/init -> POST /enroll/complete")
+	t.Log("Testing full operator enrollment flow: POST /enroll/init -> POST /enroll/complete")
 
 	server, mux := setupTestServer(t)
 
@@ -246,7 +246,7 @@ func TestEnrollComplete_OperatorSession(t *testing.T) {
 	t.Log("Step 1: Making enrollment init request")
 	initBody := EnrollInitRequest{Code: inviteResult.Plaintext}
 	initBodyBytes, _ := json.Marshal(initBody)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(initBodyBytes))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(initBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -379,7 +379,7 @@ func TestEnrollComplete_DuplicateFingerprint(t *testing.T) {
 	t.Log("Completing first enrollment")
 	initBody1 := EnrollInitRequest{Code: inviteResult1.Plaintext}
 	initBodyBytes1, _ := json.Marshal(initBody1)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(initBodyBytes1))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(initBodyBytes1))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -414,7 +414,7 @@ func TestEnrollComplete_DuplicateFingerprint(t *testing.T) {
 	t.Log("Attempting second enrollment with same key (should fail)")
 	initBody2 := EnrollInitRequest{Code: inviteResult2.Plaintext}
 	initBodyBytes2, _ := json.Marshal(initBody2)
-	req = httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(initBodyBytes2))
+	req = httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(initBodyBytes2))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -487,7 +487,7 @@ func TestEnrollComplete_OperatorInvalidSignature(t *testing.T) {
 	t.Log("Making enrollment init request")
 	initBody := EnrollInitRequest{Code: inviteResult.Plaintext}
 	initBodyBytes, _ := json.Marshal(initBody)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(initBodyBytes))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(initBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -532,15 +532,15 @@ func TestEnrollComplete_OperatorInvalidSignature(t *testing.T) {
 
 // TestEnrollInit_MissingCode tests that missing code field returns 400.
 func TestEnrollInit_MissingCode(t *testing.T) {
-	t.Log("Testing POST /api/v1/enroll/init with missing code returns 400")
+	t.Log("Testing POST /enroll/init with missing code returns 400")
 
 	_, mux := setupTestServer(t)
 
 	// Make enrollment init request without code field
-	t.Log("Calling POST /api/v1/enroll/init with empty code")
+	t.Log("Calling POST /enroll/init with empty code")
 	body := EnrollInitRequest{Code: ""}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -552,13 +552,13 @@ func TestEnrollInit_MissingCode(t *testing.T) {
 
 // TestEnrollInit_InvalidJSON tests that invalid JSON returns 400.
 func TestEnrollInit_InvalidJSON(t *testing.T) {
-	t.Log("Testing POST /api/v1/enroll/init with invalid JSON returns 400")
+	t.Log("Testing POST /enroll/init with invalid JSON returns 400")
 
 	_, mux := setupTestServer(t)
 
 	// Make enrollment init request with invalid JSON
-	t.Log("Calling POST /api/v1/enroll/init with invalid JSON")
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewBufferString("not-valid-json"))
+	t.Log("Calling POST /enroll/init with invalid JSON")
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewBufferString("not-valid-json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)

@@ -375,8 +375,8 @@ func TestTwoPhaseEnrollment_HappyPath(t *testing.T) {
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v1/enroll/init":
-			t.Log("Mock server received /api/v1/enroll/init request")
+		case "/enroll/init":
+			t.Log("Mock server received /enroll/init request")
 			initCalled = true
 
 			var req struct {
@@ -396,8 +396,8 @@ func TestTwoPhaseEnrollment_HappyPath(t *testing.T) {
 				"enrollment_id": "test-enrollment-id",
 			})
 
-		case "/api/v1/enroll/complete":
-			t.Log("Mock server received /api/v1/enroll/complete request")
+		case "/enroll/complete":
+			t.Log("Mock server received /enroll/complete request")
 			completeCalled = true
 
 			var req struct {
@@ -447,10 +447,10 @@ func TestTwoPhaseEnrollment_HappyPath(t *testing.T) {
 
 	// Verify both phases were called
 	if !initCalled {
-		t.Error("Expected /api/v1/enroll/init to be called")
+		t.Error("Expected /enroll/init to be called")
 	}
 	if !completeCalled {
-		t.Error("Expected /api/v1/enroll/complete to be called")
+		t.Error("Expected /enroll/complete to be called")
 	}
 
 	// Verify correct data was sent
@@ -483,7 +483,7 @@ func TestTwoPhaseEnrollment_InvalidCode(t *testing.T) {
 
 	// Create mock server that returns invalid code error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/enroll/init" {
+		if r.URL.Path == "/enroll/init" {
 			t.Log("Mock server returning 401 enroll.invalid_code")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -518,7 +518,7 @@ func TestTwoPhaseEnrollment_ExpiredCode(t *testing.T) {
 
 	// Create mock server that returns expired code error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/enroll/init" {
+		if r.URL.Path == "/enroll/init" {
 			t.Log("Mock server returning 401 enroll.expired_code")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -553,7 +553,7 @@ func TestTwoPhaseEnrollment_CodeConsumed(t *testing.T) {
 
 	// Create mock server that returns code consumed error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/enroll/init" {
+		if r.URL.Path == "/enroll/init" {
 			t.Log("Mock server returning 401 enroll.code_consumed")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -589,13 +589,13 @@ func TestTwoPhaseEnrollment_ChallengeExpired(t *testing.T) {
 	// Create mock server that returns challenge expired error on complete
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v1/enroll/init":
+		case "/enroll/init":
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
 				"challenge":     "dGVzdC1jaGFsbGVuZ2U=",
 				"enrollment_id": "test-enrollment-id",
 			})
-		case "/api/v1/enroll/complete":
+		case "/enroll/complete":
 			t.Log("Mock server returning 401 enroll.challenge_expired")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -631,13 +631,13 @@ func TestTwoPhaseEnrollment_KeyExists(t *testing.T) {
 	// Create mock server that returns key exists error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v1/enroll/init":
+		case "/enroll/init":
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
 				"challenge":     "dGVzdC1jaGFsbGVuZ2U=",
 				"enrollment_id": "test-enrollment-id",
 			})
-		case "/api/v1/enroll/complete":
+		case "/enroll/complete":
 			t.Log("Mock server returning 409 enroll.key_exists")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
@@ -697,13 +697,13 @@ func TestEnrollment_KeyPermissions(t *testing.T) {
 	// Create mock server for successful enrollment
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v1/enroll/init":
+		case "/enroll/init":
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
 				"challenge":     "dGVzdC1jaGFsbGVuZ2U=",
 				"enrollment_id": "test-enrollment-id",
 			})
-		case "/api/v1/enroll/complete":
+		case "/enroll/complete":
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
 				"id":          "km_test123",
@@ -779,13 +779,13 @@ func TestEnrollment_ReturnsKid(t *testing.T) {
 	// Create mock server for successful enrollment
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v1/enroll/init":
+		case "/enroll/init":
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
 				"challenge":     "dGVzdC1jaGFsbGVuZ2U=",
 				"enrollment_id": "test-enrollment-id",
 			})
-		case "/api/v1/enroll/complete":
+		case "/enroll/complete":
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
 				"id":          "km_returned_kid",

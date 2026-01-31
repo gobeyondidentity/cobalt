@@ -76,7 +76,7 @@ func TestInitCmd_HappyPath(t *testing.T) {
 			json.NewEncoder(w).Encode(resp)
 			t.Log("Bootstrap challenge sent")
 
-		case "/api/v1/enroll/complete":
+		case "/enroll/complete":
 			t.Log("Handling enrollment complete request")
 
 			var req enrollCompleteRequest
@@ -370,7 +370,7 @@ func TestInitCmd_ForceReenrollment(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
 
-		case "/api/v1/enroll/complete":
+		case "/enroll/complete":
 			var req enrollCompleteRequest
 			json.NewDecoder(r.Body).Decode(&req)
 
@@ -460,7 +460,7 @@ func TestInitCmd_ServerConfigSaved(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
 
-		case "/api/v1/enroll/complete":
+		case "/enroll/complete":
 			var req enrollCompleteRequest
 			json.NewDecoder(r.Body).Decode(&req)
 

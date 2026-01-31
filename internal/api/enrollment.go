@@ -17,18 +17,18 @@ import (
 // OperatorChallengeTTL is the duration an operator enrollment challenge is valid.
 const OperatorChallengeTTL = 5 * time.Minute
 
-// EnrollInitRequest represents the request body for POST /api/v1/enroll/init.
+// EnrollInitRequest represents the request body for POST /enroll/init.
 type EnrollInitRequest struct {
 	Code string `json:"code"` // Plaintext invite code
 }
 
-// EnrollInitResponse represents the response for POST /api/v1/enroll/init.
+// EnrollInitResponse represents the response for POST /enroll/init.
 type EnrollInitResponse struct {
 	Challenge    string `json:"challenge"`     // Base64-encoded challenge nonce
 	EnrollmentID string `json:"enrollment_id"` // Enrollment session identifier
 }
 
-// handleEnrollInit handles POST /api/v1/enroll/init.
+// handleEnrollInit handles POST /enroll/init.
 // This initiates the operator enrollment flow with an invite code.
 func (s *Server) handleEnrollInit(w http.ResponseWriter, r *http.Request) {
 	// Parse request body

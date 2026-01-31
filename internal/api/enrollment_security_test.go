@@ -78,7 +78,7 @@ func TestInviteCode_ConcurrentConsumption_ExactlyOneSucceeds(t *testing.T) {
 
 			body := EnrollInitRequest{Code: inviteResult.Plaintext}
 			bodyBytes, _ := json.Marshal(body)
-			req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(bodyBytes))
+			req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(bodyBytes))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			mux.ServeHTTP(w, req)
@@ -340,7 +340,7 @@ func TestChallenge_CrossSessionRejected(t *testing.T) {
 	t.Log("Starting enrollment session A")
 	body1 := EnrollInitRequest{Code: invite1.Plaintext}
 	bodyBytes1, _ := json.Marshal(body1)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(bodyBytes1))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(bodyBytes1))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -352,7 +352,7 @@ func TestChallenge_CrossSessionRejected(t *testing.T) {
 	t.Log("Starting enrollment session B")
 	body2 := EnrollInitRequest{Code: invite2.Plaintext}
 	bodyBytes2, _ := json.Marshal(body2)
-	req = httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(bodyBytes2))
+	req = httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(bodyBytes2))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -542,7 +542,7 @@ func TestKeyUniqueness_CrossRole(t *testing.T) {
 
 	initBody := EnrollInitRequest{Code: invite.Plaintext}
 	initBodyBytes, _ := json.Marshal(initBody)
-	req = httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(initBodyBytes))
+	req = httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(initBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -800,7 +800,7 @@ func TestDICE_KMEnrollmentDoesNotRequireDICE(t *testing.T) {
 	// Init enrollment (no DICE chain in request)
 	initBody := EnrollInitRequest{Code: invite.Plaintext}
 	initBodyBytes, _ := json.Marshal(initBody)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(initBodyBytes))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(initBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -921,7 +921,7 @@ func TestAudit_FailedEnrollmentLogged(t *testing.T) {
 	// Make request with invalid code
 	body := EnrollInitRequest{Code: "invalid-code"}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -1044,7 +1044,7 @@ func TestLoad_100ConcurrentEnrollments(t *testing.T) {
 			// Init
 			initBody := EnrollInitRequest{Code: code}
 			initBodyBytes, _ := json.Marshal(initBody)
-			req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(initBodyBytes))
+			req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(initBodyBytes))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			mux.ServeHTTP(w, req)
@@ -1135,7 +1135,7 @@ func TestLoad_1000SequentialEnrollments(t *testing.T) {
 		// Init
 		initBody := EnrollInitRequest{Code: result.Plaintext}
 		initBodyBytes, _ := json.Marshal(initBody)
-		req := httptest.NewRequest("POST", "/api/v1/enroll/init", bytes.NewReader(initBodyBytes))
+		req := httptest.NewRequest("POST", "/enroll/init", bytes.NewReader(initBodyBytes))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
