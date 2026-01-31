@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/nmelo/secure-infra/internal/api"
 	"github.com/nmelo/secure-infra/internal/version"
+	"github.com/nmelo/secure-infra/pkg/dpop"
 	"github.com/nmelo/secure-infra/pkg/store"
 )
 
@@ -54,9 +56,26 @@ func main() {
 	mux := http.NewServeMux()
 	server.RegisterRoutes(mux)
 
+	// Initialize DPoP authentication middleware
+	jtiCache := dpop.NewMemoryJTICache(
+		dpop.WithTTL(5*time.Minute),
+		dpop.WithMaxEntries(100000),
+	)
+	defer jtiCache.Close()
+
+	validator := dpop.NewValidator(dpop.DefaultValidatorConfig())
+	proofValidator := api.NewStoreProofValidator(validator, db)
+	identityLookup := api.NewStoreIdentityLookup(db)
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpop.WithLogger(logger))
+
+	// Apply middleware: logging -> CORS -> auth -> routes
+	// CORS wraps auth so that CORS headers (including DPoP) are set even on auth failures
+	// and OPTIONS preflight requests bypass authentication
 	httpServer := &http.Server{
 		Addr:    *listenAddr,
-		Handler: loggingMiddleware(corsMiddleware(mux)),
+		Handler: loggingMiddleware(corsMiddleware(authMiddleware.Wrap(mux))),
 	}
 
 	// Handle shutdown
@@ -84,7 +103,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, DPoP")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
