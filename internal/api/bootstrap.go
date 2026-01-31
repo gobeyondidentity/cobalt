@@ -266,8 +266,13 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+	case "operator":
+		// Operator enrollment via invite code
+		s.handleOperatorEnrollComplete(w, r, session, pubKeyBytes, fingerprint)
+		return
+
 	default:
-		// Future session types (admin_invite, dpu) - stub for now
+		// Future session types (dpu) - stub for now
 		writeError(w, r, http.StatusBadRequest, "Unsupported session type: "+session.SessionType)
 		return
 	}

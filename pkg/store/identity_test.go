@@ -391,6 +391,8 @@ func TestListAllKeyMakers_ReturnsAll(t *testing.T) {
 			DeviceFingerprint: "fp1",
 			PublicKey:         "pk1",
 			Status:            "active",
+			Kid:               "km1",
+			KeyFingerprint:    "list-all-km1-fp",
 		},
 		{
 			ID:                "km2",
@@ -401,6 +403,8 @@ func TestListAllKeyMakers_ReturnsAll(t *testing.T) {
 			DeviceFingerprint: "fp2",
 			PublicKey:         "pk2",
 			Status:            "revoked",
+			Kid:               "km2",
+			KeyFingerprint:    "list-all-km2-fp",
 		},
 		{
 			ID:                "km3",
@@ -411,6 +415,8 @@ func TestListAllKeyMakers_ReturnsAll(t *testing.T) {
 			DeviceFingerprint: "fp3",
 			PublicKey:         "pk3",
 			Status:            "active",
+			Kid:               "km3",
+			KeyFingerprint:    "list-all-km3-fp",
 		},
 	}
 
@@ -451,8 +457,9 @@ func TestListAllKeyMakers_OrderedByBoundAtDesc(t *testing.T) {
 	// SQLite timestamps are in seconds, so we need 1+ second delay
 	t.Log("Creating keymakers in sequence with 1 second delays")
 	for i := 1; i <= 3; i++ {
+		kmID := string(rune('a'+i-1)) + "km"
 		km := &KeyMaker{
-			ID:                string(rune('a'+i-1)) + "km",
+			ID:                kmID,
 			OperatorID:        "op1",
 			Name:              "KeyMaker",
 			Platform:          "darwin",
@@ -460,6 +467,8 @@ func TestListAllKeyMakers_OrderedByBoundAtDesc(t *testing.T) {
 			DeviceFingerprint: "fp",
 			PublicKey:         "pk" + string(rune('0'+i)),
 			Status:            "active",
+			Kid:               kmID,
+			KeyFingerprint:    "ordered-" + kmID + "-fp",
 		}
 		if err := store.CreateKeyMaker(km); err != nil {
 			t.Fatalf("failed to create keymaker %d: %v", i, err)
@@ -676,6 +685,8 @@ func TestGetKeyMakerByKid(t *testing.T) {
 		DeviceFingerprint: "fp1",
 		PublicKey:         "pubkey1",
 		Status:            "active",
+		Kid:               "km1-legacy",
+		KeyFingerprint:    "getkmbykid-km1-fp",
 	}
 	err = store.CreateKeyMaker(km1)
 	require.NoError(t, err)
@@ -691,14 +702,10 @@ func TestGetKeyMakerByKid(t *testing.T) {
 		DeviceFingerprint: "fp2",
 		PublicKey:         "pubkey2",
 		Status:            "active",
+		Kid:               "km-kid-123",
+		KeyFingerprint:    KeyFingerprint([]byte("pubkey2")),
 	}
 	err = store.CreateKeyMaker(km2)
-	require.NoError(t, err)
-
-	// Set kid on km2
-	t.Log("Setting kid on keymaker via direct update")
-	_, err = store.db.Exec(`UPDATE keymakers SET kid = ?, key_fingerprint = ? WHERE id = ?`,
-		"km-kid-123", KeyFingerprint([]byte("pubkey2")), "km2")
 	require.NoError(t, err)
 
 	// Test GetKeyMakerByKid

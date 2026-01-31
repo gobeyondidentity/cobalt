@@ -43,6 +43,8 @@ func TestKeyMakerRevocation_BlocksAuthorization(t *testing.T) {
 		DeviceFingerprint: "fp123",
 		PublicKey:         "ssh-ed25519 AAAA...",
 		Status:            "active",
+		Kid:               keymakerID,
+		KeyFingerprint:    "fingerprint-" + uuid.New().String()[:8],
 	}
 	if err := server.store.CreateKeyMaker(km); err != nil {
 		t.Fatalf("failed to create keymaker: %v", err)
@@ -147,6 +149,8 @@ func TestKeyMakerRevocation_Permanent(t *testing.T) {
 		DeviceFingerprint: "fp123",
 		PublicKey:         "ssh-ed25519 AAAA...",
 		Status:            "active",
+		Kid:               keymakerID,
+		KeyFingerprint:    "fingerprint-" + uuid.New().String()[:8],
 	}
 	if err := server.store.CreateKeyMaker(km); err != nil {
 		t.Fatalf("failed to create keymaker: %v", err)
@@ -381,6 +385,8 @@ func TestKeyMakerRevocation_NewKeyMakerForSameOperatorWorks(t *testing.T) {
 		DeviceFingerprint: "fp-device-a",
 		PublicKey:         "ssh-ed25519 AAAA-device-a...",
 		Status:            "active",
+		Kid:               keymakerAID,
+		KeyFingerprint:    "fingerprint-device-a-" + uuid.New().String()[:8],
 	}
 	if err := server.store.CreateKeyMaker(kmA); err != nil {
 		t.Fatalf("failed to create keymaker-A: %v", err)
@@ -418,6 +424,8 @@ func TestKeyMakerRevocation_NewKeyMakerForSameOperatorWorks(t *testing.T) {
 		DeviceFingerprint: "fp-device-b",
 		PublicKey:         "ssh-ed25519 AAAA-device-b...",
 		Status:            "active",
+		Kid:               keymakerBID,
+		KeyFingerprint:    "fingerprint-device-b-" + uuid.New().String()[:8],
 	}
 	if err := server.store.CreateKeyMaker(kmB); err != nil {
 		t.Fatalf("failed to create keymaker-B: %v", err)

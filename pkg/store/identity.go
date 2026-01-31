@@ -254,9 +254,9 @@ func (s *Store) GetOperatorRole(operatorID, tenantID string) (string, error) {
 // CreateKeyMaker stores a new KeyMaker binding.
 func (s *Store) CreateKeyMaker(km *KeyMaker) error {
 	_, err := s.db.Exec(
-		`INSERT INTO keymakers (id, operator_id, name, platform, secure_element, device_fingerprint, public_key, status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		km.ID, km.OperatorID, km.Name, km.Platform, km.SecureElement, km.DeviceFingerprint, km.PublicKey, km.Status,
+		`INSERT INTO keymakers (id, operator_id, name, platform, secure_element, device_fingerprint, public_key, status, kid, key_fingerprint)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		km.ID, km.OperatorID, km.Name, km.Platform, km.SecureElement, km.DeviceFingerprint, km.PublicKey, km.Status, km.Kid, km.KeyFingerprint,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create keymaker: %w", err)
@@ -282,6 +282,17 @@ func (s *Store) GetKeyMakerByPublicKey(pubKey string) (*KeyMaker, error) {
 		pubKey,
 	)
 	return s.scanKeyMaker(row)
+}
+
+// GetKeyMakerByFingerprint retrieves a KeyMaker by its key fingerprint.
+// Used for duplicate key detection during enrollment.
+func (s *Store) GetKeyMakerByFingerprint(fingerprint string) (*KeyMaker, error) {
+	row := s.db.QueryRow(
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, kid, key_fingerprint
+		 FROM keymakers WHERE key_fingerprint = ?`,
+		fingerprint,
+	)
+	return s.scanKeyMakerWithDPoP(row)
 }
 
 // ListKeyMakersByOperator returns all KeyMakers for an operator.
@@ -429,6 +440,16 @@ func (s *Store) GetInviteCodeByHash(hash string) (*InviteCode, error) {
 		`SELECT id, code_hash, operator_email, tenant_id, role, created_by, created_at, expires_at, used_at, used_by_keymaker, status
 		 FROM invite_codes WHERE code_hash = ?`,
 		hash,
+	)
+	return s.scanInviteCode(row)
+}
+
+// GetInviteCodeByID retrieves an invite code by its ID.
+func (s *Store) GetInviteCodeByID(id string) (*InviteCode, error) {
+	row := s.db.QueryRow(
+		`SELECT id, code_hash, operator_email, tenant_id, role, created_by, created_at, expires_at, used_at, used_by_keymaker, status
+		 FROM invite_codes WHERE id = ?`,
+		id,
 	)
 	return s.scanInviteCode(row)
 }
@@ -727,6 +748,17 @@ func (s *Store) GetAdminKeyByKid(kid string) (*AdminKey, error) {
 		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
 		 FROM admin_keys WHERE kid = ?`,
 		kid,
+	)
+	return s.scanAdminKey(row)
+}
+
+// GetAdminKeyByFingerprint retrieves an admin key by its key fingerprint.
+// Used for duplicate key detection during enrollment.
+func (s *Store) GetAdminKeyByFingerprint(fingerprint string) (*AdminKey, error) {
+	row := s.db.QueryRow(
+		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
+		 FROM admin_keys WHERE key_fingerprint = ?`,
+		fingerprint,
 	)
 	return s.scanAdminKey(row)
 }

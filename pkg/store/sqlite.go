@@ -496,6 +496,8 @@ func (s *Store) migrate() error {
 		"ALTER TABLE dpus ADD COLUMN key_fingerprint TEXT",
 		// Enrollment expiration tracking
 		"ALTER TABLE dpus ADD COLUMN enrollment_expires_at INTEGER",
+		// Enrollment session invite code reference
+		"ALTER TABLE enrollment_sessions ADD COLUMN invite_code_id TEXT",
 	}
 
 	for _, m := range migrations {

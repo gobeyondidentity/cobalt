@@ -798,6 +798,8 @@ func TestCheckAuthorization_RevokedKeyMaker(t *testing.T) {
 		DeviceFingerprint: "fp123",
 		PublicKey:         "ssh-ed25519 AAAA...",
 		Status:            "active",
+		Kid:               keymakerID,
+		KeyFingerprint:    "revoked-km-fp-" + keymakerID,
 	}
 	if err := server.store.CreateKeyMaker(km); err != nil {
 		t.Fatalf("failed to create keymaker: %v", err)
@@ -871,6 +873,8 @@ func TestCheckAuthorization_ActiveKeyMaker(t *testing.T) {
 		DeviceFingerprint: "fp123",
 		PublicKey:         "ssh-ed25519 AAAA...",
 		Status:            "active",
+		Kid:               keymakerID,
+		KeyFingerprint:    "active-km-fp-" + keymakerID,
 	}
 	if err := server.store.CreateKeyMaker(km); err != nil {
 		t.Fatalf("failed to create keymaker: %v", err)

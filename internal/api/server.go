@@ -137,6 +137,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Bootstrap routes
 	mux.HandleFunc("POST /api/v1/admin/bootstrap", s.handleAdminBootstrap)
 	mux.HandleFunc("POST /enroll/complete", s.handleEnrollComplete)
+
+	// Operator enrollment routes
+	mux.HandleFunc("POST /api/v1/enroll/init", s.handleEnrollInit)
 }
 
 // ----- DPU Types -----
