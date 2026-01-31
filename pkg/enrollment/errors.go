@@ -27,6 +27,13 @@ const (
 	ErrCodeAlreadyEnrolled = "bootstrap.already_enrolled" // HTTP 403 - First admin already enrolled
 )
 
+// Attestation error codes.
+const (
+	ErrCodeMissingAttestation       = "enroll.missing_attestation"        // HTTP 400 - Attestation data required but not provided
+	ErrCodeInvalidAttestation       = "enroll.invalid_attestation"        // HTTP 401 - Attestation validation failed
+	ErrCodeAttestationNonceMismatch = "enroll.attestation_nonce_mismatch" // HTTP 401 - Attestation nonce does not match expected binding
+)
+
 // httpStatusMap maps error codes to their HTTP status codes.
 var httpStatusMap = map[string]int{
 	ErrCodeInvalidCode:        http.StatusUnauthorized,
@@ -38,8 +45,11 @@ var httpStatusMap = map[string]int{
 	ErrCodeKeyExists:          http.StatusConflict,
 	ErrCodeDICESerialMismatch: http.StatusUnauthorized,
 	ErrCodeInvalidDICEChain:   http.StatusUnauthorized,
-	ErrCodeWindowClosed:       http.StatusForbidden,
-	ErrCodeAlreadyEnrolled:    http.StatusForbidden,
+	ErrCodeWindowClosed:            http.StatusForbidden,
+	ErrCodeAlreadyEnrolled:         http.StatusForbidden,
+	ErrCodeMissingAttestation:      http.StatusBadRequest,
+	ErrCodeInvalidAttestation:      http.StatusUnauthorized,
+	ErrCodeAttestationNonceMismatch: http.StatusUnauthorized,
 }
 
 // EnrollmentError represents an enrollment error with a structured code.
@@ -126,6 +136,21 @@ func ErrWindowClosed() *EnrollmentError {
 // ErrAlreadyEnrolled creates an error for first admin already enrolled.
 func ErrAlreadyEnrolled() *EnrollmentError {
 	return newError(ErrCodeAlreadyEnrolled, "first admin has already been enrolled")
+}
+
+// ErrMissingAttestation creates an error for attestation data required but not provided.
+func ErrMissingAttestation() *EnrollmentError {
+	return newError(ErrCodeMissingAttestation, "attestation data required for DPU enrollment")
+}
+
+// ErrInvalidAttestation creates an error for attestation validation failure.
+func ErrInvalidAttestation(reason string) *EnrollmentError {
+	return newError(ErrCodeInvalidAttestation, reason)
+}
+
+// ErrAttestationNonceMismatch creates an error for attestation nonce mismatch.
+func ErrAttestationNonceMismatch() *EnrollmentError {
+	return newError(ErrCodeAttestationNonceMismatch, "attestation nonce does not match expected binding")
 }
 
 // ErrorCode extracts the enrollment error code from an error.

@@ -28,6 +28,7 @@ type DPU struct {
 	Kid                 *string    // Key ID for DPoP lookup
 	KeyFingerprint      *string    // SHA256 hex of public key
 	EnrollmentExpiresAt *time.Time // Set on registration, cleared on enrollment
+	SerialNumber        string     // Hardware serial number from DICE/SPDM attestation
 }
 
 // Tenant represents a logical grouping of DPUs.
@@ -498,6 +499,10 @@ func (s *Store) migrate() error {
 		"ALTER TABLE dpus ADD COLUMN enrollment_expires_at INTEGER",
 		// Enrollment session invite code reference
 		"ALTER TABLE enrollment_sessions ADD COLUMN invite_code_id TEXT",
+		// DPU serial number for hardware identification
+		"ALTER TABLE dpus ADD COLUMN serial_number TEXT",
+		// DPU enrollment session reference
+		"ALTER TABLE enrollment_sessions ADD COLUMN dpu_id TEXT REFERENCES dpus(id)",
 	}
 
 	for _, m := range migrations {
@@ -563,7 +568,7 @@ func (s *Store) Remove(idOrName string) error {
 // Get retrieves a DPU by ID or name.
 func (s *Store) Get(idOrName string) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at FROM dpus WHERE id = ? OR name = ?`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus WHERE id = ? OR name = ?`,
 		idOrName, idOrName,
 	)
 	return s.scanDPU(row)
@@ -572,7 +577,7 @@ func (s *Store) Get(idOrName string) (*DPU, error) {
 // GetDPUByAddress returns a DPU with the given host:port, or nil if not found.
 func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at FROM dpus WHERE host = ? AND port = ?`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus WHERE host = ? AND port = ?`,
 		host, port,
 	)
 
@@ -585,8 +590,9 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
 	var enrollmentExpiresAt sql.NullInt64
+	var serialNumber sql.NullString
 
-	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt)
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -617,6 +623,9 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 		t := time.Unix(enrollmentExpiresAt.Int64, 0)
 		dpu.EnrollmentExpiresAt = &t
 	}
+	if serialNumber.Valid {
+		dpu.SerialNumber = serialNumber.String
+	}
 
 	return &dpu, nil
 }
@@ -624,7 +633,7 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 // List returns all registered DPUs.
 func (s *Store) List() ([]*DPU, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at FROM dpus ORDER BY name`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus ORDER BY name`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list DPUs: %w", err)
@@ -682,6 +691,102 @@ func (s *Store) SetDPULabels(idOrName string, labels map[string]string) error {
 	return nil
 }
 
+// GetDPUBySerial returns a DPU by its serial number.
+// Returns nil if not found (does not return error for not-found case).
+func (s *Store) GetDPUBySerial(serial string) (*DPU, error) {
+	if serial == "" {
+		// Empty serial should not match NULL serials
+		return nil, nil
+	}
+	row := s.db.QueryRow(
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus WHERE serial_number = ?`,
+		serial,
+	)
+
+	var dpu DPU
+	var lastSeen sql.NullInt64
+	var createdAt int64
+	var tenantID sql.NullString
+	var labelsJSON string
+	var publicKey []byte
+	var kid sql.NullString
+	var keyFingerprint sql.NullString
+	var enrollmentExpiresAt sql.NullInt64
+	var serialNumber sql.NullString
+
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan DPU: %w", err)
+	}
+
+	if lastSeen.Valid {
+		t := time.Unix(lastSeen.Int64, 0)
+		dpu.LastSeen = &t
+	}
+	dpu.CreatedAt = time.Unix(createdAt, 0)
+	if tenantID.Valid {
+		dpu.TenantID = &tenantID.String
+	}
+	dpu.Labels = make(map[string]string)
+	if labelsJSON != "" {
+		json.Unmarshal([]byte(labelsJSON), &dpu.Labels)
+	}
+	dpu.PublicKey = publicKey
+	if kid.Valid {
+		dpu.Kid = &kid.String
+	}
+	if keyFingerprint.Valid {
+		dpu.KeyFingerprint = &keyFingerprint.String
+	}
+	if enrollmentExpiresAt.Valid {
+		t := time.Unix(enrollmentExpiresAt.Int64, 0)
+		dpu.EnrollmentExpiresAt = &t
+	}
+	if serialNumber.Valid {
+		dpu.SerialNumber = serialNumber.String
+	}
+
+	return &dpu, nil
+}
+
+// SetDPUSerialNumber sets the serial number for a DPU.
+func (s *Store) SetDPUSerialNumber(id, serial string) error {
+	result, err := s.db.Exec(
+		`UPDATE dpus SET serial_number = ? WHERE id = ? OR name = ?`,
+		serial, id, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to set DPU serial number: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("DPU not found: %s", id)
+	}
+	return nil
+}
+
+// UpdateDPUEnrollment updates a DPU's enrollment status after successful enrollment.
+// Sets public_key, kid, key_fingerprint, status='active', clears enrollment_expires_at.
+func (s *Store) UpdateDPUEnrollment(id string, publicKey []byte, fingerprint, kid string) error {
+	result, err := s.db.Exec(
+		`UPDATE dpus SET public_key = ?, key_fingerprint = ?, kid = ?, status = 'active', enrollment_expires_at = NULL WHERE id = ? OR name = ?`,
+		publicKey, fingerprint, kid, id, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update DPU enrollment: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("DPU not found: %s", id)
+	}
+	return nil
+}
+
 func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	var dpu DPU
 	var lastSeen sql.NullInt64
@@ -692,8 +797,9 @@ func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
 	var enrollmentExpiresAt sql.NullInt64
+	var serialNumber sql.NullString
 
-	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt)
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("DPU not found")
 	}
@@ -724,6 +830,9 @@ func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 		t := time.Unix(enrollmentExpiresAt.Int64, 0)
 		dpu.EnrollmentExpiresAt = &t
 	}
+	if serialNumber.Valid {
+		dpu.SerialNumber = serialNumber.String
+	}
 
 	return &dpu, nil
 }
@@ -738,8 +847,9 @@ func (s *Store) scanDPURows(rows *sql.Rows) (*DPU, error) {
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
 	var enrollmentExpiresAt sql.NullInt64
+	var serialNumber sql.NullString
 
-	err := rows.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt)
+	err := rows.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan DPU: %w", err)
 	}
@@ -766,6 +876,9 @@ func (s *Store) scanDPURows(rows *sql.Rows) (*DPU, error) {
 	if enrollmentExpiresAt.Valid {
 		t := time.Unix(enrollmentExpiresAt.Int64, 0)
 		dpu.EnrollmentExpiresAt = &t
+	}
+	if serialNumber.Valid {
+		dpu.SerialNumber = serialNumber.String
 	}
 
 	return &dpu, nil
@@ -890,7 +1003,7 @@ func (s *Store) UnassignDPUFromTenant(dpuID string) error {
 // ListDPUsByTenant returns all DPUs for a specific tenant.
 func (s *Store) ListDPUsByTenant(tenantID string) ([]*DPU, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at FROM dpus WHERE tenant_id = ? ORDER BY name`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus WHERE tenant_id = ? ORDER BY name`,
 		tenantID,
 	)
 	if err != nil {

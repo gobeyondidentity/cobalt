@@ -271,8 +271,12 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 		s.handleOperatorEnrollComplete(w, r, session, pubKeyBytes, fingerprint)
 		return
 
+	case "dpu":
+		// DPU enrollment via serial number
+		s.handleDPUEnrollComplete(w, r, session, pubKeyBytes, fingerprint)
+		return
+
 	default:
-		// Future session types (dpu) - stub for now
 		writeError(w, r, http.StatusBadRequest, "Unsupported session type: "+session.SessionType)
 		return
 	}

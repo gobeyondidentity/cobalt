@@ -929,6 +929,22 @@ func (s *Store) GetDPUByKid(kid string) (*DPU, error) {
 	return s.scanDPUWithDPoP(row)
 }
 
+// GetDPUByFingerprint retrieves a DPU by its key fingerprint.
+// Used for duplicate key detection during DPU enrollment.
+// Returns nil, nil if not found (does not return error for not-found case).
+func (s *Store) GetDPUByFingerprint(fingerprint string) (*DPU, error) {
+	row := s.db.QueryRow(
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at
+		 FROM dpus WHERE key_fingerprint = ?`,
+		fingerprint,
+	)
+	dpu, err := s.scanDPUWithDPoP(row)
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		return nil, nil
+	}
+	return dpu, err
+}
+
 func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
 	var dpu DPU
 	var lastSeen sql.NullInt64
