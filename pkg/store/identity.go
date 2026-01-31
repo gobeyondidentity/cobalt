@@ -496,6 +496,32 @@ func (s *Store) MarkInviteCodeUsed(id, keymakerID string) error {
 	return nil
 }
 
+// ConsumeInviteCode atomically marks an invite code as consumed.
+// Uses UPDATE WHERE status='pending' AND expires_at > now to prevent race conditions.
+// Returns error if code not found, already consumed, or expired.
+//
+// This follows the pattern from CompleteEnrollmentSession for atomic state transitions.
+func (s *Store) ConsumeInviteCode(id, keymakerID string) error {
+	now := time.Now().Unix()
+	result, err := s.db.Exec(
+		`UPDATE invite_codes SET status = 'used', used_at = ?, used_by_keymaker = ?
+		 WHERE id = ? AND status = 'pending' AND expires_at > ?`,
+		now, keymakerID, id, now,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to consume invite code: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check affected rows: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("invite code not found, already consumed, or expired")
+	}
+	return nil
+}
+
 // RevokeInviteCode marks an invite code as revoked.
 func (s *Store) RevokeInviteCode(id string) error {
 	result, err := s.db.Exec(
