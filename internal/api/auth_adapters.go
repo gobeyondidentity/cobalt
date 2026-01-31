@@ -276,7 +276,7 @@ func mapDPUStatus(status string) dpop.IdentityStatus {
 	case "decommissioned":
 		return dpop.IdentityStatusDecommissioned
 	default:
-		// Unknown DPU status defaults to active (for pending, unhealthy, etc.)
-		return dpop.IdentityStatusActive
+		// Unknown DPU status defaults to revoked (deny by default)
+		return dpop.IdentityStatusRevoked
 	}
 }
