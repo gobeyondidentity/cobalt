@@ -75,8 +75,12 @@ jobs:
           go-version-file: go.mod
           cache: false  # Self-hosted has persistent local cache
 
+      - name: Build test binaries
+        run: |
+          mkdir -p bin
+          go build -o bin/nexus ./cmd/nexus
+          go build -o bin/aegis ./cmd/aegis
+          go build -o bin/sentry ./cmd/sentry
+
       - name: Run hardware tests
         run: go test -tags=hardware -v -timeout 10m ./... -run 'TestDOCA.*'
-        env:
-          BF3_IP: "192.168.1.204"
-          BF3_USER: "ubuntu"
