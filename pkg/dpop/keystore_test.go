@@ -347,8 +347,10 @@ func TestDefaultKeyPaths_EnvOverride(t *testing.T) {
 		if keyPath != "/custom/path/key.pem" {
 			t.Errorf("aegis key path override: expected /custom/path/key.pem, got %s", keyPath)
 		}
-		if kidPath != "/custom/path/kid" {
-			t.Errorf("aegis kid path (derived): expected /custom/path/kid, got %s", kidPath)
+		// Derived path uses filepath.Join which returns OS-native separators
+		expectedKidPath := filepath.FromSlash("/custom/path/kid")
+		if kidPath != expectedKidPath {
+			t.Errorf("aegis kid path (derived): expected %s, got %s", expectedKidPath, kidPath)
 		}
 	})
 
