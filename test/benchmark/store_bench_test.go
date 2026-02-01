@@ -30,6 +30,7 @@ func BenchmarkKeyMakerLookupByKid(b *testing.B) {
 	var targetKid string
 	for i := 0; i < 1000; i++ {
 		id := "km" + string([]byte{'0' + byte(i/1000%10), '0' + byte(i/100%10), '0' + byte(i/10%10), '0' + byte(i%10)})
+		kid := "kid-" + id
 		km := &store.KeyMaker{
 			ID:                id,
 			OperatorID:        "op1",
@@ -39,22 +40,17 @@ func BenchmarkKeyMakerLookupByKid(b *testing.B) {
 			DeviceFingerprint: "fp" + id,
 			PublicKey:         "pk" + id,
 			Status:            "active",
+			Kid:               kid,
+			KeyFingerprint:    "fp-" + id,
 		}
 		err = st.CreateKeyMaker(km)
 		if err != nil {
 			b.Fatalf("failed to create keymaker %s: %v", id, err)
 		}
 
-		// Set kid using direct DB access (simulating real scenario)
-		kid := "kid-" + id
 		if i == 500 {
 			targetKid = kid
 		}
-	}
-
-	// Ensure we have a target kid
-	if targetKid == "" {
-		targetKid = "kid-km0500"
 	}
 
 	b.ResetTimer()
