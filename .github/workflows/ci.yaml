@@ -81,6 +81,7 @@ jobs:
           go build -o bin/nexus ./cmd/nexus
           go build -o bin/aegis ./cmd/aegis
           go build -o bin/sentry ./cmd/sentry
+          go build -o bin/bluectl ./cmd/bluectl
 
       - name: Run hardware tests
         run: go test -tags=hardware -v -timeout 10m ./... -run 'TestDOCA.*'
