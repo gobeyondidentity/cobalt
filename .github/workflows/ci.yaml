@@ -50,9 +50,10 @@ jobs:
 
       - name: Run tests (Windows)
         if: ${{ !matrix.use_make }}
-        run: go test -v ./...
+        run: go test ./...
 
       - name: Run vet
+        if: matrix.use_make  # Only on Linux, Windows is just for build verification
         run: go vet ./...
 
   # Integration tests - multipass VMs on workbench
