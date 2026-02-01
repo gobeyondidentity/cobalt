@@ -1,6 +1,9 @@
 # Secure Infrastructure Makefile
 # Build commands for all project binaries
 
+# Go binary (override with GO=/usr/local/go/bin/go for BlueField)
+GO ?= go
+
 # Output directory
 BIN_DIR := bin
 
@@ -101,9 +104,15 @@ test:
 
 # Run DPU tests (must run ON the BlueField DPU)
 # SSH to the DPU first, then run: make test-dpu
+# Environment variables for DOCA ComCh (BlueField-3 defaults)
+DOCA_PCI_ADDR ?= 0000:03:00.0
+DOCA_REP_PCI_ADDR ?= 0000:01:00.0
+DOCA_SERVER_NAME ?= secure-infra
+
 test-dpu:
 	@echo "Running DPU tests (requires BlueField hardware)..."
-	go test -tags=dpu,doca -v ./test/dpu/...
+	DOCA_PCI_ADDR=$(DOCA_PCI_ADDR) DOCA_REP_PCI_ADDR=$(DOCA_REP_PCI_ADDR) DOCA_SERVER_NAME=$(DOCA_SERVER_NAME) \
+		$(GO) test -tags=dpu,doca -v ./test/dpu/...
 
 # Run workbench tests (runs on Linux workbench with TMFIFO access)
 test-workbench:
