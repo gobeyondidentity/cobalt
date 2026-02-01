@@ -260,6 +260,7 @@ func TestHandlePush_StaleAttestationWithoutForce(t *testing.T) {
 	}
 
 	server := NewServer(s)
+	server.Gate().Refresher.Timeout = 100 * time.Millisecond // Fast timeout for tests
 	mux := http.NewServeMux()
 	server.RegisterRoutes(mux)
 
@@ -361,6 +362,7 @@ func TestHandlePush_StaleAttestationWithForce(t *testing.T) {
 	}
 
 	server := NewServer(s)
+	server.Gate().Refresher.Timeout = 100 * time.Millisecond // Fast timeout for tests
 	mux := http.NewServeMux()
 	server.RegisterRoutes(mux)
 

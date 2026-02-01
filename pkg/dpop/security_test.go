@@ -455,13 +455,16 @@ func TestReplayAttack_ExactReplay(t *testing.T) {
 }
 
 func TestReplayAttack_ReplayAfter1Second(t *testing.T) {
-	// Attack scenario: Attacker replays proof after 1 second delay.
+	// Attack scenario: Attacker replays proof after a delay.
 	//
 	// Expected behavior: Rejected with dpop.replay.
 	// Why it matters: Short delays should not bypass replay detection.
-	t.Log("Testing replay attack with 1 second delay")
+	t.Log("Testing replay attack with delay")
 
-	cache := NewMemoryJTICache(WithCleanupInterval(0))
+	cache := NewMemoryJTICache(
+		WithTTL(500*time.Millisecond), // Short TTL for fast test
+		WithCleanupInterval(0),
+	)
 	defer cache.Close()
 
 	jti := "replay-1s-test-" + randomString(8)
@@ -472,30 +475,29 @@ func TestReplayAttack_ReplayAfter1Second(t *testing.T) {
 		t.Fatal("first use should not be replay")
 	}
 
-	t.Log("Waiting 1 second before replay attempt")
-	time.Sleep(1 * time.Second)
+	t.Log("Waiting 50ms before replay attempt (within TTL)")
+	time.Sleep(50 * time.Millisecond)
 
-	t.Log("Attempting replay after 1 second")
+	t.Log("Attempting replay")
 	isReplay, err := cache.Record(jti)
 	if err != nil {
 		t.Fatalf("replay record failed: %v", err)
 	}
 	if !isReplay {
-		t.Fatal("SECURITY VULNERABILITY: replay after 1s was not detected")
+		t.Fatal("SECURITY VULNERABILITY: replay was not detected")
 	}
-	t.Log("Correctly detected replay after 1 second")
+	t.Log("Correctly detected replay")
 }
 
 func TestReplayAttack_ReplayWithinValidityWindow(t *testing.T) {
-	// Attack scenario: Attacker replays proof at 4 minutes (within 5 minute TTL).
+	// Attack scenario: Attacker replays proof within TTL window.
 	//
 	// Expected behavior: Rejected with dpop.replay (still in cache).
 	// Why it matters: Proofs must not be reusable within the validity window.
-	t.Log("Testing replay attack within validity window (simulated 4 min delay)")
+	t.Log("Testing replay attack within validity window")
 
-	// Use a shorter TTL for testing, but simulate the concept
 	cache := NewMemoryJTICache(
-		WithTTL(10*time.Second), // Short TTL for test
+		WithTTL(500*time.Millisecond), // Short TTL for test
 		WithCleanupInterval(0),
 	)
 	defer cache.Close()
@@ -508,9 +510,9 @@ func TestReplayAttack_ReplayWithinValidityWindow(t *testing.T) {
 		t.Fatal("first use should not be replay")
 	}
 
-	// Simulate time passing but still within window
-	t.Log("Waiting 2 seconds (within validity window)")
-	time.Sleep(2 * time.Second)
+	// Wait but stay within window
+	t.Log("Waiting 100ms (within validity window)")
+	time.Sleep(100 * time.Millisecond)
 
 	t.Log("Attempting replay within validity window")
 	isReplay, err := cache.Record(jti)
@@ -534,7 +536,7 @@ func TestReplayAttack_ReplayAfterExpiry(t *testing.T) {
 
 	// Very short TTL to test expiry
 	cache := NewMemoryJTICache(
-		WithTTL(1*time.Second),
+		WithTTL(50*time.Millisecond),
 		WithCleanupInterval(0),
 	)
 	defer cache.Close()
@@ -547,8 +549,8 @@ func TestReplayAttack_ReplayAfterExpiry(t *testing.T) {
 		t.Fatal("first use should not be replay")
 	}
 
-	t.Log("Waiting for JTI to expire (2 seconds > 1s TTL)")
-	time.Sleep(2 * time.Second)
+	t.Log("Waiting for JTI to expire (100ms > 50ms TTL)")
+	time.Sleep(100 * time.Millisecond)
 
 	t.Log("Attempting replay after expiry")
 	isReplay, err := cache.Record(jti)

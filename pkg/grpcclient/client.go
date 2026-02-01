@@ -4,7 +4,6 @@ package grpcclient
 import (
 	"context"
 	"fmt"
-	"time"
 
 	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
 	"google.golang.org/grpc"
@@ -18,16 +17,13 @@ type Client struct {
 }
 
 // NewClient creates a new gRPC client connected to the specified address.
+// Connection is lazy; errors surface on first RPC call.
 func NewClient(addr string) (*Client, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext(ctx, addr,
+	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to %s: %w", addr, err)
+		return nil, fmt.Errorf("failed to create client for %s: %w", addr, err)
 	}
 
 	return &Client{

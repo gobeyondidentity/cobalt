@@ -14,12 +14,14 @@ import (
 
 // newTestRedfishClient creates a RedfishClient for testing with a custom HTTP client.
 // This bypasses SSRF validation since httptest servers use 127.0.0.1.
+// Uses fast poll interval (10ms) for tests.
 func newTestRedfishClient(serverURL, username, password string, httpClient *http.Client) *RedfishClient {
 	return &RedfishClient{
-		baseURL:  serverURL,
-		username: username,
-		password: password,
-		client:   httpClient,
+		baseURL:      serverURL,
+		username:     username,
+		password:     password,
+		client:       httpClient,
+		PollInterval: 10 * time.Millisecond, // Fast for tests
 	}
 }
 
@@ -873,8 +875,8 @@ func TestRedfishClient_Timeout(t *testing.T) {
 		t.Log("Creating mock server that delays response")
 
 		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			t.Log("Server delaying response for 5 seconds")
-			time.Sleep(5 * time.Second)
+			t.Log("Server delaying response for 200ms")
+			time.Sleep(200 * time.Millisecond) // Just needs to exceed client's 100ms timeout
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer server.Close()

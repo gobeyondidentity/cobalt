@@ -19,12 +19,16 @@ import (
 	"github.com/gobeyondidentity/secure-infra/pkg/netutil"
 )
 
+// DefaultPollInterval is the default interval between task status polls.
+const DefaultPollInterval = time.Second
+
 // RedfishClient provides access to BMC Redfish API for attestation
 type RedfishClient struct {
-	baseURL  string
-	username string
-	password string
-	client   *http.Client
+	baseURL      string
+	username     string
+	password     string
+	client       *http.Client
+	PollInterval time.Duration // Interval between task polls; defaults to DefaultPollInterval
 }
 
 // NewRedfishClient creates a new Redfish client with SSRF protection.
@@ -616,10 +620,14 @@ func (c *RedfishClient) pollMeasurementsTask(ctx context.Context, taskURL string
 
 		default:
 			// Still running, wait and retry
+			interval := c.PollInterval
+			if interval == 0 {
+				interval = DefaultPollInterval
+			}
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(time.Second):
+			case <-time.After(interval):
 			}
 		}
 	}

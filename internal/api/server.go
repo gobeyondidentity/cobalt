@@ -26,11 +26,20 @@ const UUIDShortLength = 8
 // Server is the HTTP API server.
 type Server struct {
 	store *store.Store
+	gate  *attestation.Gate
 }
 
 // NewServer creates a new API server.
 func NewServer(s *store.Store) *Server {
-	return &Server{store: s}
+	return &Server{
+		store: s,
+		gate:  attestation.NewGate(s),
+	}
+}
+
+// Gate returns the attestation gate for testing configuration.
+func (s *Server) Gate() *attestation.Gate {
+	return s.gate
 }
 
 // RegisterRoutes registers all API routes.

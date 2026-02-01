@@ -25,7 +25,7 @@ type GateDecision struct {
 // Implements fail-secure: unknown or invalid attestations block distribution.
 type Gate struct {
 	store           *store.Store
-	refresher       *Refresher
+	Refresher       *Refresher // Exported for test configuration
 	FreshnessWindow time.Duration
 }
 
@@ -33,7 +33,7 @@ type Gate struct {
 func NewGate(s *store.Store) *Gate {
 	return &Gate{
 		store:           s,
-		refresher:       NewRefresher(s),
+		Refresher:       NewRefresher(s),
 		FreshnessWindow: DefaultFreshnessWindow,
 	}
 }
@@ -120,7 +120,7 @@ func (g *Gate) CanDistributeWithAutoRefresh(ctx context.Context, dpu *store.DPU,
 	}
 
 	// Blocked due to stale or unavailable attestation: attempt refresh
-	result := g.refresher.Refresh(ctx, dpu.Address(), dpu.Name, trigger, triggeredBy)
+	result := g.Refresher.Refresh(ctx, dpu.Address(), dpu.Name, trigger, triggeredBy)
 
 	if result.Success {
 		// Refresh succeeded, return allowed

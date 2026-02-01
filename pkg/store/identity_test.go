@@ -453,11 +453,10 @@ func TestListAllKeyMakers_OrderedByBoundAtDesc(t *testing.T) {
 		t.Fatalf("failed to create operator: %v", err)
 	}
 
-	// Create keymakers with delays to ensure different timestamps
-	// SQLite timestamps are in seconds, so we need 1+ second delay
-	t.Log("Creating keymakers in sequence with 1 second delays")
-	for i := 1; i <= 3; i++ {
-		kmID := string(rune('a'+i-1)) + "km"
+	// Create keymakers
+	t.Log("Creating keymakers")
+	keymakerIDs := []string{"akm", "bkm", "ckm"}
+	for i, kmID := range keymakerIDs {
 		km := &KeyMaker{
 			ID:                kmID,
 			OperatorID:        "op1",
@@ -471,11 +470,18 @@ func TestListAllKeyMakers_OrderedByBoundAtDesc(t *testing.T) {
 			KeyFingerprint:    "ordered-" + kmID + "-fp",
 		}
 		if err := store.CreateKeyMaker(km); err != nil {
-			t.Fatalf("failed to create keymaker %d: %v", i, err)
+			t.Fatalf("failed to create keymaker %s: %v", kmID, err)
 		}
-		// 1 second delay to ensure different timestamps (SQLite uses seconds)
-		if i < 3 {
-			time.Sleep(1 * time.Second)
+	}
+
+	// Set explicit bound_at timestamps via SQL to ensure deterministic ordering
+	// akm: oldest (1000), bkm: middle (2000), ckm: newest (3000)
+	t.Log("Setting explicit bound_at timestamps")
+	timestamps := map[string]int64{"akm": 1000, "bkm": 2000, "ckm": 3000}
+	for id, ts := range timestamps {
+		_, err := store.DB().Exec("UPDATE keymakers SET bound_at = ? WHERE id = ?", ts, id)
+		if err != nil {
+			t.Fatalf("failed to update bound_at for %s: %v", id, err)
 		}
 	}
 
@@ -484,7 +490,7 @@ func TestListAllKeyMakers_OrderedByBoundAtDesc(t *testing.T) {
 	assert.NoError(t, err, "listing all keymakers should not error")
 	assert.Len(t, result, 3, "should return all 3 keymakers")
 
-	// Most recent (last created) should be first due to DESC ordering
+	// Most recent (highest timestamp) should be first due to DESC ordering
 	t.Log("Verifying keymakers are ordered by bound_at DESC")
 	assert.Equal(t, "ckm", result[0].ID, "most recently bound should be first")
 	assert.Equal(t, "bkm", result[1].ID, "second most recent should be second")

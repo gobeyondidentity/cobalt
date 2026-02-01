@@ -22,14 +22,18 @@ type RefreshResult struct {
 	Message     string // Human-readable status
 }
 
+// DefaultRefreshTimeout is the default timeout for attestation refresh RPCs.
+const DefaultRefreshTimeout = 10 * time.Second
+
 // Refresher handles auto-refreshing attestation from DPUs.
 type Refresher struct {
-	store *store.Store
+	store   *store.Store
+	Timeout time.Duration // RPC timeout; defaults to DefaultRefreshTimeout
 }
 
 // NewRefresher creates a new attestation refresher.
 func NewRefresher(s *store.Store) *Refresher {
-	return &Refresher{store: s}
+	return &Refresher{store: s, Timeout: DefaultRefreshTimeout}
 }
 
 // Refresh fetches fresh attestation from a DPU and saves it.
@@ -48,7 +52,11 @@ func (r *Refresher) Refresh(ctx context.Context, dpuAddress, dpuName, trigger, t
 	defer client.Close()
 
 	// Set timeout for attestation request
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	timeout := r.Timeout
+	if timeout == 0 {
+		timeout = DefaultRefreshTimeout
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	// Call GetAttestation with target "IRoT" (DPU attestation)

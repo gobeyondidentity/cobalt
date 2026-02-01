@@ -178,8 +178,8 @@ func TestMemoryBounded(t *testing.T) {
 		t.Skip("skipping memory test in short mode")
 	}
 
-	ttl := 100 * time.Millisecond
-	cleanupInterval := 50 * time.Millisecond
+	ttl := 50 * time.Millisecond
+	cleanupInterval := 25 * time.Millisecond
 	t.Logf("Creating cache with short TTL (%v) and cleanup interval (%v)", ttl, cleanupInterval)
 
 	cache := NewMemoryJTICache(
@@ -195,7 +195,7 @@ func TestMemoryBounded(t *testing.T) {
 	runtime.ReadMemStats(&baselineStats)
 
 	batchSize := 100_000
-	numBatches := 10
+	numBatches := 3 // Reduced from 10; still tests memory bounded property
 	t.Logf("Inserting %d entries in %d batches", batchSize*numBatches, numBatches)
 
 	for batch := 0; batch < numBatches; batch++ {

@@ -93,11 +93,10 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 
 	// Check attestation with auto-refresh
 	// Note: operator was already fetched during suspension check above
-	gate := attestation.NewGate(s.store)
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	decision, _, err := gate.CanDistributeWithAutoRefresh(ctx, dpu, "api:push", operator.Email)
+	decision, _, err := s.gate.CanDistributeWithAutoRefresh(ctx, dpu, "api:push", operator.Email)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "failed to check attestation: "+err.Error())
 		return
