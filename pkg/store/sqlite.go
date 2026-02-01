@@ -470,13 +470,14 @@ func (s *Store) migrate() error {
 	CREATE TABLE IF NOT EXISTS enrollment_sessions (
 		id TEXT PRIMARY KEY,
 		session_type TEXT NOT NULL,
-		challenge_hash TEXT NOT NULL,
+		challenge_bytes_hex TEXT NOT NULL,
 		public_key_b64 TEXT,
 		ip_address TEXT,
 		created_at INTEGER NOT NULL,
 		expires_at INTEGER NOT NULL
 	);
 	CREATE INDEX IF NOT EXISTS idx_enrollment_sessions_expires ON enrollment_sessions(expires_at);
+	CREATE INDEX IF NOT EXISTS idx_enrollment_sessions_type ON enrollment_sessions(session_type);
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err

@@ -24,7 +24,7 @@ type EnrollmentSession struct {
 // CreateEnrollmentSession stores a new enrollment session.
 func (s *Store) CreateEnrollmentSession(session *EnrollmentSession) error {
 	_, err := s.db.Exec(
-		`INSERT INTO enrollment_sessions (id, session_type, challenge_hash, public_key_b64, invite_code_id, dpu_id, ip_address, created_at, expires_at)
+		`INSERT INTO enrollment_sessions (id, session_type, challenge_bytes_hex, public_key_b64, invite_code_id, dpu_id, ip_address, created_at, expires_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		session.ID, session.SessionType, session.ChallengeBytesHex, session.PublicKeyB64,
 		session.InviteCodeID, session.DPUID, session.IPAddress, session.CreatedAt.Unix(), session.ExpiresAt.Unix(),
@@ -39,7 +39,7 @@ func (s *Store) CreateEnrollmentSession(session *EnrollmentSession) error {
 // Returns nil if the session does not exist.
 func (s *Store) GetEnrollmentSession(id string) (*EnrollmentSession, error) {
 	row := s.db.QueryRow(
-		`SELECT id, session_type, challenge_hash, public_key_b64, invite_code_id, dpu_id, ip_address, created_at, expires_at
+		`SELECT id, session_type, challenge_bytes_hex, public_key_b64, invite_code_id, dpu_id, ip_address, created_at, expires_at
 		 FROM enrollment_sessions WHERE id = ?`,
 		id,
 	)
