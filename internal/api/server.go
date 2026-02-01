@@ -293,6 +293,10 @@ func (s *Server) handleAddDPU(w http.ResponseWriter, r *http.Request) {
 			s.store.UpdateStatus(id, "unhealthy")
 		} else {
 			s.store.UpdateStatus(id, "healthy")
+			// Fetch and store serial number for enrollment lookup
+			if info, err := client.GetSystemInfo(ctx); err == nil && info.SerialNumber != "" {
+				s.store.SetDPUSerialNumber(id, info.SerialNumber)
+			}
 		}
 	}
 
