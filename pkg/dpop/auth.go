@@ -122,7 +122,7 @@ func NewAuthMiddleware(
 			"/ready":  true,
 		},
 		bypassPrefixes: []string{
-			"/enroll/",
+			"/api/v1/enroll/",
 			"/api/v1/admin/bootstrap",
 		},
 	}
@@ -281,11 +281,6 @@ func (m *AuthMiddleware) shouldBypass(normalizedPath string) bool {
 		if strings.HasPrefix(normalizedPath, prefix) {
 			return true
 		}
-	}
-
-	// Special case: /enroll/init and /enroll/complete
-	if normalizedPath == "/enroll/init" || normalizedPath == "/enroll/complete" {
-		return true
 	}
 
 	return false

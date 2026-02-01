@@ -56,8 +56,8 @@ func TestRunEnrollment_Success(t *testing.T) {
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/enroll/dpu/init":
-			t.Log("Mock server: received /enroll/dpu/init request")
+		case "/api/v1/enroll/dpu/init":
+			t.Log("Mock server: received /api/v1/enroll/dpu/init request")
 			if r.Method != "POST" {
 				t.Errorf("expected POST, got %s", r.Method)
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -78,8 +78,8 @@ func TestRunEnrollment_Success(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
 
-		case "/enroll/complete":
-			t.Log("Mock server: received /enroll/complete request")
+		case "/api/v1/enroll/complete":
+			t.Log("Mock server: received /api/v1/enroll/complete request")
 			if r.Method != "POST" {
 				t.Errorf("expected POST, got %s", r.Method)
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -193,7 +193,7 @@ func TestRunEnrollment_UnknownSerial(t *testing.T) {
 
 	// Create mock server that returns 404
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/enroll/dpu/init" {
+		if r.URL.Path == "/api/v1/enroll/dpu/init" {
 			t.Log("Mock server: returning 404 for unknown serial")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
@@ -237,7 +237,7 @@ func TestRunEnrollment_AlreadyEnrolled(t *testing.T) {
 
 	// Create mock server that returns 409
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/enroll/dpu/init" {
+		if r.URL.Path == "/api/v1/enroll/dpu/init" {
 			t.Log("Mock server: returning 409 for already-enrolled DPU")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
@@ -276,7 +276,7 @@ func TestRunEnrollment_ExpiredRegistration(t *testing.T) {
 
 	// Create mock server that returns 401 with expired_code
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/enroll/dpu/init" {
+		if r.URL.Path == "/api/v1/enroll/dpu/init" {
 			t.Log("Mock server: returning 401 expired_code")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -360,7 +360,7 @@ func TestRunEnrollment_AttestationRequired(t *testing.T) {
 
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/enroll/dpu/init" {
+		if r.URL.Path == "/api/v1/enroll/dpu/init" {
 			challenge := make([]byte, 32)
 			rand.Read(challenge)
 			resp := EnrollInitResponse{

@@ -195,9 +195,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 }
 
 // doEnrollment performs the two-phase enrollment flow:
-// 1. POST /enroll/init with invite code to get challenge
+// 1. POST /api/v1/enroll/init with invite code to get challenge
 // 2. Generate keypair, sign challenge
-// 3. POST /enroll/complete with public key and signed challenge
+// 3. POST /api/v1/enroll/complete with public key and signed challenge
 // 4. Save identity using dpop.CompleteEnrollment
 func doEnrollment(inviteCode, serverURL string) (string, error) {
 	// Phase 1: Initialize enrollment
@@ -207,7 +207,7 @@ func doEnrollment(inviteCode, serverURL string) (string, error) {
 	initBody, _ := json.Marshal(initReq)
 
 	resp, err := http.Post(
-		serverURL+"/enroll/init",
+		serverURL+"/api/v1/enroll/init",
 		"application/json",
 		strings.NewReader(string(initBody)),
 	)
@@ -254,7 +254,7 @@ func doEnrollment(inviteCode, serverURL string) (string, error) {
 	completeBody, _ := json.Marshal(completeReq)
 
 	resp2, err := http.Post(
-		serverURL+"/enroll/complete",
+		serverURL+"/api/v1/enroll/complete",
 		"application/json",
 		strings.NewReader(string(completeBody)),
 	)

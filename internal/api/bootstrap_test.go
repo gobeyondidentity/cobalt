@@ -197,7 +197,7 @@ func TestAdminBootstrap_InvalidPublicKey(t *testing.T) {
 
 // TestEnrollComplete_Success tests the full bootstrap and complete flow.
 func TestEnrollComplete_Success(t *testing.T) {
-	t.Log("Testing full bootstrap flow: POST /api/v1/admin/bootstrap -> POST /enroll/complete")
+	t.Log("Testing full bootstrap flow: POST /api/v1/admin/bootstrap -> POST /api/v1/enroll/complete")
 
 	server, mux := setupTestServer(t)
 	server.store.InitBootstrapWindow()
@@ -237,7 +237,7 @@ func TestEnrollComplete_Success(t *testing.T) {
 		SignedChallenge: signatureB64,
 	}
 	completeBodyBytes, _ := json.Marshal(completeBody)
-	req = httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(completeBodyBytes))
+	req = httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(completeBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -283,7 +283,7 @@ func TestEnrollComplete_Success(t *testing.T) {
 
 // TestEnrollComplete_InvalidSession tests enrollment with non-existent session.
 func TestEnrollComplete_InvalidSession(t *testing.T) {
-	t.Log("Testing POST /enroll/complete with invalid enrollment_id returns 400")
+	t.Log("Testing POST /api/v1/enroll/complete with invalid enrollment_id returns 400")
 
 	_, mux := setupTestServer(t)
 
@@ -296,14 +296,14 @@ func TestEnrollComplete_InvalidSession(t *testing.T) {
 	signature := ed25519.Sign(privKey, fakeChallenge)
 	signatureB64 := base64.StdEncoding.EncodeToString(signature)
 
-	t.Log("Calling POST /enroll/complete with non-existent enrollment_id")
+	t.Log("Calling POST /api/v1/enroll/complete with non-existent enrollment_id")
 	body := EnrollCompleteRequest{
 		EnrollmentID:    "enroll_nonexistent",
 		PublicKey:       pubKeyB64,
 		SignedChallenge: signatureB64,
 	}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -322,7 +322,7 @@ func TestEnrollComplete_InvalidSession(t *testing.T) {
 
 // TestEnrollComplete_ExpiredChallenge tests enrollment after challenge expires.
 func TestEnrollComplete_ExpiredChallenge(t *testing.T) {
-	t.Log("Testing POST /enroll/complete with expired challenge returns 401")
+	t.Log("Testing POST /api/v1/enroll/complete with expired challenge returns 401")
 
 	server, mux := setupTestServer(t)
 	server.store.InitBootstrapWindow()
@@ -352,7 +352,7 @@ func TestEnrollComplete_ExpiredChallenge(t *testing.T) {
 	}
 
 	// Try to complete enrollment
-	t.Log("Calling POST /enroll/complete with expired session")
+	t.Log("Calling POST /api/v1/enroll/complete with expired session")
 	challengeBytes, _ := base64.StdEncoding.DecodeString(bootstrapResp.Challenge)
 	signature := ed25519.Sign(privKey, challengeBytes)
 	signatureB64 := base64.StdEncoding.EncodeToString(signature)
@@ -363,7 +363,7 @@ func TestEnrollComplete_ExpiredChallenge(t *testing.T) {
 		SignedChallenge: signatureB64,
 	}
 	completeBodyBytes, _ := json.Marshal(completeBody)
-	req = httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(completeBodyBytes))
+	req = httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(completeBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -382,7 +382,7 @@ func TestEnrollComplete_ExpiredChallenge(t *testing.T) {
 
 // TestEnrollComplete_InvalidSignature tests enrollment with wrong key signing.
 func TestEnrollComplete_InvalidSignature(t *testing.T) {
-	t.Log("Testing POST /enroll/complete with invalid signature returns 401")
+	t.Log("Testing POST /api/v1/enroll/complete with invalid signature returns 401")
 
 	server, mux := setupTestServer(t)
 	server.store.InitBootstrapWindow()
@@ -412,14 +412,14 @@ func TestEnrollComplete_InvalidSignature(t *testing.T) {
 	wrongSignatureB64 := base64.StdEncoding.EncodeToString(wrongSignature)
 
 	// Try to complete enrollment
-	t.Log("Calling POST /enroll/complete with wrong signature")
+	t.Log("Calling POST /api/v1/enroll/complete with wrong signature")
 	completeBody := EnrollCompleteRequest{
 		EnrollmentID:    bootstrapResp.EnrollmentID,
 		PublicKey:       pubKeyB64,
 		SignedChallenge: wrongSignatureB64,
 	}
 	completeBodyBytes, _ := json.Marshal(completeBody)
-	req = httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(completeBodyBytes))
+	req = httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(completeBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -467,7 +467,7 @@ func TestEnrollComplete_SessionDeletedOnSuccess(t *testing.T) {
 		SignedChallenge: signatureB64,
 	}
 	completeBodyBytes, _ := json.Marshal(completeBody)
-	req = httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(completeBodyBytes))
+	req = httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(completeBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -523,7 +523,7 @@ func TestAdminBootstrap_ConcurrentProtection(t *testing.T) {
 		SignedChallenge: signatureB641,
 	}
 	completeBodyBytes1, _ := json.Marshal(completeBody1)
-	completeReq1 := httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(completeBodyBytes1))
+	completeReq1 := httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(completeBodyBytes1))
 	completeReq1.Header.Set("Content-Type", "application/json")
 	completeW1 := httptest.NewRecorder()
 	mux.ServeHTTP(completeW1, completeReq1)

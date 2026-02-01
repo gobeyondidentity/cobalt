@@ -27,18 +27,18 @@ type EnrollConfig struct {
 	Timeout         time.Duration
 }
 
-// EnrollInitRequest is the request body for POST /enroll/dpu/init.
+// EnrollInitRequest is the request body for POST /api/v1/enroll/dpu/init.
 type EnrollInitRequest struct {
 	Serial string `json:"serial"`
 }
 
-// EnrollInitResponse is the response from POST /enroll/dpu/init.
+// EnrollInitResponse is the response from POST /api/v1/enroll/dpu/init.
 type EnrollInitResponse struct {
 	Challenge    string `json:"challenge"`
 	EnrollmentID string `json:"enrollment_id"`
 }
 
-// EnrollCompleteRequest is the request body for POST /enroll/complete.
+// EnrollCompleteRequest is the request body for POST /api/v1/enroll/complete.
 type EnrollCompleteRequest struct {
 	EnrollmentID    string `json:"enrollment_id"`
 	PublicKey       string `json:"public_key"`
@@ -46,7 +46,7 @@ type EnrollCompleteRequest struct {
 	SPDMAttestation string `json:"spdm_attestation,omitempty"`
 }
 
-// EnrollCompleteResponse is the response from POST /enroll/complete.
+// EnrollCompleteResponse is the response from POST /api/v1/enroll/complete.
 type EnrollCompleteResponse struct {
 	ID          string `json:"id"`
 	Fingerprint string `json:"fingerprint"`
@@ -161,14 +161,14 @@ func RunEnrollment(ctx context.Context, cfg EnrollConfig) (string, string, error
 	return completeResp.ID, completeResp.Fingerprint, nil
 }
 
-// initiateEnrollment calls POST /enroll/dpu/init.
+// initiateEnrollment calls POST /api/v1/enroll/dpu/init.
 func initiateEnrollment(ctx context.Context, client *http.Client, baseURL, serial string) (*EnrollInitResponse, error) {
 	reqBody, err := json.Marshal(EnrollInitRequest{Serial: serial})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := baseURL + "/enroll/dpu/init"
+	url := baseURL + "/api/v1/enroll/dpu/init"
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -198,14 +198,14 @@ func initiateEnrollment(ctx context.Context, client *http.Client, baseURL, seria
 	return &result, nil
 }
 
-// completeEnrollment calls POST /enroll/complete.
+// completeEnrollment calls POST /api/v1/enroll/complete.
 func completeEnrollment(ctx context.Context, client *http.Client, baseURL string, reqData EnrollCompleteRequest) (*EnrollCompleteResponse, error) {
 	reqBody, err := json.Marshal(reqData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := baseURL + "/enroll/complete"
+	url := baseURL + "/api/v1/enroll/complete"
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

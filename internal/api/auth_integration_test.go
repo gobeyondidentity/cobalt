@@ -330,8 +330,9 @@ func TestEnrollmentEndpointsAccessibleWithoutAuth(t *testing.T) {
 		method string
 		path   string
 	}{
-		{"POST", "/enroll/complete"},
-		{"POST", "/enroll/dpu/init"},
+		{"POST", "/api/v1/enroll/complete"},
+		{"POST", "/api/v1/enroll/dpu/init"},
+		{"POST", "/api/v1/enroll/init"},
 	}
 
 	for _, ep := range endpoints {

@@ -19,7 +19,7 @@ import (
 
 // TestDPUEnrollInit_Success tests that DPU enrollment init returns a challenge.
 func TestDPUEnrollInit_Success(t *testing.T) {
-	t.Log("Testing POST /enroll/dpu/init with registered DPU serial returns challenge")
+	t.Log("Testing POST /api/v1/enroll/dpu/init with registered DPU serial returns challenge")
 
 	server, mux := setupTestServer(t)
 
@@ -44,10 +44,10 @@ func TestDPUEnrollInit_Success(t *testing.T) {
 	}
 
 	// Make init request with serial number
-	t.Log("Calling POST /enroll/dpu/init with serial number")
+	t.Log("Calling POST /api/v1/enroll/dpu/init with serial number")
 	body := map[string]string{"serial": "MLX-BF3-SN12345"}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/enroll/dpu/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/api/v1/enroll/dpu/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -104,14 +104,14 @@ func TestDPUEnrollInit_Success(t *testing.T) {
 
 // TestDPUEnrollInit_UnknownSerial tests that unknown serial returns 404.
 func TestDPUEnrollInit_UnknownSerial(t *testing.T) {
-	t.Log("Testing POST /enroll/dpu/init with unknown serial returns 404")
+	t.Log("Testing POST /api/v1/enroll/dpu/init with unknown serial returns 404")
 
 	_, mux := setupTestServer(t)
 
-	t.Log("Calling POST /enroll/dpu/init with non-existent serial")
+	t.Log("Calling POST /api/v1/enroll/dpu/init with non-existent serial")
 	body := map[string]string{"serial": "UNKNOWN-SERIAL-123"}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/enroll/dpu/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/api/v1/enroll/dpu/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -130,7 +130,7 @@ func TestDPUEnrollInit_UnknownSerial(t *testing.T) {
 
 // TestDPUEnrollInit_AlreadyEnrolled tests that already-enrolled DPU returns 409.
 func TestDPUEnrollInit_AlreadyEnrolled(t *testing.T) {
-	t.Log("Testing POST /enroll/dpu/init with already-enrolled DPU returns 409")
+	t.Log("Testing POST /api/v1/enroll/dpu/init with already-enrolled DPU returns 409")
 
 	server, mux := setupTestServer(t)
 
@@ -150,10 +150,10 @@ func TestDPUEnrollInit_AlreadyEnrolled(t *testing.T) {
 		t.Fatalf("failed to set DPU status: %v", err)
 	}
 
-	t.Log("Calling POST /enroll/dpu/init with already-enrolled DPU")
+	t.Log("Calling POST /api/v1/enroll/dpu/init with already-enrolled DPU")
 	body := map[string]string{"serial": "MLX-BF3-ENROLLED"}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/enroll/dpu/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/api/v1/enroll/dpu/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -172,7 +172,7 @@ func TestDPUEnrollInit_AlreadyEnrolled(t *testing.T) {
 
 // TestDPUEnrollInit_ExpiredRegistration tests that expired registration window returns 401.
 func TestDPUEnrollInit_ExpiredRegistration(t *testing.T) {
-	t.Log("Testing POST /enroll/dpu/init with expired registration returns 401 enroll.expired_code")
+	t.Log("Testing POST /api/v1/enroll/dpu/init with expired registration returns 401 enroll.expired_code")
 
 	server, mux := setupTestServer(t)
 
@@ -193,10 +193,10 @@ func TestDPUEnrollInit_ExpiredRegistration(t *testing.T) {
 		t.Fatalf("failed to set enrollment expiration: %v", err)
 	}
 
-	t.Log("Calling POST /enroll/dpu/init with expired registration")
+	t.Log("Calling POST /api/v1/enroll/dpu/init with expired registration")
 	body := map[string]string{"serial": "MLX-BF3-EXPIRED"}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/enroll/dpu/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/api/v1/enroll/dpu/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -215,14 +215,14 @@ func TestDPUEnrollInit_ExpiredRegistration(t *testing.T) {
 
 // TestDPUEnrollInit_EmptySerial tests that empty serial returns 400.
 func TestDPUEnrollInit_EmptySerial(t *testing.T) {
-	t.Log("Testing POST /enroll/dpu/init with empty serial returns 400")
+	t.Log("Testing POST /api/v1/enroll/dpu/init with empty serial returns 400")
 
 	_, mux := setupTestServer(t)
 
-	t.Log("Calling POST /enroll/dpu/init with empty serial")
+	t.Log("Calling POST /api/v1/enroll/dpu/init with empty serial")
 	body := map[string]string{"serial": ""}
 	bodyBytes, _ := json.Marshal(body)
-	req := httptest.NewRequest("POST", "/enroll/dpu/init", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/api/v1/enroll/dpu/init", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -234,7 +234,7 @@ func TestDPUEnrollInit_EmptySerial(t *testing.T) {
 
 // TestDPUEnrollComplete_Success tests the full DPU enrollment flow.
 func TestDPUEnrollComplete_Success(t *testing.T) {
-	t.Log("Testing full DPU enrollment flow: POST /enroll/dpu/init -> POST /enroll/complete")
+	t.Log("Testing full DPU enrollment flow: POST /api/v1/enroll/dpu/init -> POST /api/v1/enroll/complete")
 
 	server, mux := setupTestServer(t)
 
@@ -258,7 +258,7 @@ func TestDPUEnrollComplete_Success(t *testing.T) {
 	t.Log("Step 1: Making DPU enrollment init request")
 	initBody := map[string]string{"serial": "MLX-BF3-ENROLL-TEST"}
 	initBodyBytes, _ := json.Marshal(initBody)
-	req := httptest.NewRequest("POST", "/enroll/dpu/init", bytes.NewReader(initBodyBytes))
+	req := httptest.NewRequest("POST", "/api/v1/enroll/dpu/init", bytes.NewReader(initBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -287,7 +287,7 @@ func TestDPUEnrollComplete_Success(t *testing.T) {
 		SignedChallenge: signatureB64,
 	}
 	completeBodyBytes, _ := json.Marshal(completeBody)
-	req = httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(completeBodyBytes))
+	req = httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(completeBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -348,7 +348,7 @@ func TestDPUEnrollComplete_Success(t *testing.T) {
 
 // TestDPUEnrollComplete_DuplicateKey tests that duplicate fingerprint returns 409.
 func TestDPUEnrollComplete_DuplicateKey(t *testing.T) {
-	t.Log("Testing POST /enroll/complete with duplicate key fingerprint returns 409")
+	t.Log("Testing POST /api/v1/enroll/complete with duplicate key fingerprint returns 409")
 
 	server, mux := setupTestServer(t)
 
@@ -378,7 +378,7 @@ func TestDPUEnrollComplete_DuplicateKey(t *testing.T) {
 	t.Log("Enrolling first DPU")
 	initBody := map[string]string{"serial": "SERIAL-dpu1"}
 	initBodyBytes, _ := json.Marshal(initBody)
-	req := httptest.NewRequest("POST", "/enroll/dpu/init", bytes.NewReader(initBodyBytes))
+	req := httptest.NewRequest("POST", "/api/v1/enroll/dpu/init", bytes.NewReader(initBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -396,7 +396,7 @@ func TestDPUEnrollComplete_DuplicateKey(t *testing.T) {
 		SignedChallenge: signatureB64,
 	}
 	completeBodyBytes, _ := json.Marshal(completeBody)
-	req = httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(completeBodyBytes))
+	req = httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(completeBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -409,7 +409,7 @@ func TestDPUEnrollComplete_DuplicateKey(t *testing.T) {
 	t.Log("Attempting to enroll second DPU with same key")
 	initBody = map[string]string{"serial": "SERIAL-dpu2"}
 	initBodyBytes, _ = json.Marshal(initBody)
-	req = httptest.NewRequest("POST", "/enroll/dpu/init", bytes.NewReader(initBodyBytes))
+	req = httptest.NewRequest("POST", "/api/v1/enroll/dpu/init", bytes.NewReader(initBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -426,7 +426,7 @@ func TestDPUEnrollComplete_DuplicateKey(t *testing.T) {
 		SignedChallenge: signatureB64,
 	}
 	completeBodyBytes, _ = json.Marshal(completeBody)
-	req = httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(completeBodyBytes))
+	req = httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(completeBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -445,7 +445,7 @@ func TestDPUEnrollComplete_DuplicateKey(t *testing.T) {
 
 // TestDPUEnrollComplete_MissingDPUID tests DPU enrollment with missing session DPUID.
 func TestDPUEnrollComplete_MissingDPUID(t *testing.T) {
-	t.Log("Testing POST /enroll/complete with DPU session missing DPUID returns error")
+	t.Log("Testing POST /api/v1/enroll/complete with DPU session missing DPUID returns error")
 
 	server, mux := setupTestServer(t)
 
@@ -482,7 +482,7 @@ func TestDPUEnrollComplete_MissingDPUID(t *testing.T) {
 		SignedChallenge: signatureB64,
 	}
 	completeBodyBytes, _ := json.Marshal(completeBody)
-	req := httptest.NewRequest("POST", "/enroll/complete", bytes.NewReader(completeBodyBytes))
+	req := httptest.NewRequest("POST", "/api/v1/enroll/complete", bytes.NewReader(completeBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
