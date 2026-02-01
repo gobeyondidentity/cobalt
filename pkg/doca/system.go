@@ -25,12 +25,31 @@ type SystemInfo struct {
 	KernelVersion   string
 }
 
+// SystemCollector defines the interface for system info collection.
+// This allows injecting mock implementations for testing.
+type SystemCollector interface {
+	Collect(ctx context.Context) (*SystemInfo, error)
+}
+
 // Collector gathers system information from various sources.
 type Collector struct{}
 
 // NewCollector creates a new system info collector.
 func NewCollector() *Collector {
 	return &Collector{}
+}
+
+// NoOpCollector is a no-op system collector for testing.
+type NoOpCollector struct{}
+
+// NewNoOpCollector creates a no-op system collector for testing.
+func NewNoOpCollector() *NoOpCollector {
+	return &NoOpCollector{}
+}
+
+// Collect returns empty system info without executing any commands.
+func (c *NoOpCollector) Collect(ctx context.Context) (*SystemInfo, error) {
+	return &SystemInfo{Hostname: "test-host"}, nil
 }
 
 // Collect gathers all system information.

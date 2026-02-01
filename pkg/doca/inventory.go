@@ -46,8 +46,27 @@ type BootInfo struct {
 	BootDevice string
 }
 
+// InvCollector defines the interface for inventory collection.
+// This allows injecting mock implementations for testing.
+type InvCollector interface {
+	Collect(ctx context.Context) (*Inventory, error)
+}
+
 // InventoryCollector gathers DPU inventory information.
 type InventoryCollector struct{}
+
+// NoOpInventoryCollector is a no-op inventory collector for testing.
+type NoOpInventoryCollector struct{}
+
+// NewNoOpInventoryCollector creates a no-op inventory collector for testing.
+func NewNoOpInventoryCollector() *NoOpInventoryCollector {
+	return &NoOpInventoryCollector{}
+}
+
+// Collect returns empty inventory without executing any commands.
+func (c *NoOpInventoryCollector) Collect(ctx context.Context) (*Inventory, error) {
+	return &Inventory{OperationMode: "test"}, nil
+}
 
 // NewInventoryCollector creates a new inventory collector.
 func NewInventoryCollector() *InventoryCollector {

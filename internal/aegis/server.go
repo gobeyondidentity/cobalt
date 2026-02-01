@@ -31,8 +31,8 @@ type Server struct {
 	agentv1.UnimplementedDPUAgentServiceServer
 
 	config     *Config
-	sysCollect *doca.Collector
-	invCollect *doca.InventoryCollector
+	sysCollect doca.SystemCollector
+	invCollect doca.InvCollector
 	ovsClient  ovs.OVSClient
 	redfishCli *attestation.RedfishClient
 	localAPI   *localapi.Server
@@ -76,6 +76,16 @@ func (s *Server) SetLocalAPI(api *localapi.Server) {
 // SetOVSClient sets a custom OVS client. Use ovs.NewNoOpClient() for testing.
 func (s *Server) SetOVSClient(client ovs.OVSClient) {
 	s.ovsClient = client
+}
+
+// SetSystemCollector sets a custom system collector. Use doca.NewNoOpCollector() for testing.
+func (s *Server) SetSystemCollector(collector doca.SystemCollector) {
+	s.sysCollect = collector
+}
+
+// SetInventoryCollector sets a custom inventory collector. Use doca.NewNoOpInventoryCollector() for testing.
+func (s *Server) SetInventoryCollector(collector doca.InvCollector) {
+	s.invCollect = collector
 }
 
 // SetHostListener sets the transport listener for host communication.

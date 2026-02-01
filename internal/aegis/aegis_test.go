@@ -9,17 +9,21 @@ import (
 	"time"
 
 	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
+	"github.com/gobeyondidentity/secure-infra/pkg/doca"
 	"github.com/gobeyondidentity/secure-infra/pkg/ovs"
 )
 
-// newTestServer creates a server configured for testing (no sudo, no real OVS).
+// newTestServer creates a server configured for testing (no sudo, no real hardware).
 func newTestServer(t *testing.T, cfg *Config) *Server {
 	t.Helper()
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatalf("NewServer() error: %v", err)
 	}
+	// Replace all components that use sudo with no-op implementations
 	server.SetOVSClient(ovs.NewNoOpClient())
+	server.SetSystemCollector(doca.NewNoOpCollector())
+	server.SetInventoryCollector(doca.NewNoOpInventoryCollector())
 	return server
 }
 
