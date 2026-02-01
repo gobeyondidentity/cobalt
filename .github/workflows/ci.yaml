@@ -22,9 +22,11 @@ jobs:
           - os: linux
             runner: [self-hosted, linux, x64, fast]
             race: -race
+            cache: false  # Self-hosted has persistent local cache
           - os: windows
             runner: windows-latest
             race: ""
+            cache: true
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -34,7 +36,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          cache: ${{ matrix.cache }}
 
       - name: Run tests
         run: go test -v ${{ matrix.race }} ./...
@@ -52,7 +54,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false  # Self-hosted has persistent local cache
 
       - name: Run integration tests
         run: go test -tags=integration -v -timeout 5m ./... -run Integration
@@ -69,7 +71,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false  # Self-hosted has persistent local cache
 
       - name: Run hardware tests
         run: go test -tags=hardware -v -timeout 10m ./... -run 'TestDOCA.*'
