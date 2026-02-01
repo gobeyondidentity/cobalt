@@ -18,13 +18,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
         include:
-          - os: ubuntu-latest
+          - os: linux
+            runner: [self-hosted, linux, x64, fast]
             race: -race
-          - os: windows-latest
+          - os: windows
+            runner: windows-latest
             race: ""
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,3 +42,37 @@ jobs:
       - name: Run vet
         run: go vet ./...
 
+  test-integration:
+    runs-on: [self-hosted, linux, x64, fast]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration tests
+        run: go test -tags=integration -v -timeout 5m ./... -run Integration
+        env:
+          WORKBENCH_IP: ""  # Empty = use local multipass VMs
+
+  test-hardware:
+    runs-on: [self-hosted, dpu-arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run hardware tests
+        run: go test -tags=hardware -v -timeout 10m ./... -run 'TestDOCA.*'
+        env:
+          BF3_IP: "192.168.1.204"
+          BF3_USER: "ubuntu"
