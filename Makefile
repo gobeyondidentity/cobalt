@@ -94,15 +94,45 @@ test:
 	@echo "Running tests..."
 	@go test ./...
 
+# =============================================================================
+# New Test Suite Structure
+# Organized by environment: dpu, workbench, integration, e2e, benchmark
+# =============================================================================
+
+# Run DPU tests (must run ON the BlueField DPU)
+# Requires: DOCA_PCI_ADDR, DOCA_REP_PCI_ADDR environment variables
+test-dpu:
+	@echo "Running DPU tests (requires BlueField hardware)..."
+	ssh ubuntu@192.168.100.2 "cd ~/secure-infra && go test -tags=dpu -v ./test/dpu/..."
+
+# Run workbench tests (runs on Linux workbench with TMFIFO access)
+test-workbench:
+	@echo "Running workbench component tests..."
+	go test -tags=workbench -v ./test/workbench/...
+
 # Run integration tests (requires VMs running)
 # Use WORKBENCH_IP=192.168.1.235 to run on workbench instead of local
 test-integration:
 	@echo "Running integration tests..."
-	go test -tags=integration -v -timeout 5m ./... -run Integration
+	go test -tags=integration -v -timeout 10m ./test/integration/...
 
-# Run integration tests on workbench
+# Run E2E hardware tests (full hardware validation)
+test-e2e:
+	@echo "Running E2E hardware tests..."
+	go test -tags=hardware -v -timeout 15m ./test/e2e/...
+
+# Run all hardware tests in sequence
+test-hardware: test-dpu test-workbench test-integration test-e2e
+	@echo "All hardware tests completed"
+
+# Run benchmarks
+benchmark:
+	@echo "Running benchmarks..."
+	go test -tags=benchmark -bench=. -benchmem ./test/benchmark/...
+
+# Legacy test targets (aliases for backward compatibility)
 test-integration-remote:
-	WORKBENCH_IP=192.168.1.235 go test -tags=integration -v -timeout 5m ./... -run Integration
+	WORKBENCH_IP=192.168.1.235 go test -tags=integration -v -timeout 5m ./test/integration/...
 
 # Remove bin directory contents
 clean:
@@ -1003,11 +1033,20 @@ help:
 	@echo "  make bluectl    Build bluectl CLI"
 	@echo "  make server     Build server"
 	@echo "  make km         Build keymaker CLI"
-	@echo "  make sentry Build sentry"
+	@echo "  make sentry     Build sentry"
 	@echo "  make dpuemu     Build DPU emulator"
-	@echo "  make test       Run all tests"
+	@echo "  make test       Run all unit tests"
 	@echo "  make clean      Remove bin/ contents"
 	@echo "  make release    Build release binaries for all platforms"
+	@echo ""
+	@echo "Test Suite (organized by environment):"
+	@echo ""
+	@echo "  make test-dpu         Run DPU tests (ON BlueField)"
+	@echo "  make test-workbench   Run workbench component tests"
+	@echo "  make test-integration Run VM-based integration tests"
+	@echo "  make test-e2e         Run E2E hardware tests"
+	@echo "  make test-hardware    Run all hardware tests"
+	@echo "  make benchmark        Run performance benchmarks"
 	@echo ""
 	@echo "Quickstart Demo Targets:"
 	@echo ""
