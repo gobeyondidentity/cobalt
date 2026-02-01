@@ -3,21 +3,28 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-    paths:
-      - "cmd/**"
-      - "pkg/**"
-      - "internal/**"
-      - "dpuemu/**"
-      - "proto/**"
 
 jobs:
-  claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+  check-paths:
+    runs-on: ubuntu-latest
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'cmd/**'
+              - 'pkg/**'
+              - 'internal/**'
+              - 'dpuemu/**'
+              - 'proto/**'
 
+  claude-review:
+    needs: check-paths
+    if: needs.check-paths.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -54,4 +61,3 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
-
