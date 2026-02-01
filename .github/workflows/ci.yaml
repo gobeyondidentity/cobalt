@@ -14,7 +14,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  # Unit tests - cross-platform, no special hardware
+  unit:
     strategy:
       fail-fast: false
       matrix:
@@ -23,10 +24,12 @@ jobs:
             runner: [self-hosted, linux, x64, fast]
             race: -race
             cache: false  # Self-hosted has persistent local cache
+            use_make: true
           - os: windows
             runner: windows-latest
             race: ""
             cache: true
+            use_make: false  # No make on Windows
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -38,13 +41,19 @@ jobs:
           go-version-file: go.mod
           cache: ${{ matrix.cache }}
 
-      - name: Run tests
-        run: go test -v ${{ matrix.race }} ./...
+      - name: Run tests (Linux)
+        if: matrix.use_make
+        run: make test GOFLAGS="-race"
+
+      - name: Run tests (Windows)
+        if: ${{ !matrix.use_make }}
+        run: go test -v ./...
 
       - name: Run vet
         run: go vet ./...
 
-  test-integration:
+  # Integration tests - multipass VMs on workbench
+  integration:
     runs-on: [self-hosted, linux, x64, fast]
     steps:
       - name: Checkout
@@ -54,16 +63,31 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: false  # Self-hosted has persistent local cache
+          cache: false
 
       - name: Run integration tests
         run: |
           export PATH="/snap/bin:$PATH"
-          go test -tags=integration -v -timeout 5m ./... -run Integration
-        env:
-          WORKBENCH_IP: ""  # Empty = use local multipass VMs
+          make test-integration
 
-  test-hardware:
+  # Workbench tests - TMFIFO access to DPU
+  workbench:
+    runs-on: [self-hosted, linux, x64, fast]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run workbench tests
+        run: make test-workbench
+
+  # DPU tests - runs ON the BlueField-3
+  dpu:
     runs-on: [self-hosted, dpu-arm64]
     steps:
       - name: Checkout
@@ -73,15 +97,32 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: false  # Self-hosted has persistent local cache
+          cache: false
 
-      - name: Build test binaries
-        run: |
-          mkdir -p bin
-          go build -o bin/nexus ./cmd/nexus
-          go build -o bin/aegis ./cmd/aegis
-          go build -o bin/sentry ./cmd/sentry
-          go build -o bin/bluectl ./cmd/bluectl
+      - name: Run DPU tests
+        run: make test-dpu
 
-      - name: Run hardware tests
-        run: go test -tags=hardware -v -timeout 10m ./... -run 'TestDOCA.*'
+      - name: Run E2E hardware tests
+        run: make test-e2e
+
+  # Benchmarks - performance regression tracking
+  benchmark:
+    runs-on: [self-hosted, linux, x64, fast]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run benchmarks
+        run: make benchmark | tee benchmark-results.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark-results.txt

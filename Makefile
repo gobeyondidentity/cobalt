@@ -100,10 +100,10 @@ test:
 # =============================================================================
 
 # Run DPU tests (must run ON the BlueField DPU)
-# Requires: DOCA_PCI_ADDR, DOCA_REP_PCI_ADDR environment variables
+# SSH to the DPU first, then run: make test-dpu
 test-dpu:
 	@echo "Running DPU tests (requires BlueField hardware)..."
-	ssh ubuntu@192.168.100.2 "cd ~/secure-infra && go test -tags=dpu -v ./test/dpu/..."
+	go test -tags=dpu -v ./test/dpu/...
 
 # Run workbench tests (runs on Linux workbench with TMFIFO access)
 test-workbench:
