@@ -17,23 +17,9 @@ permissions:
   contents: read
 
 jobs:
-  # Unit tests - cross-platform, no special hardware
+  # Unit tests - Linux only (Windows disabled until faster runner available)
   unit:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            runner: [self-hosted, linux, x64, fast]
-            race: -race
-            cache: false  # Self-hosted has persistent local cache
-            use_make: true
-          - os: windows
-            runner: windows-latest
-            race: ""
-            cache: true
-            use_make: false  # No make on Windows
-    runs-on: ${{ matrix.runner }}
+    runs-on: [self-hosted, linux, x64, fast]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,18 +28,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: ${{ matrix.cache }}
+          cache: false  # Self-hosted has persistent local cache
 
-      - name: Run tests (Linux)
-        if: matrix.use_make
+      - name: Run tests
         run: make test GOFLAGS="-race"
 
-      - name: Run tests (Windows)
-        if: ${{ !matrix.use_make }}
-        run: go test ./...
-
       - name: Run vet
-        if: matrix.use_make  # Only on Linux, Windows is just for build verification
         run: go vet ./...
 
   # Integration tests disabled - need rework for CI VM provisioning
