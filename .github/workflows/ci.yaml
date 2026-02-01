@@ -57,7 +57,9 @@ jobs:
           cache: false  # Self-hosted has persistent local cache
 
       - name: Run integration tests
-        run: go test -tags=integration -v -timeout 5m ./... -run Integration
+        run: |
+          export PATH="/snap/bin:$PATH"
+          go test -tags=integration -v -timeout 5m ./... -run Integration
         env:
           WORKBENCH_IP: ""  # Empty = use local multipass VMs
 
