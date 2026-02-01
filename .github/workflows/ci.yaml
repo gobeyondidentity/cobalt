@@ -56,23 +56,8 @@ jobs:
         if: matrix.use_make  # Only on Linux, Windows is just for build verification
         run: go vet ./...
 
-  # Integration tests - multipass VMs on workbench
-  integration:
-    runs-on: [self-hosted, linux, x64, fast]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Run integration tests
-        run: |
-          export PATH="/snap/bin:$PATH"
-          make test-integration
+  # Integration tests disabled - need rework for CI VM provisioning
+  # TODO: Add VM setup/teardown or use containers
 
   # Workbench tests - TMFIFO access to DPU
   workbench:
