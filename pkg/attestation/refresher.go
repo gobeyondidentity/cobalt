@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
-	"github.com/nmelo/secure-infra/pkg/grpcclient"
-	"github.com/nmelo/secure-infra/pkg/store"
+	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
+	"github.com/gobeyondidentity/secure-infra/pkg/grpcclient"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // RefreshResult contains the outcome of an attestation refresh.

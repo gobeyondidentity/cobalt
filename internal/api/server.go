@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/nmelo/secure-infra/internal/version"
-	"github.com/nmelo/secure-infra/pkg/attestation"
-	"github.com/nmelo/secure-infra/pkg/grpcclient"
-	"github.com/nmelo/secure-infra/pkg/hostclient"
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/pkg/attestation"
+	"github.com/gobeyondidentity/secure-infra/pkg/grpcclient"
+	"github.com/gobeyondidentity/secure-infra/pkg/hostclient"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // UUIDShortLength is the number of characters used when truncating UUIDs for IDs.

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/nmelo/secure-infra/pkg/transport"
+	"github.com/gobeyondidentity/secure-infra/pkg/transport"
 )
 
 // BenchmarkTransportMessageMarshal measures client-side message serialization.

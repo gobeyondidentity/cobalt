@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/nmelo/secure-infra/internal/version"
-	"github.com/nmelo/secure-infra/internal/versioncheck"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/internal/versioncheck"
 	"github.com/spf13/cobra"
 )
 

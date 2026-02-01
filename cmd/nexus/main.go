@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nmelo/secure-infra/internal/api"
-	"github.com/nmelo/secure-infra/internal/version"
-	"github.com/nmelo/secure-infra/pkg/dpop"
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/internal/api"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 var (

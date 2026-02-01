@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/nmelo/secure-infra/pkg/clierror"
-	"github.com/nmelo/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 )
 
 // AuthorizationCheckRequest is sent to the server to check authorization.

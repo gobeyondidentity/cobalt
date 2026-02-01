@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nmelo/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
 )
 
 func TestVersionCommand_BasicOutput(t *testing.T) {

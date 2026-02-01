@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/internal/version"
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // setupTestServer creates a test server with a temporary database.

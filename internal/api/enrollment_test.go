@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/enrollment"
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // TestEnrollInit_ValidCode tests that a valid invite code returns a challenge.

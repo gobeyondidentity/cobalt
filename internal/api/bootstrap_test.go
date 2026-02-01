@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/enrollment"
+	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
 )
 
 // TestAdminBootstrap_Success tests that a fresh server accepts bootstrap enrollment.

@@ -10,13 +10,13 @@ import (
 	"log"
 	"time"
 
-	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
-	"github.com/nmelo/secure-infra/internal/aegis/localapi"
-	"github.com/nmelo/secure-infra/internal/version"
-	"github.com/nmelo/secure-infra/pkg/attestation"
-	"github.com/nmelo/secure-infra/pkg/doca"
-	"github.com/nmelo/secure-infra/pkg/ovs"
-	"github.com/nmelo/secure-infra/pkg/transport"
+	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
+	"github.com/gobeyondidentity/secure-infra/internal/aegis/localapi"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/pkg/attestation"
+	"github.com/gobeyondidentity/secure-infra/pkg/doca"
+	"github.com/gobeyondidentity/secure-infra/pkg/ovs"
+	"github.com/gobeyondidentity/secure-infra/pkg/transport"
 )
 
 var (

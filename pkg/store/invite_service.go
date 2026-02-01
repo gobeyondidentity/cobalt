@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/enrollment"
+	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
 	"github.com/google/uuid"
 )
 

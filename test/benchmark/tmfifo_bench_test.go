@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/internal/aegis/tmfifo"
+	"github.com/gobeyondidentity/secure-infra/internal/aegis/tmfifo"
 )
 
 // BenchmarkTMFIFOGenerateNonce and BenchmarkTMFIFONonceRecording disabled

@@ -1715,7 +1715,7 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\x0eGetAttestation\x12\x1f.agent.v1.GetAttestationRequest\x1a .agent.v1.GetAttestationResponse\x12h\n" +
 	"\x15GetSignedMeasurements\x12&.agent.v1.GetSignedMeasurementsRequest\x1a'.agent.v1.GetSignedMeasurementsResponse\x12J\n" +
 	"\vHealthCheck\x12\x1c.agent.v1.HealthCheckRequest\x1a\x1d.agent.v1.HealthCheckResponse\x12e\n" +
-	"\x14DistributeCredential\x12%.agent.v1.DistributeCredentialRequest\x1a&.agent.v1.DistributeCredentialResponseB7Z5github.com/nmelo/secure-infra/gen/go/agent/v1;agentv1b\x06proto3"
+	"\x14DistributeCredential\x12%.agent.v1.DistributeCredentialRequest\x1a&.agent.v1.DistributeCredentialResponseB7Z5github.com/gobeyondidentity/secure-infra/gen/go/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_agent_v1_agent_proto_rawDescOnce sync.Once

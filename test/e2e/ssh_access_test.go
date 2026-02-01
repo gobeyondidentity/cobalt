@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/nmelo/secure-infra/pkg/sshca"
+	"github.com/gobeyondidentity/secure-infra/pkg/sshca"
 )
 
 // generateUserKeypair creates an ed25519 keypair for SSH authentication.

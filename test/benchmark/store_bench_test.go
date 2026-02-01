@@ -5,7 +5,7 @@ package benchmark
 import (
 	"testing"
 
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // BenchmarkKeyMakerLookupByKid benchmarks kid-based keymaker lookup.

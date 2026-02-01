@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nmelo/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 	"github.com/spf13/cobra"
 )
 

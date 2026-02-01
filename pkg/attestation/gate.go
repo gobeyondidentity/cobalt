@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // DefaultFreshnessWindow is the default maximum age for attestations.

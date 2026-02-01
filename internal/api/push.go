@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/attestation"
-	"github.com/nmelo/secure-infra/pkg/grpcclient"
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/attestation"
+	"github.com/gobeyondidentity/secure-infra/pkg/grpcclient"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // ----- Push Types -----

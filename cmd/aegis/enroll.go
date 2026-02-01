@@ -14,8 +14,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/dpop"
-	"github.com/nmelo/secure-infra/pkg/enrollment"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
 )
 
 // EnrollConfig holds the configuration for DPU enrollment.

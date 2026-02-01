@@ -21,10 +21,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nmelo/secure-infra/internal/sentry"
-	"github.com/nmelo/secure-infra/internal/version"
-	"github.com/nmelo/secure-infra/pkg/posture"
-	"github.com/nmelo/secure-infra/pkg/transport"
+	"github.com/gobeyondidentity/secure-infra/internal/sentry"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/pkg/posture"
+	"github.com/gobeyondidentity/secure-infra/pkg/transport"
 	"golang.org/x/crypto/ssh"
 )
 

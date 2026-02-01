@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nmelo/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 )
 
 func TestInitCmd_HappyPath(t *testing.T) {

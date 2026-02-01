@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // setupPushTestStore creates a test store with the necessary fixtures for push tests.

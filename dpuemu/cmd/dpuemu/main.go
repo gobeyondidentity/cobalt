@@ -8,9 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nmelo/secure-infra/dpuemu/internal/fixture"
-	"github.com/nmelo/secure-infra/dpuemu/internal/portutil"
-	"github.com/nmelo/secure-infra/dpuemu/internal/server"
+	"github.com/gobeyondidentity/secure-infra/dpuemu/internal/fixture"
+	"github.com/gobeyondidentity/secure-infra/dpuemu/internal/portutil"
+	"github.com/gobeyondidentity/secure-infra/dpuemu/internal/server"
 	"github.com/spf13/cobra"
 )
 

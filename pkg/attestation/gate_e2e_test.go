@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/audit"
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/audit"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // TestAttestationGating_FreshAttestationAllows verifies that a fresh verified

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
+	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

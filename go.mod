@@ -1,4 +1,4 @@
-module github.com/nmelo/secure-infra
+module github.com/gobeyondidentity/secure-infra
 
 go 1.25.5
 
@@ -11,6 +11,7 @@ require (
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/crypto v0.45.0
 	golang.org/x/mod v0.29.0
+	golang.org/x/sys v0.38.0
 	golang.org/x/term v0.37.0
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
@@ -31,7 +32,6 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
 	modernc.org/libc v1.66.10 // indirect

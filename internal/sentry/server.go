@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	hostv1 "github.com/nmelo/secure-infra/gen/go/host/v1"
-	"github.com/nmelo/secure-infra/internal/version"
-	"github.com/nmelo/secure-infra/pkg/host"
-	"github.com/nmelo/secure-infra/pkg/sshscan"
+	hostv1 "github.com/gobeyondidentity/secure-infra/gen/go/host/v1"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/pkg/host"
+	"github.com/gobeyondidentity/secure-infra/pkg/sshscan"
 )
 
 // Default paths for SSH key scanning.

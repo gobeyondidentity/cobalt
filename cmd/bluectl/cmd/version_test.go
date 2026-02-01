@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/internal/version"
-	"github.com/nmelo/secure-infra/internal/versioncheck"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/internal/versioncheck"
 )
 
 func TestVersionCommand_BasicOutput(t *testing.T) {

@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/netutil"
+	"github.com/gobeyondidentity/secure-infra/pkg/netutil"
 )
 
 // RedfishClient provides access to BMC Redfish API for attestation

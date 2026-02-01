@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nmelo/secure-infra/pkg/clierror"
+	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
 )
 
 // mockHTTPClient implements HTTPClient for testing.

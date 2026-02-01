@@ -9,8 +9,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/clierror"
-	"github.com/nmelo/secure-infra/pkg/grpcclient"
+	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
+	"github.com/gobeyondidentity/secure-infra/pkg/grpcclient"
 	"github.com/spf13/cobra"
 )
 

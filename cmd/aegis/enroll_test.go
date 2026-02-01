@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/enrollment"
+	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
 )
 
 // TestRunEnrollment_Success tests the full enrollment flow with a mock server.

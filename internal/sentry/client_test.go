@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nmelo/secure-infra/pkg/transport"
+	"github.com/gobeyondidentity/secure-infra/pkg/transport"
 )
 
 func TestClient_ReportPosture_handlesCredentialPushBeforeAck(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nmelo/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 )
 
 // TestDPoPHeaderPresent verifies that the DPoP HTTP client adds a DPoP header to requests.

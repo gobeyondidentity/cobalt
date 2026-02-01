@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 func setupTestStore(t *testing.T) (*store.Store, func()) {

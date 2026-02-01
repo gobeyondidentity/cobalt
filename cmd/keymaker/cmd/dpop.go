@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/nmelo/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 )
 
 // dpopClient is the DPoP-enabled HTTP client for keymaker.

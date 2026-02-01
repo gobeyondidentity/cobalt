@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 	"github.com/google/uuid"
 )
 

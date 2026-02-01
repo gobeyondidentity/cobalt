@@ -8,7 +8,7 @@ import (
 	"os"
 	"text/template"
 
-	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
+	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
 )
 
 // Fixture holds all the data needed to emulate a DPU.

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 )
 
 // NexusClient provides HTTP client access to the Nexus API.

@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/nmelo/secure-infra/cmd/bluectl/cmd"
+	"github.com/gobeyondidentity/secure-infra/cmd/bluectl/cmd"
 )
 
 func main() {

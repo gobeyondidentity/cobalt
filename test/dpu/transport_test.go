@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/transport"
+	"github.com/gobeyondidentity/secure-infra/pkg/transport"
 )
 
 // Environment variables for hardware test configuration

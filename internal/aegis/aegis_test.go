@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
+	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
 )
 
 // TestConfig_Validate tests the Config.Validate method with table-driven tests.

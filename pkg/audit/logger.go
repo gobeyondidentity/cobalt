@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // AuditEntry represents a single audit log record.

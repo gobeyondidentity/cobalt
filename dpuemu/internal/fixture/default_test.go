@@ -3,7 +3,7 @@ package fixture
 import (
 	"testing"
 
-	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
+	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
 )
 
 func TestDefaultFixture(t *testing.T) {

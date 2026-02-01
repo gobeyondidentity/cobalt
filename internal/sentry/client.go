@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/transport"
+	"github.com/gobeyondidentity/secure-infra/pkg/transport"
 )
 
 // Client handles communication with the DPU Agent using the Transport interface.

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/nmelo/secure-infra/pkg/enrollment"
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // Constants for bootstrap enrollment.

@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/nmelo/secure-infra/pkg/clierror"
+	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

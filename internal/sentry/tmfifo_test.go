@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nmelo/secure-infra/internal/aegis/tmfifo"
+	"github.com/gobeyondidentity/secure-infra/internal/aegis/tmfifo"
 )
 
 func TestDetectTmfifo_notAvailable(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
 // ----- Host Agent Types (Phase 5) -----

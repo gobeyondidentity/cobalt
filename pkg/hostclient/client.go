@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	hostv1 "github.com/nmelo/secure-infra/gen/go/host/v1"
+	hostv1 "github.com/gobeyondidentity/secure-infra/gen/go/host/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

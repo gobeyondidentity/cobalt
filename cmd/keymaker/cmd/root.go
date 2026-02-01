@@ -7,9 +7,9 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/nmelo/secure-infra/internal/version"
-	"github.com/nmelo/secure-infra/pkg/clierror"
-	"github.com/nmelo/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

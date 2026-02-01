@@ -19,7 +19,7 @@ DPUEMU := $(BIN_DIR)/dpuemu
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 # ldflags for embedding version
-LDFLAGS := -X github.com/nmelo/secure-infra/internal/version.Version=$(VERSION)
+LDFLAGS := -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)
 
 .PHONY: all aegis bluectl nexus km sentry dpuemu test clean
 

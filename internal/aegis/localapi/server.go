@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nmelo/secure-infra/pkg/dpop"
-	"github.com/nmelo/secure-infra/pkg/store"
-	"github.com/nmelo/secure-infra/pkg/transport"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/secure-infra/pkg/transport"
 )
 
 // Config holds configuration for the local API server.

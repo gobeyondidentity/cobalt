@@ -8,9 +8,9 @@ import (
 	"net"
 	"net/http"
 
-	agentv1 "github.com/nmelo/secure-infra/gen/go/agent/v1"
-	"github.com/nmelo/secure-infra/dpuemu/internal/fixture"
-	"github.com/nmelo/secure-infra/dpuemu/internal/localapi"
+	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
+	"github.com/gobeyondidentity/secure-infra/dpuemu/internal/fixture"
+	"github.com/gobeyondidentity/secure-infra/dpuemu/internal/localapi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
