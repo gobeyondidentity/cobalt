@@ -21,7 +21,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 # ldflags for embedding version
 LDFLAGS := -X github.com/nmelo/secure-infra/internal/version.Version=$(VERSION)
 
-.PHONY: all aegis bluectl nexus km sentry dpuemu test clean release help
+.PHONY: all aegis bluectl nexus km sentry dpuemu test clean
 
 # Default target: build all binaries
 all: $(BIN_DIR)
@@ -139,35 +139,3 @@ clean:
 	@echo "Cleaning bin/..."
 	@rm -rf $(BIN_DIR)/*
 	@echo "Done."
-
-# Build release binaries for multiple platforms
-release: $(BIN_DIR)
-	@echo "Building release binaries..."
-	@echo ""
-	@echo "darwin/arm64:"
-	@GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/aegis-darwin-arm64 ./cmd/aegis
-	@echo "  $(BIN_DIR)/aegis-darwin-arm64"
-	@GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/bluectl-darwin-arm64 ./cmd/bluectl
-	@echo "  $(BIN_DIR)/bluectl-darwin-arm64"
-	@GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/km-darwin-arm64 ./cmd/keymaker
-	@echo "  $(BIN_DIR)/km-darwin-arm64"
-	@echo ""
-	@echo "linux/amd64:"
-	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/aegis-linux-amd64 ./cmd/aegis
-	@echo "  $(BIN_DIR)/aegis-linux-amd64"
-	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/bluectl-linux-amd64 ./cmd/bluectl
-	@echo "  $(BIN_DIR)/bluectl-linux-amd64"
-	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/km-linux-amd64 ./cmd/keymaker
-	@echo "  $(BIN_DIR)/km-linux-amd64"
-	@GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/sentry-linux-amd64 ./cmd/sentry
-	@echo "  $(BIN_DIR)/sentry-linux-amd64"
-	@echo ""
-	@echo "linux/arm64 (BlueField DPU):"
-	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/aegis-linux-arm64 ./cmd/aegis
-	@echo "  $(BIN_DIR)/aegis-linux-arm64"
-	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/bluectl-linux-arm64 ./cmd/bluectl
-	@echo "  $(BIN_DIR)/bluectl-linux-arm64"
-	@GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/km-linux-arm64 ./cmd/keymaker
-	@echo "  $(BIN_DIR)/km-linux-arm64"
-	@echo ""
-	@echo "Release build complete."
