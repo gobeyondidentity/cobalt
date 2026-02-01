@@ -24,8 +24,8 @@ type Config struct {
 	// ListenAddr is the address to listen on (e.g., "localhost:9443" or "unix:///var/run/dpu-agent.sock")
 	ListenAddr string
 
-	// ControlPlaneURL is the Control Plane API endpoint
-	ControlPlaneURL string
+	// ServerURL is the Nexus server URL for proxied requests
+	ServerURL string
 
 	// DPUName is this DPU's registered name
 	DPUName string
@@ -112,8 +112,8 @@ func NewServer(cfg *Config) (*Server, error) {
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = "localhost:9443"
 	}
-	if cfg.ControlPlaneURL == "" {
-		return nil, fmt.Errorf("control plane URL is required")
+	if cfg.ServerURL == "" {
+		return nil, fmt.Errorf("server URL is required")
 	}
 	if cfg.DPUName == "" {
 		return nil, fmt.Errorf("DPU name is required")
@@ -121,7 +121,7 @@ func NewServer(cfg *Config) (*Server, error) {
 
 	// Build control plane client
 	cpClient := &ControlPlaneClient{
-		baseURL: strings.TrimSuffix(cfg.ControlPlaneURL, "/"),
+		baseURL: strings.TrimSuffix(cfg.ServerURL, "/"),
 	}
 
 	// Prefer DPoP client if available, otherwise fall back to plain HTTP client

@@ -21,7 +21,7 @@ import (
 // EnrollConfig holds the configuration for DPU enrollment.
 type EnrollConfig struct {
 	Serial          string
-	ControlPlaneURL string
+	ServerURL       string
 	SkipAttestation bool
 	BMCAddr         string // BMC address for SPDM attestation (optional)
 	Timeout         time.Duration
@@ -65,8 +65,8 @@ func RunEnrollment(ctx context.Context, cfg EnrollConfig) (string, string, error
 	if cfg.Serial == "" {
 		return "", "", fmt.Errorf("serial number is required")
 	}
-	if cfg.ControlPlaneURL == "" {
-		return "", "", fmt.Errorf("control plane URL is required")
+	if cfg.ServerURL == "" {
+		return "", "", fmt.Errorf("server URL is required")
 	}
 
 	// Check if already enrolled
@@ -76,7 +76,7 @@ func RunEnrollment(ctx context.Context, cfg EnrollConfig) (string, string, error
 	idCfg := dpop.IdentityConfig{
 		KeyStore:  keyStore,
 		KIDStore:  kidStore,
-		ServerURL: cfg.ControlPlaneURL,
+		ServerURL: cfg.ServerURL,
 	}
 	if dpop.IsEnrolled(idCfg) {
 		kid, err := kidStore.Load()
@@ -102,7 +102,7 @@ func RunEnrollment(ctx context.Context, cfg EnrollConfig) (string, string, error
 
 	// Step 2: Initiate enrollment with serial number
 	fmt.Printf("Initiating enrollment for DPU serial: %s\n", cfg.Serial)
-	initResp, err := initiateEnrollment(ctx, httpClient, cfg.ControlPlaneURL, cfg.Serial)
+	initResp, err := initiateEnrollment(ctx, httpClient, cfg.ServerURL, cfg.Serial)
 	if err != nil {
 		return "", "", err
 	}
@@ -138,7 +138,7 @@ func RunEnrollment(ctx context.Context, cfg EnrollConfig) (string, string, error
 
 	// Step 6: Complete enrollment
 	fmt.Println("Completing enrollment...")
-	completeResp, err := completeEnrollment(ctx, httpClient, cfg.ControlPlaneURL, EnrollCompleteRequest{
+	completeResp, err := completeEnrollment(ctx, httpClient, cfg.ServerURL, EnrollCompleteRequest{
 		EnrollmentID:    initResp.EnrollmentID,
 		PublicKey:       base64.StdEncoding.EncodeToString(pubKey),
 		SignedChallenge: base64.StdEncoding.EncodeToString(signature),
@@ -291,23 +291,23 @@ func parseEnrollmentError(statusCode int, body []byte) error {
 
 // EnrollCommand runs the enrollment subcommand.
 // This is called from main.go when --enroll flag is set.
-func EnrollCommand(serial, controlPlane string, skipAttestation bool) error {
+func EnrollCommand(serial, serverURL string, skipAttestation bool) error {
 	// Validate required flags
 	if serial == "" {
 		fmt.Fprintln(os.Stderr, "Error: --serial is required for enrollment")
-		fmt.Fprintln(os.Stderr, "Usage: aegis --enroll --serial <dpu-serial> --control-plane <url>")
+		fmt.Fprintln(os.Stderr, "Usage: aegis --enroll --serial <dpu-serial> --server <url>")
 		return fmt.Errorf("missing required flag: --serial")
 	}
-	if controlPlane == "" {
-		fmt.Fprintln(os.Stderr, "Error: --control-plane is required for enrollment")
-		fmt.Fprintln(os.Stderr, "Usage: aegis --enroll --serial <dpu-serial> --control-plane <url>")
-		return fmt.Errorf("missing required flag: --control-plane")
+	if serverURL == "" {
+		fmt.Fprintln(os.Stderr, "Error: --server is required for enrollment")
+		fmt.Fprintln(os.Stderr, "Usage: aegis --enroll --serial <dpu-serial> --server <url>")
+		return fmt.Errorf("missing required flag: --server")
 	}
 
 	ctx := context.Background()
 	_, _, err := RunEnrollment(ctx, EnrollConfig{
 		Serial:          serial,
-		ControlPlaneURL: controlPlane,
+		ServerURL:       serverURL,
 		SkipAttestation: skipAttestation,
 		Timeout:         30 * time.Second,
 	})

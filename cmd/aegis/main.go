@@ -31,15 +31,15 @@ import (
 )
 
 var (
-	listenAddr      = flag.String("listen", ":18051", "gRPC listen address")
-	bmcAddr         = flag.String("bmc-addr", "", "BMC address for Redfish API (optional)")
-	bmcUser         = flag.String("bmc-user", "root", "BMC username")
-	localAPIEnabled = flag.Bool("local-api", false, "Enable local HTTP API for Host Agent")
-	localListen     = flag.String("local-listen", "localhost:9443", "Local API listen address")
-	allowTmfifoNet  = flag.Bool("allow-tmfifo-net", false, "Allow connections from tmfifo_net subnet (192.168.100.0/30)")
-	controlPlane    = flag.String("control-plane", "", "Control Plane URL (required if local API enabled)")
-	dpuName         = flag.String("dpu-name", "", "DPU name for registration (required if local API enabled)")
-	keystorePath    = flag.String("keystore", "/var/lib/secureinfra/known_hosts.json", "Path to TOFU keystore for host authentication")
+	listenAddr     = flag.String("listen", ":18051", "gRPC listen address")
+	bmcAddr        = flag.String("bmc-addr", "", "BMC address for Redfish API (optional)")
+	bmcUser        = flag.String("bmc-user", "root", "BMC username")
+	localListen    = flag.String("local-listen", "localhost:9443", "Local API listen address")
+	allowTmfifoNet = flag.Bool("allow-tmfifo-net", false, "Allow connections from tmfifo_net subnet (192.168.100.0/30)")
+	server         = flag.String("server", "", "Nexus server URL (required with --dpu-name for host communication)")
+	dpuName        = flag.String("dpu-name", "", "DPU name for registration (required with --server for host communication)")
+	noComch        = flag.Bool("no-comch", false, "Disable ComCh transport listener")
+	keystorePath   = flag.String("keystore", "/var/lib/secureinfra/known_hosts.json", "Path to TOFU keystore for host authentication")
 
 	// DOCA ComCh configuration
 	docaPCIAddr    = flag.String("doca-pci-addr", "", "PCI address of DOCA device on DPU (e.g., \"03:00.0\")")
@@ -61,7 +61,7 @@ func main() {
 	// Handle enrollment mode
 	if *enrollMode {
 		log.Printf("Fabric Console Agent v%s - Enrollment Mode", version.Version)
-		if err := EnrollCommand(*serial, *controlPlane, *skipAttestation); err != nil {
+		if err := EnrollCommand(*serial, *server, *skipAttestation); err != nil {
 			log.Fatalf("Enrollment failed: %v", err)
 		}
 		return
@@ -74,9 +74,8 @@ func main() {
 	cfg.ListenAddr = *listenAddr
 	cfg.BMCAddr = *bmcAddr
 	cfg.BMCUser = *bmcUser
-	cfg.LocalAPIEnabled = *localAPIEnabled
 	cfg.LocalAPIAddr = *localListen
-	cfg.ControlPlaneURL = *controlPlane
+	cfg.ServerURL = *server
 	cfg.DPUName = *dpuName
 
 	// Load sensitive config from environment
@@ -120,40 +119,42 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	// Start local API server if enabled
+	// Auto-enable local API + ComCh when server + dpu-name configured
 	var localServer *localapi.Server
 	var hostListener transport.TransportListener
 	var transportCtx context.Context
 	var transportCancel context.CancelFunc
-	if cfg.LocalAPIEnabled {
+
+	if cfg.ServerURL != "" && cfg.DPUName != "" {
+		// Start local API
 		localServer, err = startLocalAPI(ctx, cfg, agentServer)
 		if err != nil {
 			log.Fatalf("Failed to start local API: %v", err)
 		}
-
-		// Try to start transport listener for Host Agent communication
-		hostListener = tryStartTransportListener(*docaPCIAddr, *docaRepPCIAddr, *docaServerName)
-		if hostListener != nil {
-			localServer.SetHostListener(hostListener)
-			agentServer.SetHostListener(hostListener)
-
-			// Create keystore for TOFU authentication
-			keystore, err := transport.NewKeyStore(*keystorePath)
-			if err != nil {
-				log.Fatalf("Failed to create keystore: %v", err)
-			}
-			log.Printf("transport: keystore initialized at %s", *keystorePath)
-
-			// Create auth server for transport connections
-			authServer := transport.NewAuthServer(keystore, 1) // maxConns=1 for single host
-
-			// Start message handling loop with authentication
-			transportCtx, transportCancel = context.WithCancel(ctx)
-			go runTransportLoop(transportCtx, hostListener, localServer, authServer)
-		}
-
-		// Wire up local API to agent server for credential distribution
 		agentServer.SetLocalAPI(localServer)
+
+		// Start ComCh transport (unless disabled)
+		if !*noComch {
+			hostListener = tryStartTransportListener(*docaPCIAddr, *docaRepPCIAddr, *docaServerName)
+			if hostListener != nil {
+				localServer.SetHostListener(hostListener)
+				agentServer.SetHostListener(hostListener)
+
+				// Create keystore for TOFU authentication
+				keystore, err := transport.NewKeyStore(*keystorePath)
+				if err != nil {
+					log.Fatalf("Failed to create keystore: %v", err)
+				}
+				log.Printf("transport: keystore initialized at %s", *keystorePath)
+
+				// Create auth server for transport connections
+				authServer := transport.NewAuthServer(keystore, 1) // maxConns=1 for single host
+
+				// Start message handling loop with authentication
+				transportCtx, transportCancel = context.WithCancel(ctx)
+				go runTransportLoop(transportCtx, hostListener, localServer, authServer)
+			}
+		}
 	}
 
 	go func() {
@@ -204,7 +205,7 @@ func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Se
 	log.Printf("Starting local API for Host Agent communication...")
 
 	// Initialize DPoP client for authenticated nexus API requests
-	dpopClient, err := initDPoPClient(cfg.ControlPlaneURL)
+	dpopClient, err := initDPoPClient(cfg.ServerURL)
 	if err != nil {
 		return nil, fmt.Errorf("DPoP initialization failed: %w", err)
 	}
@@ -219,7 +220,7 @@ func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Se
 
 	localCfg := &localapi.Config{
 		ListenAddr:       cfg.LocalAPIAddr,
-		ControlPlaneURL:  cfg.ControlPlaneURL,
+		ServerURL:        cfg.ServerURL,
 		DPUName:          cfg.DPUName,
 		DPUID:            cfg.DPUID,
 		DPUSerial:        cfg.DPUSerial,
@@ -244,7 +245,7 @@ func startLocalAPI(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Se
 	}
 
 	log.Printf("Local API enabled: %s", cfg.LocalAPIAddr)
-	log.Printf("Control Plane: %s", cfg.ControlPlaneURL)
+	log.Printf("Server: %s", cfg.ServerURL)
 	log.Printf("DPU Name: %s", cfg.DPUName)
 
 	return server, nil

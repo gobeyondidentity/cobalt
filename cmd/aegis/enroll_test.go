@@ -137,7 +137,7 @@ func TestRunEnrollment_Success(t *testing.T) {
 	ctx := context.Background()
 	cfg := EnrollConfig{
 		Serial:          "MLX-BF3-TEST-123",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 		SkipAttestation: true,
 		Timeout:         10 * time.Second,
 	}
@@ -210,7 +210,7 @@ func TestRunEnrollment_UnknownSerial(t *testing.T) {
 	ctx := context.Background()
 	cfg := EnrollConfig{
 		Serial:          "UNKNOWN-SERIAL",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 		SkipAttestation: true,
 		Timeout:         10 * time.Second,
 	}
@@ -254,7 +254,7 @@ func TestRunEnrollment_AlreadyEnrolled(t *testing.T) {
 	ctx := context.Background()
 	cfg := EnrollConfig{
 		Serial:          "ENROLLED-SERIAL",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 		SkipAttestation: true,
 		Timeout:         10 * time.Second,
 	}
@@ -293,7 +293,7 @@ func TestRunEnrollment_ExpiredRegistration(t *testing.T) {
 	ctx := context.Background()
 	cfg := EnrollConfig{
 		Serial:          "EXPIRED-SERIAL",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 		SkipAttestation: true,
 		Timeout:         10 * time.Second,
 	}
@@ -317,7 +317,7 @@ func TestRunEnrollment_MissingSerial(t *testing.T) {
 	ctx := context.Background()
 	cfg := EnrollConfig{
 		Serial:          "", // Missing serial
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		SkipAttestation: true,
 		Timeout:         10 * time.Second,
 	}
@@ -332,14 +332,14 @@ func TestRunEnrollment_MissingSerial(t *testing.T) {
 	}
 }
 
-// TestRunEnrollment_MissingControlPlane tests enrollment without control plane URL.
-func TestRunEnrollment_MissingControlPlane(t *testing.T) {
-	t.Log("Testing enrollment without control plane URL returns validation error")
+// TestRunEnrollment_MissingServerURL tests enrollment without server URL.
+func TestRunEnrollment_MissingServerURL(t *testing.T) {
+	t.Log("Testing enrollment without server URL returns validation error")
 
 	ctx := context.Background()
 	cfg := EnrollConfig{
 		Serial:          "TEST-SERIAL",
-		ControlPlaneURL: "", // Missing URL
+		ServerURL:       "", // Missing URL
 		SkipAttestation: true,
 		Timeout:         10 * time.Second,
 	}
@@ -347,10 +347,10 @@ func TestRunEnrollment_MissingControlPlane(t *testing.T) {
 	_, _, err := RunEnrollment(ctx, cfg)
 
 	if err == nil {
-		t.Fatal("expected error for missing control plane URL, got nil")
+		t.Fatal("expected error for missing server URL, got nil")
 	}
-	if err.Error() != "control plane URL is required" {
-		t.Errorf("expected 'control plane URL is required', got %q", err.Error())
+	if err.Error() != "server URL is required" {
+		t.Errorf("expected 'server URL is required', got %q", err.Error())
 	}
 }
 
@@ -378,7 +378,7 @@ func TestRunEnrollment_AttestationRequired(t *testing.T) {
 	ctx := context.Background()
 	cfg := EnrollConfig{
 		Serial:          "TEST-SERIAL",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 		SkipAttestation: false, // Require attestation
 		Timeout:         10 * time.Second,
 	}
@@ -523,10 +523,10 @@ func TestEnrollCommand_MissingFlags(t *testing.T) {
 		t.Errorf("expected 'missing required flag: --serial', got %v", err)
 	}
 
-	// Test missing control-plane
-	t.Log("Testing missing --control-plane flag")
+	// Test missing server
+	t.Log("Testing missing --server flag")
 	err = EnrollCommand("TEST-SERIAL", "", true)
-	if err == nil || err.Error() != "missing required flag: --control-plane" {
-		t.Errorf("expected 'missing required flag: --control-plane', got %v", err)
+	if err == nil || err.Error() != "missing required flag: --server" {
+		t.Errorf("expected 'missing required flag: --server', got %v", err)
 	}
 }

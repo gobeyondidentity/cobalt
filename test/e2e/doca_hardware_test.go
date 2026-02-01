@@ -268,8 +268,7 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 			"-doca-pci-addr %s "+
 			"-doca-rep-pci-addr %s "+
 			"-doca-server-name %s "+
-			"-local-api "+
-			"-control-plane http://%s "+
+			"-server http://%s "+
 			"-dpu-name %s "+
 			"> /tmp/aegis.log 2>&1 < /dev/null &",
 		cfg.DOCAPCIAddr,
@@ -509,8 +508,7 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 			"-doca-pci-addr %s "+
 			"-doca-rep-pci-addr %s "+
 			"-doca-server-name %s "+
-			"-local-api "+
-			"-control-plane http://%s "+
+			"-server http://%s "+
 			"-dpu-name %s "+
 			"> /tmp/aegis.log 2>&1 < /dev/null &",
 		cfg.DOCAPCIAddr,

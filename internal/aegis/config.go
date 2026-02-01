@@ -20,14 +20,11 @@ type Config struct {
 	// BMCPassword is the BMC password (from environment)
 	BMCPassword string
 
-	// LocalAPIEnabled enables the local HTTP API for Host Agent communication
-	LocalAPIEnabled bool
-
 	// LocalAPIAddr is the local API listen address (e.g., "localhost:9443" or "unix:///var/run/dpu-agent.sock")
 	LocalAPIAddr string
 
-	// ControlPlaneURL is the Control Plane API endpoint for proxied requests
-	ControlPlaneURL string
+	// ServerURL is the Nexus server URL for proxied requests
+	ServerURL string
 
 	// DPUName is this DPU's registered name (used for pairing with hosts)
 	DPUName string
@@ -62,12 +59,8 @@ func (c *Config) LoadFromEnv() error {
 	}
 
 	// Local API configuration from environment
-	// SERVER_URL takes precedence over CONTROL_PLANE_URL (deprecated)
 	if url := os.Getenv("SERVER_URL"); url != "" {
-		c.ControlPlaneURL = url
-	} else if url := os.Getenv("CONTROL_PLANE_URL"); url != "" {
-		fmt.Fprintln(os.Stderr, "WARNING: CONTROL_PLANE_URL is deprecated, use SERVER_URL instead")
-		c.ControlPlaneURL = url
+		c.ServerURL = url
 	}
 	if name := os.Getenv("DPU_NAME"); name != "" {
 		c.DPUName = name
@@ -90,16 +83,5 @@ func (c *Config) Validate() error {
 	if c.ListenAddr == "" {
 		return fmt.Errorf("listen address is required")
 	}
-
-	// Validate local API configuration if enabled
-	if c.LocalAPIEnabled {
-		if c.ControlPlaneURL == "" {
-			return fmt.Errorf("control plane URL is required when local API is enabled")
-		}
-		if c.DPUName == "" {
-			return fmt.Errorf("DPU name is required when local API is enabled")
-		}
-	}
-
 	return nil
 }

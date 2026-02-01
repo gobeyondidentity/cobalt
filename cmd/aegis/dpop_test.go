@@ -62,7 +62,7 @@ func TestDPoPHeaderPresentOnRequests(t *testing.T) {
 	// Create localapi config with DPoP client
 	localCfg := &localapi.Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 		DPUName:         "test-dpu",
 		DPoPClient:      dpopClient,
 	}
@@ -132,7 +132,7 @@ func TestDPoP401ErrorHandling(t *testing.T) {
 
 	localCfg := &localapi.Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 		DPUName:         "test-dpu",
 		DPoPClient:      dpopClient,
 	}

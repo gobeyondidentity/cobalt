@@ -429,7 +429,7 @@ func (s *Server) distributeSSHCA(ctx context.Context, caName string, publicKey [
 		return &agentv1.DistributeCredentialResponse{
 			Success: false,
 			Message: "aegis: Local API not enabled. Host Agent cannot receive credentials.\n" +
-				"  1. Start agent with --local-api-enabled\n" +
+				"  1. Start agent with --server and --dpu-name configured\n" +
 				"  2. Install host-agent on the host server\n" +
 				"  3. Register host with: host-agent --dpu-addr <dpu-local-api>",
 		}, nil

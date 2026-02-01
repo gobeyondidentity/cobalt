@@ -118,7 +118,7 @@ func TestLocalAPI_Health(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
 			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
@@ -163,7 +163,7 @@ func TestLocalAPI_Register(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		DPUID:           "dpu_12345678",
 		DPUSerial:       "SN12345",
@@ -225,7 +225,7 @@ func TestLocalAPI_Posture(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
 			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
@@ -276,7 +276,7 @@ func TestLocalAPI_Cert(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		DPUSerial:       "SN12345",
 		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
@@ -344,7 +344,7 @@ func TestLocalAPI_RejectsNonLocalRequests(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:9443", // TCP listener
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 	})
 	if err != nil {
@@ -368,7 +368,7 @@ func TestLocalAPI_AllowsTmfifoNetSubnet(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "0.0.0.0:9443",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		AllowTmfifoNet:  true, // Enable tmfifo_net subnet
 	})
@@ -405,7 +405,7 @@ func TestLocalAPI_HostnamePairing(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
 			return &AttestationInfo{Status: "valid"}, nil
@@ -446,7 +446,7 @@ func TestLocalAPI_AllowedHostnames(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:       "localhost:0",
-		ControlPlaneURL:  mock.url(),
+		ServerURL:        mock.url(),
 		DPUName:          "dpu-test",
 		AllowedHostnames: []string{"allowed-host"},
 		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
@@ -480,7 +480,7 @@ func TestLocalAPI_CredentialPush(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
 			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
@@ -529,7 +529,7 @@ func TestLocalAPI_CredentialPush_NoHostPaired(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
 			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
@@ -565,7 +565,7 @@ func TestLocalAPI_CredentialPush_ValidationErrors(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
 			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
@@ -642,7 +642,7 @@ func TestLocalAPI_CredentialQueue(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 		AttestationFetcher: func(ctx context.Context) (*AttestationInfo, error) {
 			return &AttestationInfo{Status: "valid", LastChecked: time.Now()}, nil
@@ -699,7 +699,7 @@ func TestLocalAPI_PushCredential_NoPairedHost(t *testing.T) {
 
 	server, err := NewServer(&Config{
 		ListenAddr:      "localhost:0",
-		ControlPlaneURL: mock.url(),
+		ServerURL: mock.url(),
 		DPUName:         "dpu-test",
 	})
 	if err != nil {
@@ -736,7 +736,7 @@ func TestLocalAPI_StatePersistence(t *testing.T) {
 
 		server1, err := NewServer(&Config{
 			ListenAddr:      "localhost:0",
-			ControlPlaneURL: mock.url(),
+			ServerURL: mock.url(),
 			DPUName:         "dpu-persist-test",
 			DPUID:           "dpu_12345678",
 			Store:           stateStore,
@@ -777,7 +777,7 @@ func TestLocalAPI_StatePersistence(t *testing.T) {
 
 		server2, err := NewServer(&Config{
 			ListenAddr:      "localhost:0",
-			ControlPlaneURL: mock.url(),
+			ServerURL: mock.url(),
 			DPUName:         "dpu-persist-test",
 			DPUID:           "dpu_12345678",
 			Store:           stateStore2,
@@ -832,7 +832,7 @@ func TestLocalAPI_CredentialQueuePersistence(t *testing.T) {
 
 		server1, err := NewServer(&Config{
 			ListenAddr:      "localhost:0",
-			ControlPlaneURL: mock.url(),
+			ServerURL: mock.url(),
 			DPUName:         "dpu-credqueue-test",
 			DPUID:           "dpu_87654321",
 			Store:           stateStore,
@@ -878,7 +878,7 @@ func TestLocalAPI_CredentialQueuePersistence(t *testing.T) {
 
 		server2, err := NewServer(&Config{
 			ListenAddr:      "localhost:0",
-			ControlPlaneURL: mock.url(),
+			ServerURL: mock.url(),
 			DPUName:         "dpu-credqueue-test",
 			DPUID:           "dpu_87654321",
 			Store:           stateStore2,
@@ -921,7 +921,7 @@ func TestLocalAPI_CredentialQueuePersistence(t *testing.T) {
 
 		server3, _ := NewServer(&Config{
 			ListenAddr:      "localhost:0",
-			ControlPlaneURL: mock.url(),
+			ServerURL: mock.url(),
 			DPUName:         "dpu-credqueue-test",
 			Store:           stateStore3,
 		})
@@ -957,7 +957,7 @@ func TestLocalAPI_MandatoryStoreWhenLocalAPIEnabled(t *testing.T) {
 
 		server, err := NewServer(&Config{
 			ListenAddr:      "localhost:0",
-			ControlPlaneURL: mock.url(),
+			ServerURL: mock.url(),
 			DPUName:         "dpu-no-store",
 			// Store: nil intentionally
 		})

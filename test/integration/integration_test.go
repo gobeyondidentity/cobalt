@@ -269,7 +269,7 @@ func TestTMFIFOTransportIntegration(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestCredentialDeliveryE2E(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -699,7 +699,7 @@ func TestNexusRestartPersistence(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -1022,7 +1022,7 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -1146,7 +1146,7 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	logStep(t, 8, "Restarting aegis...")
 	restartTime := time.Now()
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to restart aegis: %v", err)
 	}
@@ -1216,7 +1216,7 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 
 	logStep(t, 13, "Second restart cycle: restarting aegis...")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to restart aegis (second time): %v", err)
 	}
@@ -1248,7 +1248,7 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 
 	logStep(t, 15, "Third restart cycle: restarting aegis...")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to restart aegis (third time): %v", err)
 	}
@@ -1397,7 +1397,7 @@ func TestSentryRestartReEnrollment(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -1707,7 +1707,7 @@ func TestMultiTenantEnrollmentIsolation(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -2003,7 +2003,7 @@ func TestStateSyncConsistency(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -2233,7 +2233,7 @@ func TestDPURegistrationFlows(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -2584,7 +2584,7 @@ func TestTenantLifecycle(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -3218,7 +3218,7 @@ func TestAegisMidPushRestart(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}
@@ -3327,7 +3327,7 @@ func TestAegisMidPushRestart(t *testing.T) {
 	logStep(t, 7, "Restarting aegis...")
 	restartTime := time.Now()
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu >> /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to restart aegis: %v", err)
 	}
@@ -3843,7 +3843,7 @@ func TestOperatorOnboardingE2E(t *testing.T) {
 		cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 
 		_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-			fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
+			fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 		if err != nil {
 			t.Fatalf("Failed to start aegis: %v", err)
 		}
@@ -4205,7 +4205,7 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 
 		_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-			fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
+			fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name %s > /tmp/aegis.log 2>&1 < /dev/null &", serverIP, dpuName))
 		if err != nil {
 			t.Fatalf("Failed to start aegis: %v", err)
 		}
@@ -4634,7 +4634,7 @@ func TestHostPostureE2E(t *testing.T) {
 	// Clear aegis state for test isolation
 	cfg.multipassExec(ctx, cfg.DPUVM, "sudo", "rm", "-f", "/var/lib/aegis/aegis.db")
 	_, err = cfg.multipassExec(ctx, cfg.DPUVM, "bash", "-c",
-		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -local-api -allow-tmfifo-net -control-plane http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
+		fmt.Sprintf("sudo setsid /home/ubuntu/aegis -allow-tmfifo-net -server http://%s:18080 -dpu-name qa-dpu > /tmp/aegis.log 2>&1 < /dev/null &", serverIP))
 	if err != nil {
 		t.Fatalf("Failed to start aegis: %v", err)
 	}

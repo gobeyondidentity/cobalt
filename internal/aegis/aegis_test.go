@@ -45,39 +45,11 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: "listen address is required",
 		},
 		{
-			name: "local API enabled without control plane URL",
+			name: "config with server and dpu-name",
 			config: &Config{
-				ListenAddr:      ":18051",
-				LocalAPIEnabled: true,
-				DPUName:         "bf3-test",
-			},
-			wantErr: "control plane URL is required",
-		},
-		{
-			name: "local API enabled without DPU name",
-			config: &Config{
-				ListenAddr:      ":18051",
-				LocalAPIEnabled: true,
-				ControlPlaneURL: "https://nexus.example.com",
-			},
-			wantErr: "DPU name is required",
-		},
-		{
-			name: "local API enabled with all required fields",
-			config: &Config{
-				ListenAddr:      ":18051",
-				LocalAPIEnabled: true,
-				ControlPlaneURL: "https://nexus.example.com",
-				DPUName:         "bf3-test",
-			},
-			wantErr: "",
-		},
-		{
-			name: "local API disabled ignores missing fields",
-			config: &Config{
-				ListenAddr:      ":18051",
-				LocalAPIEnabled: false,
-				// ControlPlaneURL and DPUName not required when LocalAPI disabled
+				ListenAddr: ":18051",
+				ServerURL:  "https://nexus.example.com",
+				DPUName:    "bf3-test",
 			},
 			wantErr: "",
 		},
@@ -107,7 +79,6 @@ func TestConfig_LoadFromEnv(t *testing.T) {
 	cleanupEnv := func() {
 		os.Unsetenv("FC_BMC_PASSWORD")
 		os.Unsetenv("SERVER_URL")
-		os.Unsetenv("CONTROL_PLANE_URL")
 		os.Unsetenv("DPU_NAME")
 		os.Unsetenv("DPU_ID")
 		os.Unsetenv("DPU_SERIAL")
@@ -171,7 +142,7 @@ func TestConfig_LoadFromEnv(t *testing.T) {
 		cleanupEnv()
 		defer cleanupEnv()
 
-		os.Setenv("CONTROL_PLANE_URL", "https://nexus.example.com")
+		os.Setenv("SERVER_URL", "https://nexus.example.com")
 		os.Setenv("DPU_NAME", "bf3-prod-01")
 		os.Setenv("DPU_ID", "dpu-12345")
 		os.Setenv("DPU_SERIAL", "SN-ABC123")
@@ -184,8 +155,8 @@ func TestConfig_LoadFromEnv(t *testing.T) {
 			t.Fatalf("LoadFromEnv() unexpected error: %v", err)
 		}
 
-		if cfg.ControlPlaneURL != "https://nexus.example.com" {
-			t.Errorf("ControlPlaneURL = %q, want %q", cfg.ControlPlaneURL, "https://nexus.example.com")
+		if cfg.ServerURL != "https://nexus.example.com" {
+			t.Errorf("ServerURL = %q, want %q", cfg.ServerURL, "https://nexus.example.com")
 		}
 		if cfg.DPUName != "bf3-prod-01" {
 			t.Errorf("DPUName = %q, want %q", cfg.DPUName, "bf3-prod-01")
@@ -212,9 +183,9 @@ func TestConfig_LoadFromEnv(t *testing.T) {
 		defer cleanupEnv()
 
 		cfg := &Config{
-			ListenAddr:      ":18051",
-			ControlPlaneURL: "https://existing.example.com",
-			DPUName:         "existing-dpu",
+			ListenAddr: ":18051",
+			ServerURL:  "https://existing.example.com",
+			DPUName:    "existing-dpu",
 		}
 
 		err := cfg.LoadFromEnv()
@@ -223,62 +194,19 @@ func TestConfig_LoadFromEnv(t *testing.T) {
 		}
 
 		// When env vars are empty, existing values should remain
-		if cfg.ControlPlaneURL != "https://existing.example.com" {
-			t.Errorf("ControlPlaneURL changed unexpectedly to %q", cfg.ControlPlaneURL)
+		if cfg.ServerURL != "https://existing.example.com" {
+			t.Errorf("ServerURL changed unexpectedly to %q", cfg.ServerURL)
 		}
 		if cfg.DPUName != "existing-dpu" {
 			t.Errorf("DPUName changed unexpectedly to %q", cfg.DPUName)
 		}
 	})
 
-	t.Run("SERVER_URL takes precedence over CONTROL_PLANE_URL", func(t *testing.T) {
+	t.Run("SERVER_URL sets ServerURL", func(t *testing.T) {
 		cleanupEnv()
 		defer cleanupEnv()
 
-		t.Log("Setting both SERVER_URL and CONTROL_PLANE_URL env vars")
-		os.Setenv("SERVER_URL", "https://new.example.com")
-		os.Setenv("CONTROL_PLANE_URL", "https://legacy.example.com")
-
-		cfg := &Config{ListenAddr: ":18051"}
-
-		t.Log("Calling LoadFromEnv to populate config")
-		err := cfg.LoadFromEnv()
-		if err != nil {
-			t.Fatalf("LoadFromEnv() unexpected error: %v", err)
-		}
-
-		t.Log("Verifying SERVER_URL value was used")
-		if cfg.ControlPlaneURL != "https://new.example.com" {
-			t.Errorf("ControlPlaneURL = %q, want %q (SERVER_URL should take precedence)", cfg.ControlPlaneURL, "https://new.example.com")
-		}
-	})
-
-	t.Run("CONTROL_PLANE_URL works when SERVER_URL is not set (backward compatibility)", func(t *testing.T) {
-		cleanupEnv()
-		defer cleanupEnv()
-
-		t.Log("Setting only CONTROL_PLANE_URL env var (legacy)")
-		os.Setenv("CONTROL_PLANE_URL", "https://legacy.example.com")
-
-		cfg := &Config{ListenAddr: ":18051"}
-
-		t.Log("Calling LoadFromEnv to populate config")
-		err := cfg.LoadFromEnv()
-		if err != nil {
-			t.Fatalf("LoadFromEnv() unexpected error: %v", err)
-		}
-
-		t.Log("Verifying CONTROL_PLANE_URL value was used for backward compatibility")
-		if cfg.ControlPlaneURL != "https://legacy.example.com" {
-			t.Errorf("ControlPlaneURL = %q, want %q", cfg.ControlPlaneURL, "https://legacy.example.com")
-		}
-	})
-
-	t.Run("SERVER_URL alone sets ControlPlaneURL", func(t *testing.T) {
-		cleanupEnv()
-		defer cleanupEnv()
-
-		t.Log("Setting only SERVER_URL env var")
+		t.Log("Setting SERVER_URL env var")
 		os.Setenv("SERVER_URL", "https://server-url.example.com")
 
 		cfg := &Config{ListenAddr: ":18051"}
@@ -290,8 +218,8 @@ func TestConfig_LoadFromEnv(t *testing.T) {
 		}
 
 		t.Log("Verifying SERVER_URL value was used")
-		if cfg.ControlPlaneURL != "https://server-url.example.com" {
-			t.Errorf("ControlPlaneURL = %q, want %q", cfg.ControlPlaneURL, "https://server-url.example.com")
+		if cfg.ServerURL != "https://server-url.example.com" {
+			t.Errorf("ServerURL = %q, want %q", cfg.ServerURL, "https://server-url.example.com")
 		}
 	})
 }
@@ -309,11 +237,11 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.LocalAPIAddr != "localhost:9443" {
 		t.Errorf("LocalAPIAddr = %q, want %q", cfg.LocalAPIAddr, "localhost:9443")
 	}
-	if cfg.LocalAPIEnabled {
-		t.Error("LocalAPIEnabled should be false by default")
-	}
 	if cfg.BMCAddr != "" {
 		t.Errorf("BMCAddr should be empty by default, got %q", cfg.BMCAddr)
+	}
+	if cfg.ServerURL != "" {
+		t.Errorf("ServerURL should be empty by default, got %q", cfg.ServerURL)
 	}
 }
 
