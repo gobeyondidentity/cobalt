@@ -10,9 +10,41 @@ import (
 	"strings"
 )
 
+// OVSClient defines the interface for OVS operations.
+// This allows injecting mock/no-op implementations for testing.
+type OVSClient interface {
+	ListBridges(ctx context.Context) ([]Bridge, error)
+	GetFlows(ctx context.Context, bridge string) ([]Flow, error)
+	GetVersion(ctx context.Context) (string, error)
+}
+
 // Client provides OVS operations
 type Client struct {
 	useSudo bool
+}
+
+// NoOpClient is a no-op OVS client for testing.
+// All methods return empty results without executing any commands.
+type NoOpClient struct{}
+
+// NewNoOpClient creates a no-op OVS client for testing.
+func NewNoOpClient() *NoOpClient {
+	return &NoOpClient{}
+}
+
+// ListBridges returns an empty list.
+func (c *NoOpClient) ListBridges(ctx context.Context) ([]Bridge, error) {
+	return nil, nil
+}
+
+// GetFlows returns an empty list.
+func (c *NoOpClient) GetFlows(ctx context.Context, bridge string) ([]Flow, error) {
+	return nil, nil
+}
+
+// GetVersion returns "test" version.
+func (c *NoOpClient) GetVersion(ctx context.Context) (string, error) {
+	return "test", nil
 }
 
 // NewClient creates a new OVS client.

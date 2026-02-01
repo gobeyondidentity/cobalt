@@ -33,7 +33,7 @@ type Server struct {
 	config     *Config
 	sysCollect *doca.Collector
 	invCollect *doca.InventoryCollector
-	ovsClient  *ovs.Client
+	ovsClient  ovs.OVSClient
 	redfishCli *attestation.RedfishClient
 	localAPI   *localapi.Server
 
@@ -71,6 +71,11 @@ func NewServer(cfg *Config) (*Server, error) {
 // This must be called before credentials can be distributed via the local API.
 func (s *Server) SetLocalAPI(api *localapi.Server) {
 	s.localAPI = api
+}
+
+// SetOVSClient sets a custom OVS client. Use ovs.NewNoOpClient() for testing.
+func (s *Server) SetOVSClient(client ovs.OVSClient) {
+	s.ovsClient = client
 }
 
 // SetHostListener sets the transport listener for host communication.

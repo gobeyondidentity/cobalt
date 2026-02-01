@@ -9,7 +9,19 @@ import (
 	"time"
 
 	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
+	"github.com/gobeyondidentity/secure-infra/pkg/ovs"
 )
+
+// newTestServer creates a server configured for testing (no sudo, no real OVS).
+func newTestServer(t *testing.T, cfg *Config) *Server {
+	t.Helper()
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer() error: %v", err)
+	}
+	server.SetOVSClient(ovs.NewNoOpClient())
+	return server
+}
 
 // TestConfig_Validate tests the Config.Validate method with table-driven tests.
 func TestConfig_Validate(t *testing.T) {
@@ -375,10 +387,7 @@ func TestServer_HealthCheck(t *testing.T) {
 		ListenAddr: ":18051",
 	}
 
-	server, err := NewServer(cfg)
-	if err != nil {
-		t.Fatalf("NewServer() error: %v", err)
-	}
+	server := newTestServer(t, cfg)
 
 	ctx := context.Background()
 	resp, err := server.HealthCheck(ctx, &agentv1.HealthCheckRequest{})
@@ -479,10 +488,7 @@ func TestServer_DistributeCredential(t *testing.T) {
 			cfg := &Config{
 				ListenAddr: ":18051",
 			}
-			server, err := NewServer(cfg)
-			if err != nil {
-				t.Fatalf("NewServer() error: %v", err)
-			}
+			server := newTestServer(t, cfg)
 
 			ctx := context.Background()
 			resp, err := server.DistributeCredential(ctx, tt.req)
@@ -519,10 +525,7 @@ func TestServer_SetLocalAPI(t *testing.T) {
 	cfg := &Config{
 		ListenAddr: ":18051",
 	}
-	server, err := NewServer(cfg)
-	if err != nil {
-		t.Fatalf("NewServer() error: %v", err)
-	}
+	server := newTestServer(t, cfg)
 
 	// Initially localAPI should be nil
 	if server.localAPI != nil {
@@ -542,10 +545,7 @@ func TestServer_SetHostListener(t *testing.T) {
 	cfg := &Config{
 		ListenAddr: ":18051",
 	}
-	server, err := NewServer(cfg)
-	if err != nil {
-		t.Fatalf("NewServer() error: %v", err)
-	}
+	server := newTestServer(t, cfg)
 
 	// Initially hostListener should be nil
 	if server.hostListener != nil {
@@ -633,10 +633,7 @@ func TestServer_Uptime(t *testing.T) {
 	cfg := &Config{
 		ListenAddr: ":18051",
 	}
-	server, err := NewServer(cfg)
-	if err != nil {
-		t.Fatalf("NewServer() error: %v", err)
-	}
+	server := newTestServer(t, cfg)
 
 	// Uptime should be >= 0 immediately after creation
 	uptime := currentUnixTime() - server.startTime
