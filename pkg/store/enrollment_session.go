@@ -10,15 +10,15 @@ import (
 
 // EnrollmentSession represents a challenge-response enrollment session.
 type EnrollmentSession struct {
-	ID            string
-	SessionType   string  // bootstrap, operator, dpu
-	ChallengeHash string  // SHA256 of challenge
-	PublicKeyB64  *string // Optional, set on bootstrap init
-	InviteCodeID  *string // Optional, set for operator enrollment
-	DPUID         *string // Optional, set for DPU enrollment sessions
-	IPAddress     string
-	CreatedAt     time.Time
-	ExpiresAt     time.Time
+	ID               string
+	SessionType      string  // bootstrap, operator, dpu
+	ChallengeBytesHex string  // Hex-encoded raw challenge bytes (not a hash)
+	PublicKeyB64     *string // Optional, set on bootstrap init
+	InviteCodeID     *string // Optional, set for operator enrollment
+	DPUID            *string // Optional, set for DPU enrollment sessions
+	IPAddress        string
+	CreatedAt        time.Time
+	ExpiresAt        time.Time
 }
 
 // CreateEnrollmentSession stores a new enrollment session.
@@ -26,7 +26,7 @@ func (s *Store) CreateEnrollmentSession(session *EnrollmentSession) error {
 	_, err := s.db.Exec(
 		`INSERT INTO enrollment_sessions (id, session_type, challenge_hash, public_key_b64, invite_code_id, dpu_id, ip_address, created_at, expires_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		session.ID, session.SessionType, session.ChallengeHash, session.PublicKeyB64,
+		session.ID, session.SessionType, session.ChallengeBytesHex, session.PublicKeyB64,
 		session.InviteCodeID, session.DPUID, session.IPAddress, session.CreatedAt.Unix(), session.ExpiresAt.Unix(),
 	)
 	if err != nil {
@@ -51,7 +51,7 @@ func (s *Store) GetEnrollmentSession(id string) (*EnrollmentSession, error) {
 	var ipAddress sql.NullString
 	var createdAt, expiresAt int64
 
-	err := row.Scan(&session.ID, &session.SessionType, &session.ChallengeHash,
+	err := row.Scan(&session.ID, &session.SessionType, &session.ChallengeBytesHex,
 		&publicKeyB64, &inviteCodeID, &dpuID, &ipAddress, &createdAt, &expiresAt)
 	if err == sql.ErrNoRows {
 		return nil, nil

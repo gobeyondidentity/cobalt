@@ -250,7 +250,7 @@ func TestCreateEnrollmentSession_Success(t *testing.T) {
 	session := &EnrollmentSession{
 		ID:            "sess_bootstrap_123",
 		SessionType:   "bootstrap",
-		ChallengeHash: "sha256_challenge_hash_here",
+		ChallengeBytesHex: "sha256_challenge_hash_here",
 		IPAddress:     "192.168.1.100",
 		CreatedAt:     time.Now(),
 		ExpiresAt:     time.Now().Add(5 * time.Minute),
@@ -267,7 +267,7 @@ func TestCreateEnrollmentSession_Success(t *testing.T) {
 
 	assert.Equal(t, "sess_bootstrap_123", retrieved.ID)
 	assert.Equal(t, "bootstrap", retrieved.SessionType)
-	assert.Equal(t, "sha256_challenge_hash_here", retrieved.ChallengeHash)
+	assert.Equal(t, "sha256_challenge_hash_here", retrieved.ChallengeBytesHex)
 	assert.Equal(t, "192.168.1.100", retrieved.IPAddress)
 	assert.Nil(t, retrieved.PublicKeyB64, "public key should be nil for bootstrap init")
 }
@@ -282,7 +282,7 @@ func TestCreateEnrollmentSession_WithPublicKey(t *testing.T) {
 	session := &EnrollmentSession{
 		ID:            "sess_dpu_456",
 		SessionType:   "dpu",
-		ChallengeHash: "sha256_hash",
+		ChallengeBytesHex: "sha256_hash",
 		PublicKeyB64:  &pubKey,
 		IPAddress:     "10.0.0.50",
 		CreatedAt:     time.Now(),
@@ -319,7 +319,7 @@ func TestDeleteEnrollmentSession_Success(t *testing.T) {
 	session := &EnrollmentSession{
 		ID:            "sess_to_delete",
 		SessionType:   "admin_invite",
-		ChallengeHash: "hash",
+		ChallengeBytesHex: "hash",
 		IPAddress:     "127.0.0.1",
 		CreatedAt:     time.Now(),
 		ExpiresAt:     time.Now().Add(5 * time.Minute),
@@ -362,7 +362,7 @@ func TestCleanupExpiredSessions_Success(t *testing.T) {
 		session := &EnrollmentSession{
 			ID:            "expired_" + string(rune('a'+i)),
 			SessionType:   "bootstrap",
-			ChallengeHash: "hash",
+			ChallengeBytesHex: "hash",
 			IPAddress:     "127.0.0.1",
 			CreatedAt:     expiredTime.Add(-5 * time.Minute),
 			ExpiresAt:     expiredTime,
@@ -375,7 +375,7 @@ func TestCleanupExpiredSessions_Success(t *testing.T) {
 	validSession := &EnrollmentSession{
 		ID:            "valid_session",
 		SessionType:   "admin_invite",
-		ChallengeHash: "hash",
+		ChallengeBytesHex: "hash",
 		IPAddress:     "127.0.0.1",
 		CreatedAt:     time.Now(),
 		ExpiresAt:     time.Now().Add(5 * time.Minute),
@@ -413,7 +413,7 @@ func TestCleanupExpiredSessions_NoExpired(t *testing.T) {
 		session := &EnrollmentSession{
 			ID:            "valid_" + string(rune('a'+i)),
 			SessionType:   "bootstrap",
-			ChallengeHash: "hash",
+			ChallengeBytesHex: "hash",
 			IPAddress:     "127.0.0.1",
 			CreatedAt:     time.Now(),
 			ExpiresAt:     time.Now().Add(5 * time.Minute),
@@ -443,7 +443,7 @@ func TestEnrollmentSession_AllTypes(t *testing.T) {
 			session := &EnrollmentSession{
 				ID:            "sess_" + st,
 				SessionType:   st,
-				ChallengeHash: "hash_" + st,
+				ChallengeBytesHex: "hash_" + st,
 				IPAddress:     "127.0.0.1",
 				CreatedAt:     time.Now(),
 				ExpiresAt:     time.Now().Add(5 * time.Minute),
@@ -469,7 +469,7 @@ func TestEnrollmentSession_DuplicateID(t *testing.T) {
 	session1 := &EnrollmentSession{
 		ID:            "duplicate_id",
 		SessionType:   "bootstrap",
-		ChallengeHash: "hash1",
+		ChallengeBytesHex: "hash1",
 		IPAddress:     "127.0.0.1",
 		CreatedAt:     time.Now(),
 		ExpiresAt:     time.Now().Add(5 * time.Minute),
@@ -481,7 +481,7 @@ func TestEnrollmentSession_DuplicateID(t *testing.T) {
 	session2 := &EnrollmentSession{
 		ID:            "duplicate_id",
 		SessionType:   "admin_invite",
-		ChallengeHash: "hash2",
+		ChallengeBytesHex: "hash2",
 		IPAddress:     "10.0.0.1",
 		CreatedAt:     time.Now(),
 		ExpiresAt:     time.Now().Add(5 * time.Minute),

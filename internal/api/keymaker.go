@@ -91,7 +91,7 @@ func (s *Server) handleBindKeyMaker(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 5: Generate KeyMaker ID and name
-	keymakerID := "km_" + uuid.New().String()[:8]
+	keymakerID := "km_" + uuid.New().String()[:UUIDShortLength]
 
 	// Auto-generate name if not provided
 	deviceName := req.DeviceName
@@ -248,7 +248,7 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Create new operator with pending status
-		opID := "op_" + uuid.New().String()[:8]
+		opID := "op_" + uuid.New().String()[:UUIDShortLength]
 		if err := s.store.CreateOperator(opID, req.Email, ""); err != nil {
 			writeError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create operator: %v", err))
 			return
@@ -278,7 +278,7 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 
 	// Store invite (hashed)
 	invite := &store.InviteCode{
-		ID:            "inv_" + uuid.New().String()[:8],
+		ID:            "inv_" + uuid.New().String()[:UUIDShortLength],
 		CodeHash:      store.HashInviteCode(code),
 		OperatorEmail: req.Email,
 		TenantID:      tenant.ID,

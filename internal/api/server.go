@@ -19,6 +19,10 @@ import (
 	"github.com/nmelo/secure-infra/pkg/store"
 )
 
+// UUIDShortLength is the number of characters used when truncating UUIDs for IDs.
+// Example: "enroll_" + uuid.New().String()[:UUIDShortLength] produces "enroll_abc12345"
+const UUIDShortLength = 8
+
 // Server is the HTTP API server.
 type Server struct {
 	store *store.Store
@@ -256,7 +260,7 @@ func (s *Server) handleAddDPU(w http.ResponseWriter, r *http.Request) {
 		req.Port = 18051
 	}
 
-	id := uuid.New().String()[:8]
+	id := uuid.New().String()[:UUIDShortLength]
 
 	if err := s.store.Add(id, req.Name, req.Host, req.Port); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
@@ -952,7 +956,7 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		req.Tags = []string{}
 	}
 
-	id := uuid.New().String()[:8]
+	id := uuid.New().String()[:UUIDShortLength]
 
 	if err := s.store.AddTenant(id, req.Name, req.Description, req.Contact, req.Tags); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
@@ -1225,7 +1229,7 @@ func (s *Server) handleAddHost(w http.ResponseWriter, r *http.Request) {
 		req.Port = 50052
 	}
 
-	id := uuid.New().String()[:8]
+	id := uuid.New().String()[:UUIDShortLength]
 
 	if err := s.store.AddHost(id, req.Name, req.Address, req.Port); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {

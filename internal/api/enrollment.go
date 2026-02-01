@@ -7,12 +7,22 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/nmelo/secure-infra/pkg/enrollment"
 	"github.com/nmelo/secure-infra/pkg/store"
 )
+
+// emailRegex is a simple email validation pattern.
+// It's intentionally permissive - just checks for basic structure.
+var emailRegex = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
+// isValidEmail checks if an email address has valid basic structure.
+func isValidEmail(email string) bool {
+	return emailRegex.MatchString(email)
+}
 
 // OperatorChallengeTTL is the duration an operator enrollment challenge is valid.
 const OperatorChallengeTTL = 5 * time.Minute
@@ -60,18 +70,18 @@ func (s *Server) handleEnrollInit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create enrollment session
-	enrollmentID := "enroll_" + uuid.New().String()[:8]
+	enrollmentID := "enroll_" + uuid.New().String()[:UUIDShortLength]
 	// Store challenge as hex-encoded raw bytes for signature verification later
 	challengeHex := hex.EncodeToString(challenge)
 
 	session := &store.EnrollmentSession{
-		ID:            enrollmentID,
-		SessionType:   "operator",
-		ChallengeHash: challengeHex, // Note: stores raw challenge, not hash, for verification
-		InviteCodeID:  &inviteCode.ID,
-		IPAddress:     getClientIP(r),
-		CreatedAt:     time.Now(),
-		ExpiresAt:     time.Now().Add(OperatorChallengeTTL),
+		ID:               enrollmentID,
+		SessionType:      "operator",
+		ChallengeBytesHex: challengeHex,
+		InviteCodeID:     &inviteCode.ID,
+		IPAddress:        getClientIP(r),
+		CreatedAt:        time.Now(),
+		ExpiresAt:        time.Now().Add(OperatorChallengeTTL),
 	}
 
 	if err := s.store.CreateEnrollmentSession(session); err != nil {
@@ -125,6 +135,12 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Validate operator email from invite code
+	if !isValidEmail(inviteCode.OperatorEmail) {
+		writeError(w, r, http.StatusBadRequest, "Invalid operator email in invite code")
+		return
+	}
+
 	// Check fingerprint uniqueness in keymakers table
 	// GetKeyMakerByFingerprint returns error "keymaker not found" if not found
 	existingKM, err := s.store.GetKeyMakerByFingerprint(fingerprint)
@@ -140,13 +156,13 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 	}
 
 	// Generate keymaker ID
-	keymakerID := "km_" + uuid.New().String()[:8]
+	keymakerID := "km_" + uuid.New().String()[:UUIDShortLength]
 
 	// Get or create operator from invite code metadata
 	operator, err := s.store.GetOperatorByEmail(inviteCode.OperatorEmail)
 	if err != nil {
 		// Operator doesn't exist, create new one
-		operatorID := "op_" + uuid.New().String()[:8]
+		operatorID := "op_" + uuid.New().String()[:UUIDShortLength]
 		if err := s.store.CreateOperator(operatorID, inviteCode.OperatorEmail, ""); err != nil {
 			writeError(w, r, http.StatusInternalServerError, "Failed to create operator: "+err.Error())
 			return
@@ -163,14 +179,8 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 	}
 
 	// Add operator to tenant with role from invite
-	err = s.store.AddOperatorToTenant(operator.ID, inviteCode.TenantID, inviteCode.Role)
-	if err != nil {
-		// Ignore if already a member (duplicate membership)
-		// Only fail on actual errors
-		if err.Error() != "UNIQUE constraint failed" {
-			// Log but continue - operator might already be in tenant
-		}
-	}
+	// Ignore errors - operator might already be a member of this tenant
+	_ = s.store.AddOperatorToTenant(operator.ID, inviteCode.TenantID, inviteCode.Role)
 
 	// Create KeyMaker record
 	km := &store.KeyMaker{

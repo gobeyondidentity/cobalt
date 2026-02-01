@@ -24,7 +24,7 @@ func TestEnrollmentSessionWithDPUID(t *testing.T) {
 		session := &EnrollmentSession{
 			ID:            "sess-dpu-1",
 			SessionType:   "dpu",
-			ChallengeHash: "abc123hash",
+			ChallengeBytesHex: "abc123hash",
 			DPUID:         &dpuID,
 			IPAddress:     "192.168.1.50",
 			CreatedAt:     now,
@@ -55,7 +55,7 @@ func TestEnrollmentSessionWithDPUID(t *testing.T) {
 		session := &EnrollmentSession{
 			ID:            "sess-bootstrap-1",
 			SessionType:   "bootstrap",
-			ChallengeHash: "xyz789hash",
+			ChallengeBytesHex: "xyz789hash",
 			PublicKeyB64:  &pubKey,
 			IPAddress:     "192.168.1.51",
 			CreatedAt:     now,

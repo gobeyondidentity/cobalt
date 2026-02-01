@@ -458,7 +458,7 @@ func TestDPUEnrollComplete_MissingDPUID(t *testing.T) {
 	session := &store.EnrollmentSession{
 		ID:            "enroll_nodpuid",
 		SessionType:   "dpu",
-		ChallengeHash: challengeHex,
+		ChallengeBytesHex: challengeHex,
 		DPUID:         nil, // Missing DPUID
 		IPAddress:     "127.0.0.1",
 		CreatedAt:     time.Now(),

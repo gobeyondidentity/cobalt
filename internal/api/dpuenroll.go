@@ -75,18 +75,18 @@ func (s *Server) handleDPUEnrollInit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create enrollment session with SessionType="dpu", DPUID=dpu.ID
-	enrollmentID := "enroll_" + uuid.New().String()[:8]
+	enrollmentID := "enroll_" + uuid.New().String()[:UUIDShortLength]
 	// Store challenge as hex-encoded raw bytes for signature verification later
 	challengeHex := hex.EncodeToString(challenge)
 
 	session := &store.EnrollmentSession{
-		ID:            enrollmentID,
-		SessionType:   "dpu",
-		ChallengeHash: challengeHex, // Note: stores raw challenge, not hash, for verification
-		DPUID:         &dpu.ID,
-		IPAddress:     getClientIP(r),
-		CreatedAt:     time.Now(),
-		ExpiresAt:     time.Now().Add(DPUChallengeTTL),
+		ID:               enrollmentID,
+		SessionType:      "dpu",
+		ChallengeBytesHex: challengeHex,
+		DPUID:            &dpu.ID,
+		IPAddress:        getClientIP(r),
+		CreatedAt:        time.Now(),
+		ExpiresAt:        time.Now().Add(DPUChallengeTTL),
 	}
 
 	if err := s.store.CreateEnrollmentSession(session); err != nil {
@@ -152,7 +152,7 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Generate DPU identity ID: "dpu_" + uuid[:8]
-	dpuIdentityID := "dpu_" + uuid.New().String()[:8]
+	dpuIdentityID := "dpu_" + uuid.New().String()[:UUIDShortLength]
 
 	// Update DPU enrollment: sets public_key, fingerprint, kid, status='active', clears enrollment_expires_at
 	if err := s.store.UpdateDPUEnrollment(dpu.ID, pubKeyBytes, fingerprint, dpuIdentityID); err != nil {

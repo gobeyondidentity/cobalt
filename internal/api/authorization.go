@@ -96,7 +96,7 @@ func (s *Server) handleCreateAuthorization(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Generate authorization ID
-	authID := "auth_" + uuid.New().String()[:8]
+	authID := "auth_" + uuid.New().String()[:UUIDShortLength]
 
 	// Create authorization in store
 	// For now, use "system" as created_by since we don't have JWT auth yet

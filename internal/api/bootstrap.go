@@ -120,18 +120,18 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create enrollment session
-	enrollmentID := "enroll_" + uuid.New().String()[:8]
+	enrollmentID := "enroll_" + uuid.New().String()[:UUIDShortLength]
 	// Store challenge as hex-encoded raw bytes (not hash) for signature verification later
 	challengeHex := hex.EncodeToString(challenge)
 
 	session := &store.EnrollmentSession{
-		ID:            enrollmentID,
-		SessionType:   "bootstrap",
-		ChallengeHash: challengeHex, // Note: stores raw challenge, not hash, for verification
-		PublicKeyB64:  &req.PublicKey,
-		IPAddress:     getClientIP(r),
-		CreatedAt:     time.Now(),
-		ExpiresAt:     time.Now().Add(ChallengeTTL),
+		ID:               enrollmentID,
+		SessionType:      "bootstrap",
+		ChallengeBytesHex: challengeHex,
+		PublicKeyB64:     &req.PublicKey,
+		IPAddress:        getClientIP(r),
+		CreatedAt:        time.Now(),
+		ExpiresAt:        time.Now().Add(ChallengeTTL),
 	}
 
 	if err := s.store.CreateEnrollmentSession(session); err != nil {
@@ -207,9 +207,8 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Recover the original challenge from session for signature verification.
-	// Note: ChallengeHash stores the hex-encoded raw challenge bytes (not a hash)
-	// to enable Ed25519 signature verification.
-	challengeBytes, err := hex.DecodeString(session.ChallengeHash)
+	// ChallengeBytesHex stores the hex-encoded raw challenge bytes.
+	challengeBytes, err := hex.DecodeString(session.ChallengeBytesHex)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "Invalid stored challenge")
 		return
@@ -227,52 +226,16 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 	fingerprint := hex.EncodeToString(fingerprintHash[:])
 
 	// Handle based on session type
-	var adminID string
 	switch session.SessionType {
 	case "bootstrap":
-		// Create operator and admin key for bootstrap
-		adminID = "adm_" + uuid.New().String()[:8]
-
-		// Create operator (the admin is also an operator)
-		if err := s.store.CreateOperator(adminID, "admin@localhost", "Bootstrap Admin"); err != nil {
-			writeError(w, r, http.StatusInternalServerError, "Failed to create operator: "+err.Error())
-			return
-		}
-
-		// Activate the operator
-		if err := s.store.UpdateOperatorStatus(adminID, "active"); err != nil {
-			writeError(w, r, http.StatusInternalServerError, "Failed to activate operator: "+err.Error())
-			return
-		}
-
-		// Create admin key
-		adminKey := &store.AdminKey{
-			ID:             adminID, // Use same ID for simplicity
-			OperatorID:     adminID,
-			Name:           "Bootstrap Key",
-			PublicKey:      pubKeyBytes,
-			Kid:            adminID, // DPoP key identifier
-			KeyFingerprint: fingerprint,
-			Status:         "active",
-		}
-		if err := s.store.CreateAdminKey(adminKey); err != nil {
-			writeError(w, r, http.StatusInternalServerError, "Failed to create admin key: "+err.Error())
-			return
-		}
-
-		// Mark bootstrap complete
-		if err := s.store.CompleteBootstrap(adminID); err != nil {
-			writeError(w, r, http.StatusInternalServerError, "Failed to complete bootstrap: "+err.Error())
-			return
-		}
+		s.handleBootstrapEnrollComplete(w, r, session, pubKeyBytes, fingerprint)
+		return
 
 	case "operator":
-		// Operator enrollment via invite code
 		s.handleOperatorEnrollComplete(w, r, session, pubKeyBytes, fingerprint)
 		return
 
 	case "dpu":
-		// DPU enrollment via serial number
 		s.handleDPUEnrollComplete(w, r, session, pubKeyBytes, fingerprint)
 		return
 
@@ -280,9 +243,49 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "Unsupported session type: "+session.SessionType)
 		return
 	}
+}
+
+// handleBootstrapEnrollComplete handles the "bootstrap" session type in handleEnrollComplete.
+// This creates the first admin user during initial system setup.
+func (s *Server) handleBootstrapEnrollComplete(w http.ResponseWriter, r *http.Request, session *store.EnrollmentSession, pubKeyBytes []byte, fingerprint string) {
+	// Create operator and admin key for bootstrap
+	adminID := "adm_" + uuid.New().String()[:UUIDShortLength]
+
+	// Create operator (the admin is also an operator)
+	if err := s.store.CreateOperator(adminID, "admin@localhost", "Bootstrap Admin"); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to create operator: "+err.Error())
+		return
+	}
+
+	// Activate the operator
+	if err := s.store.UpdateOperatorStatus(adminID, "active"); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to activate operator: "+err.Error())
+		return
+	}
+
+	// Create admin key
+	adminKey := &store.AdminKey{
+		ID:             adminID, // Use same ID for simplicity
+		OperatorID:     adminID,
+		Name:           "Bootstrap Key",
+		PublicKey:      pubKeyBytes,
+		Kid:            adminID, // DPoP key identifier
+		KeyFingerprint: fingerprint,
+		Status:         "active",
+	}
+	if err := s.store.CreateAdminKey(adminKey); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to create admin key: "+err.Error())
+		return
+	}
+
+	// Mark bootstrap complete
+	if err := s.store.CompleteBootstrap(adminID); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to complete bootstrap: "+err.Error())
+		return
+	}
 
 	// Delete enrollment session
-	if err := s.store.DeleteEnrollmentSession(req.EnrollmentID); err != nil {
+	if err := s.store.DeleteEnrollmentSession(session.ID); err != nil {
 		// Log but don't fail - enrollment succeeded
 	}
 
