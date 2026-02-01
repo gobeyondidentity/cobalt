@@ -76,6 +76,7 @@ jobs:
 
   # Benchmarks - performance regression tracking
   benchmark:
+    needs: unit  # Run after unit to avoid runner contention
     runs-on: [self-hosted, linux, x64, fast]
     steps:
       - name: Checkout
