@@ -19,6 +19,10 @@ import (
 	"github.com/nmelo/secure-infra/pkg/store"
 )
 
+// UUIDShortLength is the number of characters used when truncating UUIDs for IDs.
+// Example: "enroll_" + uuid.New().String()[:UUIDShortLength] produces "enroll_abc12345"
+const UUIDShortLength = 8
+
 // Server is the HTTP API server.
 type Server struct {
 	store *store.Store
@@ -133,6 +137,16 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Host scan endpoint (triggers SSH key scan on host-agent)
 	mux.HandleFunc("POST /api/v1/hosts/{hostname}/scan", s.handleHostScan)
+
+	// Bootstrap routes
+	mux.HandleFunc("POST /api/v1/admin/bootstrap", s.handleAdminBootstrap)
+	mux.HandleFunc("POST /api/v1/enroll/complete", s.handleEnrollComplete)
+
+	// Operator enrollment routes
+	mux.HandleFunc("POST /api/v1/enroll/init", s.handleEnrollInit)
+
+	// DPU enrollment routes
+	mux.HandleFunc("POST /api/v1/enroll/dpu/init", s.handleDPUEnrollInit)
 }
 
 // ----- DPU Types -----
@@ -246,7 +260,7 @@ func (s *Server) handleAddDPU(w http.ResponseWriter, r *http.Request) {
 		req.Port = 18051
 	}
 
-	id := uuid.New().String()[:8]
+	id := uuid.New().String()[:UUIDShortLength]
 
 	if err := s.store.Add(id, req.Name, req.Host, req.Port); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
@@ -656,10 +670,71 @@ func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPIHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	response := map[string]interface{}{
 		"status":  "ok",
 		"version": version.Version,
-	})
+	}
+
+	// Add bootstrap status
+	bootstrapStatus, err := s.getBootstrapStatus()
+	if err == nil && bootstrapStatus != nil {
+		response["bootstrap_status"] = bootstrapStatus.Status
+		if bootstrapStatus.ExpiresAt != nil {
+			response["bootstrap_expires_at"] = bootstrapStatus.ExpiresAt.Format(time.RFC3339)
+		}
+		if bootstrapStatus.AdminID != "" {
+			response["bootstrap_admin_id"] = bootstrapStatus.AdminID
+		}
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// BootstrapHealthStatus represents the bootstrap status included in health checks.
+type BootstrapHealthStatus struct {
+	Status    string     // "open", "closed", "enrolled"
+	ExpiresAt *time.Time // Only when status is "open"
+	AdminID   string     // Only when status is "enrolled"
+}
+
+// getBootstrapStatus returns the current bootstrap status for health endpoint.
+func (s *Server) getBootstrapStatus() (*BootstrapHealthStatus, error) {
+	// Check if first admin exists
+	hasAdmin, err := s.store.HasFirstAdmin()
+	if err != nil {
+		return nil, err
+	}
+	if hasAdmin {
+		state, _ := s.store.GetBootstrapState()
+		adminID := ""
+		if state != nil && state.FirstAdminID != nil {
+			adminID = *state.FirstAdminID
+		}
+		return &BootstrapHealthStatus{
+			Status:  "enrolled",
+			AdminID: adminID,
+		}, nil
+	}
+
+	// Get bootstrap state
+	state, err := s.store.GetBootstrapState()
+	if err != nil {
+		return nil, err
+	}
+	if state == nil {
+		return &BootstrapHealthStatus{Status: "closed"}, nil
+	}
+
+	// Check if window expired
+	expiresAt := state.WindowOpenedAt.Add(BootstrapWindowDuration)
+	if time.Now().After(expiresAt) {
+		return &BootstrapHealthStatus{Status: "closed"}, nil
+	}
+
+	return &BootstrapHealthStatus{
+		Status:    "open",
+		ExpiresAt: &expiresAt,
+	}, nil
 }
 
 func (s *Server) handleGetMeasurements(w http.ResponseWriter, r *http.Request) {
@@ -881,7 +956,7 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		req.Tags = []string{}
 	}
 
-	id := uuid.New().String()[:8]
+	id := uuid.New().String()[:UUIDShortLength]
 
 	if err := s.store.AddTenant(id, req.Name, req.Description, req.Contact, req.Tags); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
@@ -1154,7 +1229,7 @@ func (s *Server) handleAddHost(w http.ResponseWriter, r *http.Request) {
 		req.Port = 50052
 	}
 
-	id := uuid.New().String()[:8]
+	id := uuid.New().String()[:UUIDShortLength]
 
 	if err := s.store.AddHost(id, req.Name, req.Address, req.Port); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
@@ -1524,4 +1599,11 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 func writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
 	log.Printf("ERROR: %s %s: %s", r.Method, r.URL.Path, message)
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+// writeInternalError logs the detailed error internally and returns a generic message to the client.
+// Use this for errors that might leak implementation details.
+func writeInternalError(w http.ResponseWriter, r *http.Request, err error, genericMsg string) {
+	log.Printf("ERROR: %s %s: %s: %v", r.Method, r.URL.Path, genericMsg, err)
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": genericMsg})
 }

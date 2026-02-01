@@ -96,7 +96,7 @@ func (s *Server) handleCreateAuthorization(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Generate authorization ID
-	authID := "auth_" + uuid.New().String()[:8]
+	authID := "auth_" + uuid.New().String()[:UUIDShortLength]
 
 	// Create authorization in store
 	// For now, use "system" as created_by since we don't have JWT auth yet
@@ -120,9 +120,20 @@ func (s *Server) handleCreateAuthorization(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleListAuthorizations(w http.ResponseWriter, r *http.Request) {
 	operatorID := r.URL.Query().Get("operator_id")
 	tenantID := r.URL.Query().Get("tenant_id")
+	keymakerID := r.URL.Query().Get("keymaker_id")
+
+	// If keymaker_id is provided, look up the keymaker to get its operator_id
+	if keymakerID != "" {
+		km, err := s.store.GetKeyMaker(keymakerID)
+		if err != nil {
+			writeError(w, r, http.StatusNotFound, "keymaker not found")
+			return
+		}
+		operatorID = km.OperatorID
+	}
 
 	if operatorID == "" && tenantID == "" {
-		writeError(w, r, http.StatusBadRequest, "operator_id or tenant_id query parameter is required")
+		writeError(w, r, http.StatusBadRequest, "operator_id, tenant_id, or keymaker_id query parameter is required")
 		return
 	}
 

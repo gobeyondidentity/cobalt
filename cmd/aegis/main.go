@@ -48,10 +48,24 @@ var (
 
 	// State persistence
 	dbPath = flag.String("db-path", "/var/lib/aegis/aegis.db", "Path to SQLite database for state persistence")
+
+	// Enrollment flags
+	enrollMode      = flag.Bool("enroll", false, "Run enrollment to register this DPU with the control plane")
+	serial          = flag.String("serial", "", "DPU serial number (required for --enroll)")
+	skipAttestation = flag.Bool("skip-attestation", false, "Skip SPDM attestation (development mode only)")
 )
 
 func main() {
 	flag.Parse()
+
+	// Handle enrollment mode
+	if *enrollMode {
+		log.Printf("Fabric Console Agent v%s - Enrollment Mode", version.Version)
+		if err := EnrollCommand(*serial, *controlPlane, *skipAttestation); err != nil {
+			log.Fatalf("Enrollment failed: %v", err)
+		}
+		return
+	}
 
 	log.Printf("Fabric Console Agent v%s starting...", version.Version)
 

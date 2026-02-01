@@ -201,8 +201,14 @@ func getAuthorizations() ([]Authorization, error) {
 	// Get DPoP-enabled HTTP client
 	httpClient := getDPoPHTTPClient(config.ControlPlaneURL)
 
-	reqURL := fmt.Sprintf("%s/api/v1/authorizations?operator_id=%s",
-		config.ControlPlaneURL, url.QueryEscape(config.OperatorID))
+	// Use keymaker_id (KID) instead of operator_id since that's what we have stored
+	kid := config.KID
+	if kid == "" {
+		// Fallback for legacy config
+		kid = config.KeyMakerID
+	}
+	reqURL := fmt.Sprintf("%s/api/v1/authorizations?keymaker_id=%s",
+		config.ControlPlaneURL, url.QueryEscape(kid))
 
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {

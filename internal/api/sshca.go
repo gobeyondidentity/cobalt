@@ -83,7 +83,7 @@ func (s *Server) handleCreateSSHCA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate CA ID with ca_ prefix
-	caID := "ca_" + uuid.New().String()[:8]
+	caID := "ca_" + uuid.New().String()[:UUIDShortLength]
 
 	// Store CA in database
 	// Pass nil for private key since we only store the public key on the server

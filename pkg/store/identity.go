@@ -254,9 +254,9 @@ func (s *Store) GetOperatorRole(operatorID, tenantID string) (string, error) {
 // CreateKeyMaker stores a new KeyMaker binding.
 func (s *Store) CreateKeyMaker(km *KeyMaker) error {
 	_, err := s.db.Exec(
-		`INSERT INTO keymakers (id, operator_id, name, platform, secure_element, device_fingerprint, public_key, status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		km.ID, km.OperatorID, km.Name, km.Platform, km.SecureElement, km.DeviceFingerprint, km.PublicKey, km.Status,
+		`INSERT INTO keymakers (id, operator_id, name, platform, secure_element, device_fingerprint, public_key, status, kid, key_fingerprint)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		km.ID, km.OperatorID, km.Name, km.Platform, km.SecureElement, km.DeviceFingerprint, km.PublicKey, km.Status, km.Kid, km.KeyFingerprint,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create keymaker: %w", err)
@@ -282,6 +282,17 @@ func (s *Store) GetKeyMakerByPublicKey(pubKey string) (*KeyMaker, error) {
 		pubKey,
 	)
 	return s.scanKeyMaker(row)
+}
+
+// GetKeyMakerByFingerprint retrieves a KeyMaker by its key fingerprint.
+// Used for duplicate key detection during enrollment.
+func (s *Store) GetKeyMakerByFingerprint(fingerprint string) (*KeyMaker, error) {
+	row := s.db.QueryRow(
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, kid, key_fingerprint
+		 FROM keymakers WHERE key_fingerprint = ?`,
+		fingerprint,
+	)
+	return s.scanKeyMakerWithDPoP(row)
 }
 
 // ListKeyMakersByOperator returns all KeyMakers for an operator.
@@ -433,6 +444,16 @@ func (s *Store) GetInviteCodeByHash(hash string) (*InviteCode, error) {
 	return s.scanInviteCode(row)
 }
 
+// GetInviteCodeByID retrieves an invite code by its ID.
+func (s *Store) GetInviteCodeByID(id string) (*InviteCode, error) {
+	row := s.db.QueryRow(
+		`SELECT id, code_hash, operator_email, tenant_id, role, created_by, created_at, expires_at, used_at, used_by_keymaker, status
+		 FROM invite_codes WHERE id = ?`,
+		id,
+	)
+	return s.scanInviteCode(row)
+}
+
 // ListInviteCodes returns all invite codes.
 func (s *Store) ListInviteCodes() ([]*InviteCode, error) {
 	rows, err := s.db.Query(
@@ -492,6 +513,32 @@ func (s *Store) MarkInviteCodeUsed(id, keymakerID string) error {
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
 		return fmt.Errorf("invite code not found: %s", id)
+	}
+	return nil
+}
+
+// ConsumeInviteCode atomically marks an invite code as consumed.
+// Uses UPDATE WHERE status='pending' AND expires_at > now to prevent race conditions.
+// Returns error if code not found, already consumed, or expired.
+//
+// This follows the pattern from CompleteEnrollmentSession for atomic state transitions.
+func (s *Store) ConsumeInviteCode(id, keymakerID string) error {
+	now := time.Now().Unix()
+	result, err := s.db.Exec(
+		`UPDATE invite_codes SET status = 'used', used_at = ?, used_by_keymaker = ?
+		 WHERE id = ? AND status = 'pending' AND expires_at > ?`,
+		now, keymakerID, id, now,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to consume invite code: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check affected rows: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("invite code not found, already consumed, or expired")
 	}
 	return nil
 }
@@ -705,6 +752,17 @@ func (s *Store) GetAdminKeyByKid(kid string) (*AdminKey, error) {
 	return s.scanAdminKey(row)
 }
 
+// GetAdminKeyByFingerprint retrieves an admin key by its key fingerprint.
+// Used for duplicate key detection during enrollment.
+func (s *Store) GetAdminKeyByFingerprint(fingerprint string) (*AdminKey, error) {
+	row := s.db.QueryRow(
+		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
+		 FROM admin_keys WHERE key_fingerprint = ?`,
+		fingerprint,
+	)
+	return s.scanAdminKey(row)
+}
+
 // ListAdminKeysByOperator returns all admin keys for an operator.
 func (s *Store) ListAdminKeysByOperator(operatorID string) ([]*AdminKey, error) {
 	rows, err := s.db.Query(
@@ -864,11 +922,27 @@ func (s *Store) scanKeyMakerWithDPoP(row *sql.Row) (*KeyMaker, error) {
 // Used for O(1) lookup during DPoP token validation.
 func (s *Store) GetDPUByKid(kid string) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at
 		 FROM dpus WHERE kid = ?`,
 		kid,
 	)
 	return s.scanDPUWithDPoP(row)
+}
+
+// GetDPUByFingerprint retrieves a DPU by its key fingerprint.
+// Used for duplicate key detection during DPU enrollment.
+// Returns nil, nil if not found (does not return error for not-found case).
+func (s *Store) GetDPUByFingerprint(fingerprint string) (*DPU, error) {
+	row := s.db.QueryRow(
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at
+		 FROM dpus WHERE key_fingerprint = ?`,
+		fingerprint,
+	)
+	dpu, err := s.scanDPUWithDPoP(row)
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		return nil, nil
+	}
+	return dpu, err
 }
 
 func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
@@ -880,9 +954,10 @@ func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
 	var publicKey []byte
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
+	var enrollmentExpiresAt sql.NullInt64
 
 	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen,
-		&createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint)
+		&createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("DPU not found")
 	}
@@ -908,6 +983,10 @@ func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
 	}
 	if keyFingerprint.Valid {
 		dpu.KeyFingerprint = &keyFingerprint.String
+	}
+	if enrollmentExpiresAt.Valid {
+		t := time.Unix(enrollmentExpiresAt.Int64, 0)
+		dpu.EnrollmentExpiresAt = &t
 	}
 
 	return &dpu, nil

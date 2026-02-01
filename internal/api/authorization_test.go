@@ -798,6 +798,8 @@ func TestCheckAuthorization_RevokedKeyMaker(t *testing.T) {
 		DeviceFingerprint: "fp123",
 		PublicKey:         "ssh-ed25519 AAAA...",
 		Status:            "active",
+		Kid:               keymakerID,
+		KeyFingerprint:    "revoked-km-fp-" + keymakerID,
 	}
 	if err := server.store.CreateKeyMaker(km); err != nil {
 		t.Fatalf("failed to create keymaker: %v", err)
@@ -871,6 +873,8 @@ func TestCheckAuthorization_ActiveKeyMaker(t *testing.T) {
 		DeviceFingerprint: "fp123",
 		PublicKey:         "ssh-ed25519 AAAA...",
 		Status:            "active",
+		Kid:               keymakerID,
+		KeyFingerprint:    "active-km-fp-" + keymakerID,
 	}
 	if err := server.store.CreateKeyMaker(km); err != nil {
 		t.Fatalf("failed to create keymaker: %v", err)
@@ -1068,5 +1072,91 @@ func TestListAuthorizations_IncludesNames(t *testing.T) {
 	}
 	if len(result[0].DeviceNames) != 1 || result[0].DeviceNames[0] != "all" {
 		t.Errorf("expected device_names [all], got %v", result[0].DeviceNames)
+	}
+}
+
+// TestListAuthorizations_ByKeyMakerID tests listing authorizations using keymaker_id parameter.
+// This tests the fix for km whoami which only has KID stored, not OperatorID.
+func TestListAuthorizations_ByKeyMakerID(t *testing.T) {
+	server, mux := setupTestServer(t)
+
+	// Create a tenant
+	tenantID := uuid.New().String()[:8]
+	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	// Create an operator
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	// Create a KeyMaker associated with the operator
+	keymakerID := "km_" + uuid.New().String()[:8]
+	km := &store.KeyMaker{
+		ID:                keymakerID,
+		OperatorID:        operatorID,
+		Name:              "test-keymaker",
+		Platform:          "darwin",
+		SecureElement:     "software",
+		DeviceFingerprint: "fp123",
+		PublicKey:         "ssh-ed25519 AAAA...",
+		Status:            "active",
+		Kid:               keymakerID,
+		KeyFingerprint:    "list-km-fp-" + keymakerID,
+	}
+	if err := server.store.CreateKeyMaker(km); err != nil {
+		t.Fatalf("failed to create keymaker: %v", err)
+	}
+
+	// Create authorizations for the operator
+	auth1ID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(auth1ID, operatorID, tenantID, []string{"ca-1"}, []string{"all"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization 1: %v", err)
+	}
+
+	auth2ID := "auth_" + uuid.New().String()[:8]
+	if err := server.store.CreateAuthorization(auth2ID, operatorID, tenantID, []string{"ca-2"}, []string{"device-1"}, "admin", nil); err != nil {
+		t.Fatalf("failed to create authorization 2: %v", err)
+	}
+
+	// List authorizations by keymaker_id (this is what km whoami does)
+	req := httptest.NewRequest("GET", "/api/v1/authorizations?keymaker_id="+keymakerID, nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result []AuthorizationResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Should return the same authorizations as querying by operator_id
+	if len(result) != 2 {
+		t.Errorf("expected 2 authorizations, got %d", len(result))
+	}
+
+	// Verify the authorizations belong to the correct operator
+	for _, auth := range result {
+		if auth.OperatorID != operatorID {
+			t.Errorf("expected operator_id %s, got %s", operatorID, auth.OperatorID)
+		}
+	}
+}
+
+// TestListAuthorizations_ByKeyMakerID_NotFound tests error when keymaker doesn't exist.
+func TestListAuthorizations_ByKeyMakerID_NotFound(t *testing.T) {
+	_, mux := setupTestServer(t)
+
+	req := httptest.NewRequest("GET", "/api/v1/authorizations?keymaker_id=km_nonexistent", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d: %s", w.Code, w.Body.String())
 	}
 }

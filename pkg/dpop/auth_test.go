@@ -340,7 +340,7 @@ func TestBypassEndpointReady(t *testing.T) {
 }
 
 func TestBypassEndpointEnrollInit(t *testing.T) {
-	t.Log("Testing /enroll/init without proof returns 200 (bypassed)")
+	t.Log("Testing /api/v1/enroll/init without proof returns 200 (bypassed)")
 
 	validator := &mockValidator{}
 	lookup := &mockIdentityLookup{}
@@ -354,7 +354,7 @@ func TestBypassEndpointEnrollInit(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest("POST", "/enroll/init", nil)
+	req := httptest.NewRequest("POST", "/api/v1/enroll/init", nil)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -365,11 +365,11 @@ func TestBypassEndpointEnrollInit(t *testing.T) {
 	if !handlerCalled {
 		t.Error("handler should have been called for bypass endpoint")
 	}
-	t.Log("/enroll/init correctly bypassed authentication")
+	t.Log("/api/v1/enroll/init correctly bypassed authentication")
 }
 
 func TestBypassEndpointEnrollComplete(t *testing.T) {
-	t.Log("Testing /enroll/complete without proof returns 200 (bypassed)")
+	t.Log("Testing /api/v1/enroll/complete without proof returns 200 (bypassed)")
 
 	validator := &mockValidator{}
 	lookup := &mockIdentityLookup{}
@@ -383,7 +383,7 @@ func TestBypassEndpointEnrollComplete(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest("POST", "/enroll/complete", nil)
+	req := httptest.NewRequest("POST", "/api/v1/enroll/complete", nil)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -394,7 +394,7 @@ func TestBypassEndpointEnrollComplete(t *testing.T) {
 	if !handlerCalled {
 		t.Error("handler should have been called for bypass endpoint")
 	}
-	t.Log("/enroll/complete correctly bypassed authentication")
+	t.Log("/api/v1/enroll/complete correctly bypassed authentication")
 }
 
 func TestBypassEndpointBootstrap(t *testing.T) {
@@ -424,6 +424,83 @@ func TestBypassEndpointBootstrap(t *testing.T) {
 		t.Error("handler should have been called for bypass endpoint")
 	}
 	t.Log("/api/v1/admin/bootstrap correctly bypassed authentication")
+}
+
+func TestBypassEndpointEnrollDPUInit(t *testing.T) {
+	t.Log("Testing /api/v1/enroll/dpu/init without proof returns 200 (bypassed)")
+
+	validator := &mockValidator{}
+	lookup := &mockIdentityLookup{}
+	cache := &mockJTICache{}
+
+	middleware := newTestMiddleware(validator, lookup, cache)
+
+	handlerCalled := false
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("POST", "/api/v1/enroll/dpu/init", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+	if !handlerCalled {
+		t.Error("handler should have been called for bypass endpoint")
+	}
+	t.Log("/api/v1/enroll/dpu/init correctly bypassed authentication")
+}
+
+func TestOldEnrollPathsNotBypassed(t *testing.T) {
+	t.Log("Testing old /enroll/* paths are NOT bypassed (require auth)")
+
+	validator := &mockValidator{}
+	lookup := &mockIdentityLookup{}
+	cache := &mockJTICache{}
+
+	middleware := newTestMiddleware(validator, lookup, cache)
+
+	testCases := []struct {
+		path string
+	}{
+		{"/enroll/init"},
+		{"/enroll/complete"},
+		{"/enroll/dpu/init"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.path, func(t *testing.T) {
+			handlerCalled := false
+			handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				handlerCalled = true
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest("POST", tc.path, nil)
+			// No DPoP header
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("expected status 401, got %d for path %s (old paths should require auth)", rec.Code, tc.path)
+			}
+			if handlerCalled {
+				t.Errorf("handler should NOT have been called for old path %s", tc.path)
+			}
+
+			var resp map[string]string
+			json.NewDecoder(rec.Body).Decode(&resp)
+			if resp["error"] != "dpop.missing_proof" {
+				t.Errorf("expected error dpop.missing_proof, got %s for path %s", resp["error"], tc.path)
+			}
+		})
+	}
+	t.Log("Old /enroll/* paths correctly require authentication")
 }
 
 func TestPathTraversalBlocked(t *testing.T) {

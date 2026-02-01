@@ -3,20 +3,19 @@ package cmd
 import (
 	"bufio"
 	"crypto/ed25519"
-	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/nmelo/secure-infra/internal/version"
+	"github.com/nmelo/secure-infra/pkg/dpop"
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/ssh"
 )
 
 func init() {
@@ -34,12 +33,16 @@ func init() {
 
 // KMConfig is stored in ~/.km/config.json
 type KMConfig struct {
-	KeyMakerID      string `json:"keymaker_id"`
-	OperatorID      string `json:"operator_id"`
-	OperatorEmail   string `json:"operator_email"`
-	ControlPlaneURL string `json:"control_plane_url"`
-	PrivateKeyPath  string `json:"private_key_path"`
+	KID             string `json:"kid"`               // Server-assigned key ID (e.g., "km_xxx")
+	ControlPlaneURL string `json:"control_plane_url"` // Server URL
+	// Legacy fields for backward compatibility
+	KeyMakerID    string `json:"keymaker_id,omitempty"`
+	OperatorID    string `json:"operator_id,omitempty"`
+	OperatorEmail string `json:"operator_email,omitempty"`
 }
+
+// getConfigDirFunc is a variable to allow testing with a custom directory
+var getConfigDirFunc = getConfigDir
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -51,7 +54,7 @@ generated with 'bluectl operator invite'.
 
 This command:
 1. Generates a new ed25519 keypair
-2. Binds the public key to the server using your invite code
+2. Performs two-phase enrollment with challenge-response
 3. Stores configuration in ~/.km/config.json
 
 Use --force to re-initialize if already configured (removes existing keypair).
@@ -106,7 +109,6 @@ func getServerURL(cmd *cobra.Command) (string, bool) {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	name, _ := cmd.Flags().GetString("name")
 	serverURL, deprecated := getServerURL(cmd)
 	if deprecated {
 		// Check which deprecated option was used
@@ -133,7 +135,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 		// Remove existing config for re-initialization
 		fmt.Println("Removing existing configuration (--force)...")
-		configDir := getConfigDir()
+		configDir := getConfigDirFunc()
 		if err := os.RemoveAll(configDir); err != nil {
 			return fmt.Errorf("failed to remove existing config: %w", err)
 		}
@@ -155,176 +157,169 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	fmt.Println("Generating keypair...")
+	fmt.Println("Enrolling with server...")
 
-	// Generate keypair
-	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	// Perform two-phase enrollment
+	kid, err := doEnrollment(inviteCode, serverURL)
 	if err != nil {
-		return fmt.Errorf("failed to generate keypair: %w", err)
-	}
-
-	// Convert to SSH format
-	sshPubKey, err := ssh.NewPublicKey(pubKey)
-	if err != nil {
-		return fmt.Errorf("failed to convert public key: %w", err)
-	}
-	sshPubKeyStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPubKey)))
-
-	// Generate a short ID for the KeyMaker name (will be updated after bind)
-	shortID := strings.ToLower(uuid.New().String()[:4])
-
-	// Build bind request (name will be finalized after we get the operator email)
-	bindReq := map[string]string{
-		"invite_code":        inviteCode,
-		"public_key":         sshPubKeyStr,
-		"platform":           runtime.GOOS,
-		"secure_element":     "software",
-		"device_fingerprint": uuid.New().String(),
-		"device_name":        name, // Temporary, may be updated
-	}
-
-	// POST to server
-	fmt.Println("Binding to server...")
-	reqBody, _ := json.Marshal(bindReq)
-	resp, err := http.Post(
-		serverURL+"/api/v1/keymakers/bind",
-		"application/json",
-		strings.NewReader(string(reqBody)),
-	)
-	if err != nil {
-		return fmt.Errorf("cannot connect to server at %s: %w\nVerify the URL and check your network connection", serverURL, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("invalid or expired invite code. Request a new code from your admin")
-	}
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		var errResp struct {
-			Error string `json:"error"`
-		}
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		if errResp.Error != "" {
-			return fmt.Errorf("binding failed: %s", errResp.Error)
-		}
-		return fmt.Errorf("binding failed: HTTP %d", resp.StatusCode)
-	}
-
-	// Parse response with tenants
-	var bindResp struct {
-		KeyMakerID    string `json:"keymaker_id"`
-		OperatorID    string `json:"operator_id"`
-		OperatorEmail string `json:"operator_email"`
-		Tenants       []struct {
-			TenantID   string `json:"tenant_id"`
-			TenantName string `json:"tenant_name"`
-			Role       string `json:"role"`
-		} `json:"tenants"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&bindResp); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	// Extract operator name from email for KeyMaker name generation
-	operatorName := extractNameFromEmail(bindResp.OperatorEmail)
-
-	// Auto-generate meaningful name if not provided
-	if name == "" {
-		name = fmt.Sprintf("km-%s-%s-%s", runtime.GOOS, operatorName, shortID)
-	}
-
-	// Save private key
-	keyPath := getPrivateKeyPath()
-	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	privKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "OPENSSH PRIVATE KEY",
-		Bytes: privKey,
-	})
-	if err := os.WriteFile(keyPath, privKeyPEM, 0600); err != nil {
-		return fmt.Errorf("failed to save private key: %w", err)
+		return err
 	}
 
 	// Save config
 	config := KMConfig{
-		KeyMakerID:      bindResp.KeyMakerID,
-		OperatorID:      bindResp.OperatorID,
-		OperatorEmail:   bindResp.OperatorEmail,
+		KID:             kid,
 		ControlPlaneURL: serverURL,
-		PrivateKeyPath:  keyPath,
 	}
 
 	configData, _ := json.MarshalIndent(config, "", "  ")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
 	if err := os.WriteFile(configPath, configData, 0600); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
 	// Print success output
 	fmt.Println()
-	fmt.Println("Bound successfully.")
-	fmt.Printf("  Operator: %s\n", bindResp.OperatorEmail)
-
-	// Show tenant info if available
-	if len(bindResp.Tenants) > 0 {
-		tenant := bindResp.Tenants[0]
-		fmt.Printf("  Tenant: %s (%s)\n", tenant.TenantName, tenant.Role)
-	}
-
-	fmt.Printf("  KeyMaker: %s\n", name)
+	fmt.Println("Enrolled successfully.")
+	fmt.Printf("  Identity: %s\n", kid)
 	fmt.Println()
 	fmt.Printf("Config saved to %s\n", configPath)
 
-	// Show next steps and access summary
+	// Show next steps
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Println("  Run 'km whoami' to verify your identity.")
 
-	// Fetch authorizations to show access summary
-	authorizations, err := getAuthorizations()
-	if err != nil {
-		// Non-fatal: config is saved, just can't fetch authorizations yet
-		fmt.Println()
-		fmt.Println("Unable to fetch authorizations. Run 'km whoami' to check your access.")
-	} else {
-		// Count unique CAs and devices across all authorizations
-		caSet := make(map[string]struct{})
-		deviceSet := make(map[string]struct{})
-		for _, auth := range authorizations {
-			for _, caID := range auth.CAIDs {
-				caSet[caID] = struct{}{}
-			}
-			for _, deviceID := range auth.DeviceIDs {
-				deviceSet[deviceID] = struct{}{}
-			}
-		}
-		caCount := len(caSet)
-		deviceCount := len(deviceSet)
-
-		if caCount > 0 {
-			fmt.Println("  Run 'km ssh-ca list' to see available CAs.")
-		}
-
-		fmt.Println()
-		fmt.Printf("You have access to %d CA(s) and %d device(s).\n", caCount, deviceCount)
-
-		if caCount == 0 {
-			fmt.Printf("Ask your admin to grant access: bluectl operator grant %s <tenant> <ca> <devices>\n", bindResp.OperatorEmail)
-		}
-	}
-
 	return nil
 }
 
-// extractNameFromEmail extracts the username portion from an email address.
-// For example, "nelson@acme.com" returns "nelson".
-func extractNameFromEmail(email string) string {
-	if idx := strings.Index(email, "@"); idx > 0 {
-		return strings.ToLower(email[:idx])
+// doEnrollment performs the two-phase enrollment flow:
+// 1. POST /api/v1/enroll/init with invite code to get challenge
+// 2. Generate keypair, sign challenge
+// 3. POST /api/v1/enroll/complete with public key and signed challenge
+// 4. Save identity using dpop.CompleteEnrollment
+func doEnrollment(inviteCode, serverURL string) (string, error) {
+	// Phase 1: Initialize enrollment
+	initReq := map[string]string{
+		"code": inviteCode,
 	}
-	return "user"
+	initBody, _ := json.Marshal(initReq)
+
+	resp, err := http.Post(
+		serverURL+"/api/v1/enroll/init",
+		"application/json",
+		strings.NewReader(string(initBody)),
+	)
+	if err != nil {
+		return "", fmt.Errorf("cannot connect to server at %s: %w\nVerify the URL and check your network connection", serverURL, err)
+	}
+	defer resp.Body.Close()
+
+	// Handle error response from init
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return "", parseEnrollmentError(resp)
+	}
+
+	// Parse init response
+	var initResp struct {
+		Challenge    string `json:"challenge"`
+		EnrollmentID string `json:"enrollment_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&initResp); err != nil {
+		return "", fmt.Errorf("failed to parse enrollment init response: %w", err)
+	}
+
+	// Decode challenge from base64
+	challengeBytes, err := base64.StdEncoding.DecodeString(initResp.Challenge)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode challenge: %w", err)
+	}
+
+	// Generate keypair using crypto/rand via dpop package
+	pubKey, privKey, err := dpop.GenerateKeyPair()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate keypair: %w", err)
+	}
+
+	// Sign the challenge (raw bytes) with private key
+	signature := ed25519.Sign(privKey, challengeBytes)
+
+	// Phase 2: Complete enrollment
+	completeReq := map[string]string{
+		"enrollment_id":    initResp.EnrollmentID,
+		"public_key":       base64.StdEncoding.EncodeToString(pubKey),
+		"signed_challenge": base64.StdEncoding.EncodeToString(signature),
+	}
+	completeBody, _ := json.Marshal(completeReq)
+
+	resp2, err := http.Post(
+		serverURL+"/api/v1/enroll/complete",
+		"application/json",
+		strings.NewReader(string(completeBody)),
+	)
+	if err != nil {
+		return "", fmt.Errorf("cannot connect to server: %w", err)
+	}
+	defer resp2.Body.Close()
+
+	// Handle error response from complete
+	if resp2.StatusCode != http.StatusOK && resp2.StatusCode != http.StatusCreated {
+		return "", parseEnrollmentError(resp2)
+	}
+
+	// Parse complete response
+	var completeResp struct {
+		ID          string `json:"id"`
+		Fingerprint string `json:"fingerprint"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&completeResp); err != nil {
+		return "", fmt.Errorf("failed to parse enrollment complete response: %w", err)
+	}
+
+	// Save identity using dpop utilities (handles key storage with correct permissions)
+	if err := dpop.CompleteEnrollment("km", privKey, completeResp.ID); err != nil {
+		return "", fmt.Errorf("failed to save identity: %w", err)
+	}
+
+	return completeResp.ID, nil
+}
+
+// parseEnrollmentError parses an error response from the enrollment endpoints.
+func parseEnrollmentError(resp *http.Response) error {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("enrollment failed: HTTP %d", resp.StatusCode)
+	}
+
+	var errResp struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
+		return fmt.Errorf("%s", enrollmentErrorMessage(errResp.Error))
+	}
+
+	return fmt.Errorf("enrollment failed: HTTP %d", resp.StatusCode)
+}
+
+// enrollmentErrorMessage returns a user-friendly error message for enrollment error codes.
+func enrollmentErrorMessage(code string) string {
+	switch code {
+	case "enroll.invalid_code":
+		return "Invalid or expired invite code"
+	case "enroll.expired_code":
+		return "Invite code has expired"
+	case "enroll.code_consumed":
+		return "Invite code already used"
+	case "enroll.challenge_expired":
+		return "Enrollment session timed out. Please try again"
+	case "enroll.invalid_signature":
+		return "Signature verification failed"
+	case "enroll.key_exists":
+		return "This key is already enrolled"
+	default:
+		return fmt.Sprintf("Enrollment failed: %s", code)
+	}
 }
 
 var whoamiCmd = &cobra.Command{
@@ -342,13 +337,25 @@ var whoamiCmd = &cobra.Command{
 
 		verbose, _ := cmd.Flags().GetBool("verbose")
 
-		fmt.Printf("Operator: %s\n", config.OperatorEmail)
+		// Display identity
+		kid := config.KID
+		if kid == "" {
+			// Fallback for legacy config
+			kid = config.KeyMakerID
+		}
+
+		fmt.Printf("Identity: %s\n", kid)
 		fmt.Printf("Server:   %s\n", config.ControlPlaneURL)
 
+		// Show legacy fields if present and verbose
 		if verbose {
-			fmt.Println()
-			fmt.Printf("KeyMaker ID: %s\n", config.KeyMakerID)
-			fmt.Printf("Operator ID: %s\n", config.OperatorID)
+			if config.OperatorEmail != "" {
+				fmt.Println()
+				fmt.Printf("Operator: %s\n", config.OperatorEmail)
+			}
+			if config.OperatorID != "" {
+				fmt.Printf("Operator ID: %s\n", config.OperatorID)
+			}
 		}
 
 		// Fetch and display authorizations
@@ -421,11 +428,11 @@ func getConfigDir() string {
 }
 
 func getConfigPath() string {
-	return filepath.Join(getConfigDir(), "config.json")
+	return filepath.Join(getConfigDirFunc(), "config.json")
 }
 
 func getPrivateKeyPath() string {
-	return filepath.Join(getConfigDir(), "keymaker.pem")
+	return filepath.Join(getConfigDirFunc(), "keymaker.pem")
 }
 
 func loadConfig() (*KMConfig, error) {
