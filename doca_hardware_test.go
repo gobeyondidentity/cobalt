@@ -2,12 +2,11 @@
 
 // Package main provides end-to-end hardware tests for DOCA ComCh transport.
 // These tests require real BlueField-3 hardware and are intended for hardware validation.
+// Tests run locally via exec.Command. CI handles placement on the appropriate runner.
 //
 // Run with: go test -tags=hardware -v -run TestDOCA
 //
 // Required environment variables:
-//   - BF3_IP: BlueField-3 DPU IP address (default: 192.168.1.204)
-//   - BF3_USER: SSH user for BF3 (default: ubuntu)
 //   - DOCA_PCI_ADDR: DPU PCI address (default: 03:00.0)
 //   - DOCA_REP_PCI_ADDR: Representor PCI address (default: 01:00.0)
 //   - DOCA_SERVER_NAME: ComCh server name (default: secure-infra)
@@ -29,19 +28,15 @@ import (
 
 // Environment variable names for hardware test configuration
 const (
-	envBF3IP           = "BF3_IP"
-	envBF3User         = "BF3_USER"
-	envDOCAPCIAddr     = "DOCA_PCI_ADDR"
-	envDOCARepPCIAddr  = "DOCA_REP_PCI_ADDR"
-	envDOCAServerName  = "DOCA_SERVER_NAME"
-	envNexusAddr       = "NEXUS_ADDR"
-	envWorkbenchIP     = "WORKBENCH_IP"
+	envDOCAPCIAddr    = "DOCA_PCI_ADDR"
+	envDOCARepPCIAddr = "DOCA_REP_PCI_ADDR"
+	envDOCAServerName = "DOCA_SERVER_NAME"
+	envNexusAddr      = "NEXUS_ADDR"
+	envWorkbenchIP    = "WORKBENCH_IP"
 )
 
 // Default values for hardware test configuration
 const (
-	defaultBF3IP          = "192.168.1.204"
-	defaultBF3User        = "ubuntu"
 	defaultDOCAPCIAddr    = "03:00.0"
 	defaultDOCARepPCIAddr = "01:00.0"
 	defaultDOCAServerName = "secure-infra"
@@ -67,8 +62,6 @@ func init() {
 
 // HardwareTestConfig holds the test environment configuration for real hardware tests.
 type HardwareTestConfig struct {
-	BF3IP          string        // BlueField-3 DPU IP address
-	BF3User        string        // SSH user for BF3
 	DOCAPCIAddr    string        // PCI address of DOCA device on DPU
 	DOCARepPCIAddr string        // Representor PCI address for host connection
 	DOCAServerName string        // ComCh server name
@@ -84,7 +77,6 @@ type TestResult struct {
 	Passed     bool     `json:"passed"`
 	DurationMs int64    `json:"duration_ms"`
 	Transport  string   `json:"transport"`
-	BF3IP      string   `json:"bf3_ip"`
 	HostID     string   `json:"host_id,omitempty"`
 	DPUName    string   `json:"dpu_name,omitempty"`
 	Errors     []string `json:"errors,omitempty"`
@@ -92,16 +84,6 @@ type TestResult struct {
 
 // newHardwareTestConfig creates a test configuration from environment variables.
 func newHardwareTestConfig(t *testing.T) *HardwareTestConfig {
-	bf3IP := os.Getenv(envBF3IP)
-	if bf3IP == "" {
-		bf3IP = defaultBF3IP
-	}
-
-	bf3User := os.Getenv(envBF3User)
-	if bf3User == "" {
-		bf3User = defaultBF3User
-	}
-
 	pciAddr := os.Getenv(envDOCAPCIAddr)
 	if pciAddr == "" {
 		pciAddr = defaultDOCAPCIAddr
@@ -128,8 +110,6 @@ func newHardwareTestConfig(t *testing.T) *HardwareTestConfig {
 	}
 
 	return &HardwareTestConfig{
-		BF3IP:          bf3IP,
-		BF3User:        bf3User,
 		DOCAPCIAddr:    pciAddr,
 		DOCARepPCIAddr: repPCIAddr,
 		DOCAServerName: serverName,
@@ -140,17 +120,17 @@ func newHardwareTestConfig(t *testing.T) *HardwareTestConfig {
 	}
 }
 
-// skipIfNoHardware skips the test if BlueField hardware is not reachable.
+// skipIfNoHardware skips the test if DOCA hardware is not available locally.
 func (c *HardwareTestConfig) skipIfNoHardware() {
 	c.t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Try to SSH to the BF3 and run a simple command
-	_, err := c.runBF3SSH(ctx, "echo ok")
-	if err != nil {
-		c.t.Skipf("BlueField-3 hardware not reachable at %s@%s: %v", c.BF3User, c.BF3IP, err)
+	// Check if DOCA SDK is installed locally
+	output, err := c.runLocalCmd(ctx, "ls /opt/mellanox/doca 2>/dev/null || echo 'not found'")
+	if err != nil || strings.Contains(output, "not found") {
+		c.t.Skip("DOCA SDK not available on this machine")
 	}
 }
 
@@ -191,22 +171,15 @@ func (c *HardwareTestConfig) runCmd(ctx context.Context, name string, args ...st
 	return output, nil
 }
 
-// runBF3SSH runs a command on the BlueField-3 via SSH.
-func (c *HardwareTestConfig) runBF3SSH(ctx context.Context, cmd string) (string, error) {
-	sshTarget := fmt.Sprintf("%s@%s", c.BF3User, c.BF3IP)
-	return c.runCmd(ctx, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", sshTarget, cmd)
+// runLocalCmd runs a command locally via shell.
+func (c *HardwareTestConfig) runLocalCmd(ctx context.Context, cmd string) (string, error) {
+	return c.runCmd(ctx, "sh", "-c", cmd)
 }
 
-// killBF3Process kills a process on the BlueField-3 (logs but ignores errors).
-func (c *HardwareTestConfig) killBF3Process(ctx context.Context, process string) {
-	fmt.Printf("    %s\n", hwDimFmt(fmt.Sprintf("...killing %s on BF3", process)))
-	c.runBF3SSH(ctx, fmt.Sprintf("sudo pkill -9 %s || true", process))
-}
-
-// killLocalProcess kills a local process (logs but ignores errors).
-func (c *HardwareTestConfig) killLocalProcess(ctx context.Context, process string) {
-	fmt.Printf("    %s\n", hwDimFmt(fmt.Sprintf("...killing local %s", process)))
-	c.runCmd(ctx, "pkill", "-9", process)
+// killProcess kills a process locally (logs but ignores errors).
+func (c *HardwareTestConfig) killProcess(ctx context.Context, process string) {
+	fmt.Printf("    %s\n", hwDimFmt(fmt.Sprintf("...killing %s", process)))
+	c.runLocalCmd(ctx, fmt.Sprintf("sudo pkill -9 %s || true", process))
 }
 
 // hwLogStep logs a test step in blue bold.
@@ -231,15 +204,16 @@ func writeTestResult(result *TestResult) {
 }
 
 // TestDOCAComchEnrollmentE2E tests full enrollment flow via real DOCA ComCh hardware.
+// Tests run locally on the DPU runner. CI handles test placement.
 //
-// Architecture:
+// Architecture (all processes run locally on DPU):
 //
-//	Workbench (localhost)                  BlueField-3 (BF3_IP)
-//	+------------------------+             +---------------------------+
-//	| nexus (:18080)         |    HTTP     | aegis                     |
-//	| sentry (ComCh client)  |<----------->| -doca-pci-addr 03:00.0    |
-//	| Test driver            |   ComCh     | -doca-rep-pci 01:00.0     |
-//	+------------------------+  (rshim)    +---------------------------+
+//	+---------------------------+
+//	| nexus (:18080)            |
+//	| aegis (DOCA ComCh server) |
+//	| sentry (ComCh client)     |
+//	| Test driver               |
+//	+---------------------------+
 func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	cfg := newHardwareTestConfig(t)
 	cfg.skipIfNoHardware()
@@ -247,7 +221,6 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	result := &TestResult{
 		Test:      "TestDOCAComchEnrollmentE2E",
 		Transport: "doca_comch",
-		BF3IP:     cfg.BF3IP,
 	}
 	start := time.Now()
 
@@ -257,8 +230,6 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	}()
 
 	t.Log("Starting DOCA ComCh enrollment E2E test")
-	hwLogInfo(t, "BF3 IP: %s", cfg.BF3IP)
-	hwLogInfo(t, "BF3 User: %s", cfg.BF3User)
 	hwLogInfo(t, "DOCA PCI Addr: %s", cfg.DOCAPCIAddr)
 	hwLogInfo(t, "DOCA Rep PCI Addr: %s", cfg.DOCARepPCIAddr)
 	hwLogInfo(t, "DOCA Server Name: %s", cfg.DOCAServerName)
@@ -278,22 +249,22 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 		defer cleanupCancel()
 
 		fmt.Printf("\n%s\n", hwDimFmt("Cleaning up processes..."))
-		cfg.killBF3Process(cleanupCtx, "aegis")
-		cfg.killLocalProcess(cleanupCtx, "nexus")
-		cfg.killLocalProcess(cleanupCtx, "sentry")
+		cfg.killProcess(cleanupCtx, "aegis")
+		cfg.killProcess(cleanupCtx, "nexus")
+		cfg.killProcess(cleanupCtx, "sentry")
 	})
 
-	// Step 1: Kill existing aegis on BF3
-	hwLogStep(t, 1, "Killing existing aegis on BF3...")
-	cfg.killBF3Process(ctx, "aegis")
+	// Step 1: Kill existing aegis
+	hwLogStep(t, 1, "Killing existing aegis...")
+	cfg.killProcess(ctx, "aegis")
 	time.Sleep(1 * time.Second)
 	hwLogOK(t, "Existing aegis processes terminated")
 
-	// Step 2: Start aegis on BF3 with DOCA ComCh flags
-	hwLogStep(t, 2, "Starting aegis on BF3 with DOCA ComCh...")
+	// Step 2: Start aegis locally with DOCA ComCh flags
+	hwLogStep(t, 2, "Starting aegis locally with DOCA ComCh...")
 
 	aegisCmd := fmt.Sprintf(
-		"sudo setsid /home/%s/aegis "+
+		"sudo setsid aegis "+
 			"-doca-pci-addr %s "+
 			"-doca-rep-pci-addr %s "+
 			"-doca-server-name %s "+
@@ -301,7 +272,6 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 			"-control-plane http://%s "+
 			"-dpu-name %s "+
 			"> /tmp/aegis.log 2>&1 < /dev/null &",
-		cfg.BF3User,
 		cfg.DOCAPCIAddr,
 		cfg.DOCARepPCIAddr,
 		cfg.DOCAServerName,
@@ -309,10 +279,10 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 		dpuName,
 	)
 
-	_, err := cfg.runBF3SSH(ctx, aegisCmd)
+	_, err := cfg.runLocalCmd(ctx, aegisCmd)
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("Failed to start aegis: %v", err))
-		t.Fatalf("Failed to start aegis on BF3: %v", err)
+		t.Fatalf("Failed to start aegis: %v", err)
 	}
 	time.Sleep(3 * time.Second)
 	hwLogOK(t, "Aegis start command executed")
@@ -320,7 +290,7 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	// Step 3: Verify ComCh listener is active
 	hwLogStep(t, 3, "Verifying ComCh listener active...")
 
-	aegisLog, err := cfg.runBF3SSH(ctx, "cat /tmp/aegis.log")
+	aegisLog, err := cfg.runLocalCmd(ctx, "cat /tmp/aegis.log")
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("Failed to read aegis log: %v", err))
 		t.Fatalf("Failed to read aegis log: %v", err)
@@ -334,17 +304,17 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 			t.Fatalf("Aegis ComCh listener not active. Check aegis log above.")
 		}
 	}
-	hwLogOK(t, "ComCh listener created on BF3")
+	hwLogOK(t, "ComCh listener created")
 
 	// Step 4: Start nexus locally
 	hwLogStep(t, 4, "Starting nexus locally...")
-	cfg.killLocalProcess(ctx, "nexus")
+	cfg.killProcess(ctx, "nexus")
 
 	// Start nexus in background
-	_, err = cfg.runCmd(ctx, "bash", "-c", "setsid ./bin/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+	_, err = cfg.runLocalCmd(ctx, "setsid ./bin/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
 	if err != nil {
 		// Try alternate path
-		_, err = cfg.runCmd(ctx, "bash", "-c", "setsid nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+		_, err = cfg.runLocalCmd(ctx, "setsid nexus > /tmp/nexus.log 2>&1 < /dev/null &")
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Failed to start nexus: %v", err))
 			t.Fatalf("Failed to start nexus: %v", err)
@@ -353,9 +323,9 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Verify nexus is running
-	output, err := cfg.runCmd(ctx, "pgrep", "-x", "nexus")
+	output, err := cfg.runLocalCmd(ctx, "pgrep -x nexus")
 	if err != nil || strings.TrimSpace(output) == "" {
-		logs, _ := cfg.runCmd(ctx, "cat", "/tmp/nexus.log")
+		logs, _ := cfg.runLocalCmd(ctx, "cat /tmp/nexus.log")
 		result.Errors = append(result.Errors, "Nexus not running after start")
 		t.Fatalf("Nexus not running. Logs:\n%s", logs)
 	}
@@ -365,14 +335,14 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	hwLogStep(t, 5, "Registering DPU with nexus...")
 
 	// Create tenant
-	_, _ = cfg.runCmd(ctx, "./bin/bluectl", "tenant", "add", tenantName, "--server", "http://localhost:18080")
+	_, _ = cfg.runLocalCmd(ctx, fmt.Sprintf("./bin/bluectl tenant add %s --server http://localhost:18080", tenantName))
 
 	// Remove stale DPU if exists
-	_, _ = cfg.runCmd(ctx, "./bin/bluectl", "dpu", "remove", dpuName, "--server", "http://localhost:18080")
+	_, _ = cfg.runLocalCmd(ctx, fmt.Sprintf("./bin/bluectl dpu remove %s --server http://localhost:18080", dpuName))
 
 	// Register DPU with aegis's gRPC port
-	bf3GRPCAddr := fmt.Sprintf("%s:%s", cfg.BF3IP, defaultGRPCPort)
-	_, err = cfg.runCmd(ctx, "./bin/bluectl", "dpu", "add", bf3GRPCAddr, "--name", dpuName, "--server", "http://localhost:18080")
+	grpcAddr := fmt.Sprintf("localhost:%s", defaultGRPCPort)
+	_, err = cfg.runLocalCmd(ctx, fmt.Sprintf("./bin/bluectl dpu add %s --name %s --server http://localhost:18080", grpcAddr, dpuName))
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("Failed to register DPU: %v", err))
 		t.Fatalf("Failed to register DPU: %v", err)
@@ -382,7 +352,7 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	// Step 6: Assign DPU to tenant
 	hwLogStep(t, 6, "Assigning DPU to tenant...")
 
-	_, err = cfg.runCmd(ctx, "./bin/bluectl", "tenant", "assign", tenantName, dpuName, "--server", "http://localhost:18080")
+	_, err = cfg.runLocalCmd(ctx, fmt.Sprintf("./bin/bluectl tenant assign %s %s --server http://localhost:18080", tenantName, dpuName))
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("Failed to assign DPU: %v", err))
 		t.Fatalf("Failed to assign DPU to tenant: %v", err)
@@ -392,7 +362,7 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 
 	// Step 7: Start sentry locally with --force-comch
 	hwLogStep(t, 7, "Starting sentry with --force-comch...")
-	cfg.killLocalProcess(ctx, "sentry")
+	cfg.killProcess(ctx, "sentry")
 
 	sentryCmd := fmt.Sprintf(
 		"setsid ./bin/sentry "+
@@ -401,17 +371,17 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 			"--doca-server-name %s "+
 			"--oneshot "+
 			"> /tmp/sentry.log 2>&1",
-		cfg.DOCAPCIAddr, // Host-side PCI address for BlueField
+		cfg.DOCAPCIAddr,
 		cfg.DOCAServerName,
 	)
 
 	sentryCtx, sentryCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer sentryCancel()
 
-	_, err = cfg.runCmd(sentryCtx, "bash", "-c", sentryCmd)
+	_, err = cfg.runLocalCmd(sentryCtx, sentryCmd)
 	if err != nil {
-		sentryLog, _ := cfg.runCmd(ctx, "cat", "/tmp/sentry.log")
-		aegisLog, _ := cfg.runBF3SSH(ctx, "tail -50 /tmp/aegis.log")
+		sentryLog, _ := cfg.runLocalCmd(ctx, "cat /tmp/sentry.log")
+		aegisLog, _ := cfg.runLocalCmd(ctx, "tail -50 /tmp/aegis.log")
 		fmt.Printf("    Sentry log:\n%s\n", sentryLog)
 		fmt.Printf("    Aegis log:\n%s\n", aegisLog)
 		result.Errors = append(result.Errors, fmt.Sprintf("Sentry enrollment failed: %v", err))
@@ -421,7 +391,7 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	// Step 8: Verify enrollment completed via ComCh
 	hwLogStep(t, 8, "Verifying enrollment via ComCh...")
 
-	sentryLog, _ := cfg.runCmd(ctx, "cat", "/tmp/sentry.log")
+	sentryLog, _ := cfg.runLocalCmd(ctx, "cat /tmp/sentry.log")
 
 	if !strings.Contains(sentryLog, "Transport: doca_comch") {
 		result.Errors = append(result.Errors, "Sentry did not use DOCA ComCh transport")
@@ -454,7 +424,7 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	hwLogStep(t, 9, "Verifying enrollment in nexus...")
 
 	// List hosts via bluectl
-	hostList, err := cfg.runCmd(ctx, "./bin/bluectl", "host", "list", "--server", "http://localhost:18080", "-o", "json")
+	hostList, err := cfg.runLocalCmd(ctx, "./bin/bluectl host list --server http://localhost:18080 -o json")
 	if err != nil {
 		hwLogInfo(t, "Could not list hosts (command may not exist): %v", err)
 	} else {
@@ -478,6 +448,7 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 }
 
 // TestDOCAComchCredentialDeliveryE2E tests credential push via real DOCA ComCh hardware.
+// Tests run locally on the DPU runner. CI handles test placement.
 func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	cfg := newHardwareTestConfig(t)
 	cfg.skipIfNoHardware()
@@ -485,7 +456,6 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	result := &TestResult{
 		Test:      "TestDOCAComchCredentialDeliveryE2E",
 		Transport: "doca_comch",
-		BF3IP:     cfg.BF3IP,
 	}
 	start := time.Now()
 
@@ -495,7 +465,6 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	}()
 
 	t.Log("Starting DOCA ComCh credential delivery E2E test")
-	hwLogInfo(t, "BF3 IP: %s", cfg.BF3IP)
 	hwLogInfo(t, "DOCA PCI Addr: %s", cfg.DOCAPCIAddr)
 	hwLogInfo(t, "DOCA Server Name: %s", cfg.DOCAServerName)
 
@@ -516,27 +485,27 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 		defer cleanupCancel()
 
 		fmt.Printf("\n%s\n", hwDimFmt("Cleaning up processes and test artifacts..."))
-		cfg.killBF3Process(cleanupCtx, "aegis")
-		cfg.killLocalProcess(cleanupCtx, "nexus")
-		cfg.killLocalProcess(cleanupCtx, "sentry")
+		cfg.killProcess(cleanupCtx, "aegis")
+		cfg.killProcess(cleanupCtx, "nexus")
+		cfg.killProcess(cleanupCtx, "sentry")
 
 		// Clean up test CA file locally
-		cfg.runCmd(cleanupCtx, "sudo", "rm", "-f", caPath)
+		cfg.runLocalCmd(cleanupCtx, fmt.Sprintf("sudo rm -f %s", caPath))
 	})
 
 	// Step 1: Kill existing processes
 	hwLogStep(t, 1, "Cleaning up existing processes...")
-	cfg.killBF3Process(ctx, "aegis")
-	cfg.killLocalProcess(ctx, "nexus")
-	cfg.killLocalProcess(ctx, "sentry")
+	cfg.killProcess(ctx, "aegis")
+	cfg.killProcess(ctx, "nexus")
+	cfg.killProcess(ctx, "sentry")
 	time.Sleep(1 * time.Second)
 	hwLogOK(t, "Existing processes terminated")
 
-	// Step 2: Start aegis on BF3
-	hwLogStep(t, 2, "Starting aegis on BF3 with DOCA ComCh...")
+	// Step 2: Start aegis locally
+	hwLogStep(t, 2, "Starting aegis locally with DOCA ComCh...")
 
 	aegisCmd := fmt.Sprintf(
-		"sudo setsid /home/%s/aegis "+
+		"sudo setsid aegis "+
 			"-doca-pci-addr %s "+
 			"-doca-rep-pci-addr %s "+
 			"-doca-server-name %s "+
@@ -544,7 +513,6 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 			"-control-plane http://%s "+
 			"-dpu-name %s "+
 			"> /tmp/aegis.log 2>&1 < /dev/null &",
-		cfg.BF3User,
 		cfg.DOCAPCIAddr,
 		cfg.DOCARepPCIAddr,
 		cfg.DOCAServerName,
@@ -552,15 +520,15 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 		dpuName,
 	)
 
-	_, err := cfg.runBF3SSH(ctx, aegisCmd)
+	_, err := cfg.runLocalCmd(ctx, aegisCmd)
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("Failed to start aegis: %v", err))
-		t.Fatalf("Failed to start aegis on BF3: %v", err)
+		t.Fatalf("Failed to start aegis: %v", err)
 	}
 	time.Sleep(3 * time.Second)
 
 	// Verify ComCh listener
-	aegisLog, _ := cfg.runBF3SSH(ctx, "cat /tmp/aegis.log")
+	aegisLog, _ := cfg.runLocalCmd(ctx, "cat /tmp/aegis.log")
 	if !strings.Contains(aegisLog, "ComCh") && !strings.Contains(aegisLog, "transport") {
 		fmt.Printf("    Aegis log:\n%s\n", aegisLog)
 		result.Errors = append(result.Errors, "ComCh listener may not be active")
@@ -570,15 +538,15 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	// Step 3: Start nexus locally
 	hwLogStep(t, 3, "Starting nexus locally...")
 
-	_, err = cfg.runCmd(ctx, "bash", "-c", "setsid ./bin/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+	_, err = cfg.runLocalCmd(ctx, "setsid ./bin/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
 	if err != nil {
-		_, err = cfg.runCmd(ctx, "bash", "-c", "setsid nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+		_, err = cfg.runLocalCmd(ctx, "setsid nexus > /tmp/nexus.log 2>&1 < /dev/null &")
 	}
 	time.Sleep(2 * time.Second)
 
-	output, err := cfg.runCmd(ctx, "pgrep", "-x", "nexus")
+	output, err := cfg.runLocalCmd(ctx, "pgrep -x nexus")
 	if err != nil || strings.TrimSpace(output) == "" {
-		logs, _ := cfg.runCmd(ctx, "cat", "/tmp/nexus.log")
+		logs, _ := cfg.runLocalCmd(ctx, "cat /tmp/nexus.log")
 		result.Errors = append(result.Errors, "Nexus not running")
 		t.Fatalf("Nexus not running. Logs:\n%s", logs)
 	}
@@ -587,17 +555,17 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	// Step 4: Register DPU
 	hwLogStep(t, 4, "Registering DPU with nexus...")
 
-	_, _ = cfg.runCmd(ctx, "./bin/bluectl", "tenant", "add", tenantName, "--server", "http://localhost:18080")
-	_, _ = cfg.runCmd(ctx, "./bin/bluectl", "dpu", "remove", dpuName, "--server", "http://localhost:18080")
+	_, _ = cfg.runLocalCmd(ctx, fmt.Sprintf("./bin/bluectl tenant add %s --server http://localhost:18080", tenantName))
+	_, _ = cfg.runLocalCmd(ctx, fmt.Sprintf("./bin/bluectl dpu remove %s --server http://localhost:18080", dpuName))
 
-	bf3GRPCAddr := fmt.Sprintf("%s:%s", cfg.BF3IP, defaultGRPCPort)
-	_, err = cfg.runCmd(ctx, "./bin/bluectl", "dpu", "add", bf3GRPCAddr, "--name", dpuName, "--server", "http://localhost:18080")
+	grpcAddr := fmt.Sprintf("localhost:%s", defaultGRPCPort)
+	_, err = cfg.runLocalCmd(ctx, fmt.Sprintf("./bin/bluectl dpu add %s --name %s --server http://localhost:18080", grpcAddr, dpuName))
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("Failed to register DPU: %v", err))
 		t.Fatalf("Failed to register DPU: %v", err)
 	}
 
-	_, err = cfg.runCmd(ctx, "./bin/bluectl", "tenant", "assign", tenantName, dpuName, "--server", "http://localhost:18080")
+	_, err = cfg.runLocalCmd(ctx, fmt.Sprintf("./bin/bluectl tenant assign %s %s --server http://localhost:18080", tenantName, dpuName))
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("Failed to assign DPU: %v", err))
 		t.Fatalf("Failed to assign DPU: %v", err)
@@ -618,7 +586,7 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 		cfg.DOCAServerName,
 	)
 
-	_, err = cfg.runCmd(ctx, "bash", "-c", sentryCmd)
+	_, err = cfg.runLocalCmd(ctx, sentryCmd)
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("Failed to start sentry: %v", err))
 		t.Fatalf("Failed to start sentry: %v", err)
@@ -628,15 +596,15 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// Verify sentry is running
-	output, err = cfg.runCmd(ctx, "pgrep", "-x", "sentry")
+	output, err = cfg.runLocalCmd(ctx, "pgrep -x sentry")
 	if err != nil || strings.TrimSpace(output) == "" {
-		logs, _ := cfg.runCmd(ctx, "cat", "/tmp/sentry.log")
+		logs, _ := cfg.runLocalCmd(ctx, "cat /tmp/sentry.log")
 		result.Errors = append(result.Errors, "Sentry not running")
 		t.Fatalf("Sentry not running. Logs:\n%s", logs)
 	}
 
 	// Verify enrollment
-	sentryLog, _ := cfg.runCmd(ctx, "cat", "/tmp/sentry.log")
+	sentryLog, _ := cfg.runLocalCmd(ctx, "cat /tmp/sentry.log")
 	if !strings.Contains(sentryLog, "Enrolled") && !strings.Contains(sentryLog, "enrolled") {
 		fmt.Printf("    Sentry log:\n%s\n", sentryLog)
 		result.Errors = append(result.Errors, "Sentry did not enroll")
@@ -647,11 +615,11 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	hwLogStep(t, 6, "Creating SSH CA credential...")
 
 	// Clear logs before credential push
-	_, _ = cfg.runBF3SSH(ctx, "sudo truncate -s 0 /tmp/aegis.log")
-	_, _ = cfg.runCmd(ctx, "sudo", "truncate", "-s", "0", "/tmp/sentry.log")
+	_, _ = cfg.runLocalCmd(ctx, "sudo truncate -s 0 /tmp/aegis.log")
+	_, _ = cfg.runLocalCmd(ctx, "sudo truncate -s 0 /tmp/sentry.log")
 
 	// Try to create SSH CA via bluectl
-	_, err = cfg.runCmd(ctx, "./bin/bluectl", "ssh-ca", "add", caName, "--tenant", tenantName, "--server", "http://localhost:18080")
+	_, err = cfg.runLocalCmd(ctx, fmt.Sprintf("./bin/bluectl ssh-ca add %s --tenant %s --server http://localhost:18080", caName, tenantName))
 	if err != nil {
 		// Fall back to direct API call if bluectl command doesn't exist
 		hwLogInfo(t, "bluectl ssh-ca add not available, using direct API call")
@@ -660,10 +628,10 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 		testCAKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJTa5xOvvKPh8rO5lDXm0G8dLJHBUGYT0NxXTTZ9R1Z2 test-ca@example.com"
 
 		curlCmd := fmt.Sprintf(
-			`curl -s -X POST http://%s:%s/local/v1/credential -H "Content-Type: application/json" -d '{"credential_type":"ssh-ca","credential_name":"%s","data":"%s"}'`,
-			cfg.BF3IP, defaultLocalAPIPort, caName, testCAKey,
+			`curl -s -X POST http://localhost:%s/local/v1/credential -H "Content-Type: application/json" -d '{"credential_type":"ssh-ca","credential_name":"%s","data":"%s"}'`,
+			defaultLocalAPIPort, caName, testCAKey,
 		)
-		output, err = cfg.runCmd(ctx, "bash", "-c", curlCmd)
+		output, err = cfg.runLocalCmd(ctx, curlCmd)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Failed to push credential: %v", err))
 			t.Fatalf("Failed to push credential: %v", err)
@@ -681,8 +649,8 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	// Step 7: Verify credential delivery logs
 	hwLogStep(t, 7, "Verifying credential delivery logs...")
 
-	aegisLog, _ = cfg.runBF3SSH(ctx, "cat /tmp/aegis.log")
-	sentryLog, _ = cfg.runCmd(ctx, "cat", "/tmp/sentry.log")
+	aegisLog, _ = cfg.runLocalCmd(ctx, "cat /tmp/aegis.log")
+	sentryLog, _ = cfg.runLocalCmd(ctx, "cat /tmp/sentry.log")
 
 	// Check for credential delivery markers
 	if strings.Contains(aegisLog, "[CRED-DELIVERY]") || strings.Contains(aegisLog, "CREDENTIAL_PUSH") {
@@ -700,7 +668,7 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	// Step 8: Verify credential file exists on host
 	hwLogStep(t, 8, "Verifying credential installation on host...")
 
-	output, err = cfg.runCmd(ctx, "ls", "-la", caPath)
+	output, err = cfg.runLocalCmd(ctx, fmt.Sprintf("ls -la %s", caPath))
 	if err != nil {
 		fmt.Printf("    Sentry log:\n%s\n", sentryLog)
 		result.Errors = append(result.Errors, fmt.Sprintf("Credential file not found at %s", caPath))
@@ -717,7 +685,7 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 		}
 
 		// Verify content
-		content, _ := cfg.runCmd(ctx, "cat", caPath)
+		content, _ := cfg.runLocalCmd(ctx, fmt.Sprintf("cat %s", caPath))
 		if strings.HasPrefix(strings.TrimSpace(content), "ssh-") {
 			hwLogOK(t, "Credential contains valid SSH public key")
 		} else {
@@ -738,67 +706,55 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	}
 }
 
-// TestDOCAComchHardwareDetection verifies that BlueField hardware is accessible.
+// TestDOCAComchHardwareDetection verifies that DOCA hardware is available locally.
 // This is a quick smoke test to run before the full E2E tests.
+// Tests run locally on the DPU runner. CI handles test placement.
 func TestDOCAComchHardwareDetection(t *testing.T) {
 	cfg := newHardwareTestConfig(t)
 
-	t.Log("Checking BlueField-3 hardware availability")
-	hwLogInfo(t, "BF3 IP: %s", cfg.BF3IP)
-	hwLogInfo(t, "BF3 User: %s", cfg.BF3User)
+	t.Log("Checking DOCA hardware availability")
+	hwLogInfo(t, "DOCA PCI Addr: %s", cfg.DOCAPCIAddr)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Step 1: Test SSH connectivity
-	hwLogStep(t, 1, "Testing SSH connectivity to BF3...")
+	// Step 1: Check DOCA availability
+	hwLogStep(t, 1, "Checking DOCA SDK availability...")
 
-	output, err := cfg.runBF3SSH(ctx, "echo 'SSH connection OK'")
-	if err != nil {
-		t.Fatalf("Cannot SSH to BF3 at %s@%s: %v", cfg.BF3User, cfg.BF3IP, err)
-	}
-	if !strings.Contains(output, "SSH connection OK") {
-		t.Fatalf("Unexpected SSH output: %s", output)
-	}
-	hwLogOK(t, "SSH connection established")
-
-	// Step 2: Check DOCA availability
-	hwLogStep(t, 2, "Checking DOCA SDK availability...")
-
-	output, err = cfg.runBF3SSH(ctx, "ls -la /opt/mellanox/doca 2>/dev/null || echo 'DOCA not found'")
-	if strings.Contains(output, "DOCA not found") {
-		t.Skip("DOCA SDK not installed on BF3")
+	output, err := cfg.runLocalCmd(ctx, "ls -la /opt/mellanox/doca 2>/dev/null || echo 'DOCA not found'")
+	if err != nil || strings.Contains(output, "DOCA not found") {
+		t.Skip("DOCA SDK not installed on this machine")
 	}
 	hwLogOK(t, "DOCA SDK found at /opt/mellanox/doca")
 
-	// Step 3: Check for ComCh device
-	hwLogStep(t, 3, "Checking for ComCh-capable device...")
+	// Step 2: Check for ComCh device
+	hwLogStep(t, 2, "Checking for ComCh-capable device...")
 
-	output, err = cfg.runBF3SSH(ctx, "ls -la /dev/infiniband 2>/dev/null || echo 'No IB devices'")
+	output, _ = cfg.runLocalCmd(ctx, "ls -la /dev/infiniband 2>/dev/null || echo 'No IB devices'")
 	if strings.Contains(output, "No IB devices") {
 		hwLogInfo(t, "No /dev/infiniband found, ComCh may not be available")
 	} else {
 		hwLogOK(t, "InfiniBand devices found")
 	}
 
-	// Step 4: Check PCI device
-	hwLogStep(t, 4, "Checking PCI device...")
+	// Step 3: Check PCI device
+	hwLogStep(t, 3, "Checking PCI device...")
 
-	output, err = cfg.runBF3SSH(ctx, fmt.Sprintf("lspci -s %s 2>/dev/null || echo 'Device not found'", cfg.DOCAPCIAddr))
+	output, _ = cfg.runLocalCmd(ctx, fmt.Sprintf("lspci -s %s 2>/dev/null || echo 'Device not found'", cfg.DOCAPCIAddr))
 	if strings.Contains(output, "Device not found") || strings.TrimSpace(output) == "" {
 		hwLogInfo(t, "PCI device %s not found, check DOCA_PCI_ADDR", cfg.DOCAPCIAddr)
 	} else {
 		hwLogOK(t, fmt.Sprintf("PCI device found: %s", strings.TrimSpace(output)))
 	}
 
-	// Step 5: Check aegis binary
-	hwLogStep(t, 5, "Checking aegis binary on BF3...")
+	// Step 4: Check aegis binary
+	hwLogStep(t, 4, "Checking aegis binary...")
 
-	output, err = cfg.runBF3SSH(ctx, fmt.Sprintf("ls -la /home/%s/aegis 2>/dev/null || echo 'aegis not found'", cfg.BF3User))
+	output, _ = cfg.runLocalCmd(ctx, "which aegis 2>/dev/null || ls -la ./bin/aegis 2>/dev/null || echo 'aegis not found'")
 	if strings.Contains(output, "aegis not found") {
-		t.Skip("aegis binary not found on BF3, deploy with: scp bin/agent-arm64 ubuntu@BF3_IP:~/aegis")
+		t.Skip("aegis binary not found, build with: go build -o bin/aegis ./cmd/aegis")
 	}
-	hwLogOK(t, "aegis binary found on BF3")
+	hwLogOK(t, "aegis binary found")
 
 	fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("[PASSED] Hardware detection complete"))
 }
