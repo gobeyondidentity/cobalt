@@ -1011,10 +1011,11 @@ qa-remote-down:
 
 # Run integration tests on workbench (rebuilds binaries first)
 qa-remote-test: qa-remote-build
-	@echo "=== Syncing integration test to workbench ==="
-	scp integration_test.go $(WORKBENCH_USER)@$(WORKBENCH_IP):$(WORKBENCH_DIR)/
+	@echo "=== Syncing integration tests to workbench ==="
+	ssh $(WORKBENCH_USER)@$(WORKBENCH_IP) "mkdir -p $(WORKBENCH_DIR)/test/integration"
+	scp test/integration/*.go $(WORKBENCH_USER)@$(WORKBENCH_IP):$(WORKBENCH_DIR)/test/integration/
 	@echo "=== Running Go integration tests on workbench ==="
-	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 15m -run 'Test(TMFIFOTransportIntegration|CredentialDeliveryE2E|NexusRestartPersistence|AegisRestartSentryReconnection|AegisMidPushRestart|StateSyncConsistency|MultiTenantEnrollmentIsolation|DPURegistrationFlows|TenantLifecycle|OperatorOnboardingE2E)'"
+	ssh -tt $(WORKBENCH_USER)@$(WORKBENCH_IP) "cd $(WORKBENCH_DIR) && /usr/local/go/bin/go test -tags=integration -v -timeout 15m ./test/integration/... -run 'Test(TMFIFOTransportIntegration|CredentialDeliveryE2E|NexusRestartPersistence|AegisRestartSentryReconnection|AegisMidPushRestart|StateSyncConsistency|MultiTenantEnrollmentIsolation|DPURegistrationFlows|TenantLifecycle|OperatorOnboardingE2E)'"
 
 # Run integration test with VM rebuild (full setup)
 # Note: qa-remote-build is already a dependency of qa-remote-test

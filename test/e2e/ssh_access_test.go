@@ -1,6 +1,6 @@
 //go:build !integration && !windows
 
-package eng
+package e2e
 
 import (
 	"crypto/ed25519"

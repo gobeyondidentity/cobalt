@@ -10,7 +10,7 @@
 //   - DOCA_PCI_ADDR: DPU PCI address (default: 03:00.0)
 //   - DOCA_REP_PCI_ADDR: Representor PCI address (default: 01:00.0)
 //   - DOCA_SERVER_NAME: ComCh server name (default: secure-infra)
-package eng
+package e2e
 
 import (
 	"bytes"
@@ -311,10 +311,10 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	cfg.killProcess(ctx, "nexus")
 
 	// Start nexus in background
-	_, err = cfg.runLocalCmd(ctx, "setsid ./bin/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+	_, err = cfg.runLocalCmd(ctx, "setsid ./bin/nexus --no-auth > /tmp/nexus.log 2>&1 < /dev/null &")
 	if err != nil {
 		// Try alternate path
-		_, err = cfg.runLocalCmd(ctx, "setsid nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+		_, err = cfg.runLocalCmd(ctx, "setsid nexus --no-auth > /tmp/nexus.log 2>&1 < /dev/null &")
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Failed to start nexus: %v", err))
 			t.Fatalf("Failed to start nexus: %v", err)
@@ -538,9 +538,9 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	// Step 3: Start nexus locally
 	hwLogStep(t, 3, "Starting nexus locally...")
 
-	_, err = cfg.runLocalCmd(ctx, "setsid ./bin/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+	_, err = cfg.runLocalCmd(ctx, "setsid ./bin/nexus --no-auth > /tmp/nexus.log 2>&1 < /dev/null &")
 	if err != nil {
-		_, err = cfg.runLocalCmd(ctx, "setsid nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+		_, err = cfg.runLocalCmd(ctx, "setsid nexus --no-auth > /tmp/nexus.log 2>&1 < /dev/null &")
 	}
 	time.Sleep(2 * time.Second)
 
