@@ -88,7 +88,9 @@ jobs:
           cache: false
 
       - name: Run benchmarks
-        run: make benchmark | tee benchmark-results.txt
+        run: |
+          set -o pipefail
+          make benchmark | tee benchmark-results.txt
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
