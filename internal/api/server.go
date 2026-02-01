@@ -280,7 +280,7 @@ func (s *Server) handleAddDPU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check connectivity
+	// Check connectivity and fetch system info
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
@@ -292,13 +292,15 @@ func (s *Server) handleAddDPU(w http.ResponseWriter, r *http.Request) {
 		if _, err := client.HealthCheck(ctx); err != nil {
 			s.store.UpdateStatus(id, "unhealthy")
 		} else {
-			s.store.UpdateStatus(id, "healthy")
 			// Fetch and store serial number for enrollment lookup
 			if info, err := client.GetSystemInfo(ctx); err == nil && info.SerialNumber != "" {
 				s.store.SetDPUSerialNumber(id, info.SerialNumber)
 			}
 		}
 	}
+
+	// Set pending enrollment status with 24h expiration
+	s.store.SetDPUEnrollmentPending(id, time.Now().Add(24*time.Hour))
 
 	dpu, _ := s.store.Get(id)
 	writeJSON(w, http.StatusCreated, dpuToResponse(dpu))

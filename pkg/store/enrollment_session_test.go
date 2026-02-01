@@ -156,6 +156,68 @@ func TestSetDPUSerialNumber(t *testing.T) {
 	})
 }
 
+// TestSetDPUEnrollmentPending tests setting a DPU to pending enrollment status.
+func TestSetDPUEnrollmentPending(t *testing.T) {
+	s := setupTestStore(t)
+
+	t.Log("Creating DPU for pending enrollment test")
+	err := s.Add("dpu-pending-1", "bf3-pending-test", "192.168.1.100", 50051)
+	require.NoError(t, err)
+
+	t.Run("SetPending", func(t *testing.T) {
+		t.Log("Setting DPU to pending enrollment status")
+		expiresAt := time.Now().Add(24 * time.Hour)
+		err := s.SetDPUEnrollmentPending("dpu-pending-1", expiresAt)
+		require.NoError(t, err)
+
+		t.Log("Verifying pending state")
+		dpu, err := s.Get("dpu-pending-1")
+		require.NoError(t, err)
+
+		assert.Equal(t, "pending", dpu.Status, "Status should be pending")
+		require.NotNil(t, dpu.EnrollmentExpiresAt, "EnrollmentExpiresAt should be set")
+		assert.WithinDuration(t, expiresAt, *dpu.EnrollmentExpiresAt, time.Second, "Expiration time should match")
+		t.Log("DPU correctly set to pending enrollment")
+	})
+
+	t.Run("UpdateExpiration", func(t *testing.T) {
+		t.Log("Updating enrollment expiration time")
+		newExpiresAt := time.Now().Add(48 * time.Hour)
+		err := s.SetDPUEnrollmentPending("dpu-pending-1", newExpiresAt)
+		require.NoError(t, err)
+
+		dpu, err := s.Get("dpu-pending-1")
+		require.NoError(t, err)
+
+		require.NotNil(t, dpu.EnrollmentExpiresAt)
+		assert.WithinDuration(t, newExpiresAt, *dpu.EnrollmentExpiresAt, time.Second, "Expiration should be updated")
+		t.Log("Enrollment expiration updated successfully")
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		t.Log("Setting pending on non-existent DPU")
+		err := s.SetDPUEnrollmentPending("non-existent", time.Now().Add(time.Hour))
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "DPU not found")
+		t.Log("Correctly rejected non-existent DPU")
+	})
+
+	t.Run("LookupByName", func(t *testing.T) {
+		t.Log("Setting pending via DPU name instead of ID")
+		err := s.Add("dpu-pending-2", "bf3-name-test", "192.168.1.101", 50051)
+		require.NoError(t, err)
+
+		expiresAt := time.Now().Add(12 * time.Hour)
+		err = s.SetDPUEnrollmentPending("bf3-name-test", expiresAt)
+		require.NoError(t, err)
+
+		dpu, err := s.Get("dpu-pending-2")
+		require.NoError(t, err)
+		assert.Equal(t, "pending", dpu.Status)
+		t.Log("Successfully set pending via name lookup")
+	})
+}
+
 // TestUpdateDPUEnrollment tests updating a DPU's enrollment status after successful enrollment.
 func TestUpdateDPUEnrollment(t *testing.T) {
 	s := setupTestStore(t)

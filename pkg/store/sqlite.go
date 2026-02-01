@@ -779,6 +779,23 @@ func (s *Store) SetDPUSerialNumber(id, serial string) error {
 	return nil
 }
 
+// SetDPUEnrollmentPending sets a DPU to pending enrollment with an expiration time.
+func (s *Store) SetDPUEnrollmentPending(id string, expiresAt time.Time) error {
+	result, err := s.db.Exec(
+		`UPDATE dpus SET status = 'pending', enrollment_expires_at = ? WHERE id = ? OR name = ?`,
+		expiresAt.Unix(), id, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to set DPU enrollment pending: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("DPU not found: %s", id)
+	}
+	return nil
+}
+
 // UpdateDPUEnrollment updates a DPU's enrollment status after successful enrollment.
 // Sets public_key, kid, key_fingerprint, status='active', clears enrollment_expires_at.
 func (s *Store) UpdateDPUEnrollment(id string, publicKey []byte, fingerprint, kid string) error {
