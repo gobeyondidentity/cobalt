@@ -105,11 +105,8 @@ func BenchmarkJTICacheRecordParallel(b *testing.B) {
 }
 
 // makeProof creates a DPoP proof for benchmarking (helper function).
-// This is a simplified version for benchmark use.
 func makeProof(header dpop.Header, claims dpop.Claims, priv ed25519.PrivateKey) string {
-	// This is a placeholder. In production, use dpop.Generator.
-	// For benchmarks, we need a valid proof that can be validated.
-	gen := dpop.NewGenerator(priv, header.Kid)
-	proof, _ := gen.GenerateProof(claims.HTM, claims.HTU)
+	gen := dpop.NewEd25519Generator(priv)
+	proof, _ := gen.Generate(claims.HTM, claims.HTU, header.Kid)
 	return proof
 }
