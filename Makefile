@@ -103,7 +103,7 @@ test:
 # SSH to the DPU first, then run: make test-dpu
 test-dpu:
 	@echo "Running DPU tests (requires BlueField hardware)..."
-	go test -tags=dpu -v ./test/dpu/...
+	go test -tags=dpu,doca -v ./test/dpu/...
 
 # Run workbench tests (runs on Linux workbench with TMFIFO access)
 test-workbench:
