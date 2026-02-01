@@ -34,7 +34,7 @@ func (s *Server) handleDPUEnrollInit(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req DPUEnrollInitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -47,7 +47,7 @@ func (s *Server) handleDPUEnrollInit(w http.ResponseWriter, r *http.Request) {
 	// Look up DPU by serial
 	dpu, err := s.store.GetDPUBySerial(req.Serial)
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to look up DPU: "+err.Error())
+		writeInternalError(w, r, err, "Failed to look up DPU")
 		return
 	}
 	if dpu == nil {
@@ -70,7 +70,7 @@ func (s *Server) handleDPUEnrollInit(w http.ResponseWriter, r *http.Request) {
 	// Generate challenge
 	challenge, err := enrollment.GenerateChallenge()
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to generate challenge: "+err.Error())
+		writeInternalError(w, r, err, "Failed to generate challenge")
 		return
 	}
 
@@ -90,7 +90,7 @@ func (s *Server) handleDPUEnrollInit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.CreateEnrollmentSession(session); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to create enrollment session: "+err.Error())
+		writeInternalError(w, r, err, "Failed to create enrollment session")
 		return
 	}
 
@@ -128,7 +128,7 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 	// Get DPU by ID from session.DPUID
 	dpu, err := s.store.Get(*session.DPUID)
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to get DPU: "+err.Error())
+		writeInternalError(w, r, err, "Failed to get DPU")
 		return
 	}
 
@@ -156,7 +156,7 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 
 	// Update DPU enrollment: sets public_key, fingerprint, kid, status='active', clears enrollment_expires_at
 	if err := s.store.UpdateDPUEnrollment(dpu.ID, pubKeyBytes, fingerprint, dpuIdentityID); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to update DPU enrollment: "+err.Error())
+		writeInternalError(w, r, err, "Failed to update DPU enrollment")
 		return
 	}
 

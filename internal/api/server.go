@@ -1600,3 +1600,10 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, message stri
 	log.Printf("ERROR: %s %s: %s", r.Method, r.URL.Path, message)
 	writeJSON(w, status, map[string]string{"error": message})
 }
+
+// writeInternalError logs the detailed error internally and returns a generic message to the client.
+// Use this for errors that might leak implementation details.
+func writeInternalError(w http.ResponseWriter, r *http.Request, err error, genericMsg string) {
+	log.Printf("ERROR: %s %s: %s: %v", r.Method, r.URL.Path, genericMsg, err)
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": genericMsg})
+}

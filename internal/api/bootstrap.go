@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,20 +47,15 @@ type EnrollCompleteResponse struct {
 	Fingerprint string `json:"fingerprint"` // SHA256 hex of public key
 }
 
-// bootstrapMu protects concurrent bootstrap attempts.
-var bootstrapMu sync.Mutex
-
 // handleAdminBootstrap handles POST /api/v1/admin/bootstrap.
 // This initiates the bootstrap enrollment flow for the first admin.
+// Concurrency is handled by the database: CompleteBootstrap uses a transaction
+// with uniqueness constraints to ensure only one admin can be created.
 func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
-	// Lock to prevent concurrent bootstrap attempts
-	bootstrapMu.Lock()
-	defer bootstrapMu.Unlock()
-
 	// Check if first admin already exists
 	hasAdmin, err := s.store.HasFirstAdmin()
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to check bootstrap state: "+err.Error())
+		writeInternalError(w, r, err, "Failed to check bootstrap state")
 		return
 	}
 	if hasAdmin {
@@ -72,7 +66,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 	// Check if bootstrap window is still open
 	state, err := s.store.GetBootstrapState()
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to get bootstrap state: "+err.Error())
+		writeInternalError(w, r, err, "Failed to get bootstrap state")
 		return
 	}
 
@@ -91,7 +85,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req BootstrapRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -115,7 +109,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 	// Generate challenge
 	challenge, err := enrollment.GenerateChallenge()
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to generate challenge: "+err.Error())
+		writeInternalError(w, r, err, "Failed to generate challenge")
 		return
 	}
 
@@ -135,7 +129,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.CreateEnrollmentSession(session); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to create enrollment session: "+err.Error())
+		writeInternalError(w, r, err, "Failed to create enrollment session")
 		return
 	}
 
@@ -165,14 +159,14 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req EnrollCompleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	// Get enrollment session
 	session, err := s.store.GetEnrollmentSession(req.EnrollmentID)
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to get enrollment session: "+err.Error())
+		writeInternalError(w, r, err, "Failed to get enrollment session")
 		return
 	}
 	if session == nil {
@@ -253,13 +247,13 @@ func (s *Server) handleBootstrapEnrollComplete(w http.ResponseWriter, r *http.Re
 
 	// Create operator (the admin is also an operator)
 	if err := s.store.CreateOperator(adminID, "admin@localhost", "Bootstrap Admin"); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to create operator: "+err.Error())
+		writeInternalError(w, r, err, "Failed to create operator")
 		return
 	}
 
 	// Activate the operator
 	if err := s.store.UpdateOperatorStatus(adminID, "active"); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to activate operator: "+err.Error())
+		writeInternalError(w, r, err, "Failed to activate operator")
 		return
 	}
 
@@ -274,13 +268,13 @@ func (s *Server) handleBootstrapEnrollComplete(w http.ResponseWriter, r *http.Re
 		Status:         "active",
 	}
 	if err := s.store.CreateAdminKey(adminKey); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to create admin key: "+err.Error())
+		writeInternalError(w, r, err, "Failed to create admin key")
 		return
 	}
 
 	// Mark bootstrap complete
 	if err := s.store.CompleteBootstrap(adminID); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to complete bootstrap: "+err.Error())
+		writeInternalError(w, r, err, "Failed to complete bootstrap")
 		return
 	}
 

@@ -44,7 +44,7 @@ func (s *Server) handleEnrollInit(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req EnrollInitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		writeError(w, r, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -65,7 +65,7 @@ func (s *Server) handleEnrollInit(w http.ResponseWriter, r *http.Request) {
 	// Generate challenge
 	challenge, err := enrollment.GenerateChallenge()
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to generate challenge: "+err.Error())
+		writeInternalError(w, r, err, "Failed to generate challenge")
 		return
 	}
 
@@ -85,7 +85,7 @@ func (s *Server) handleEnrollInit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.CreateEnrollmentSession(session); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to create enrollment session: "+err.Error())
+		writeInternalError(w, r, err, "Failed to create enrollment session")
 		return
 	}
 
@@ -131,7 +131,7 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 
 	inviteCode, err := s.store.GetInviteCodeByID(*session.InviteCodeID)
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to get invite code: "+err.Error())
+		writeInternalError(w, r, err, "Failed to get invite code")
 		return
 	}
 
@@ -164,7 +164,7 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 		// Operator doesn't exist, create new one
 		operatorID := "op_" + uuid.New().String()[:UUIDShortLength]
 		if err := s.store.CreateOperator(operatorID, inviteCode.OperatorEmail, ""); err != nil {
-			writeError(w, r, http.StatusInternalServerError, "Failed to create operator: "+err.Error())
+			writeInternalError(w, r, err, "Failed to create operator")
 			return
 		}
 		operator, _ = s.store.GetOperator(operatorID)
@@ -173,7 +173,7 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 	// Activate the operator if pending
 	if operator.Status == "pending" {
 		if err := s.store.UpdateOperatorStatus(operator.ID, "active"); err != nil {
-			writeError(w, r, http.StatusInternalServerError, "Failed to activate operator: "+err.Error())
+			writeInternalError(w, r, err, "Failed to activate operator")
 			return
 		}
 	}
@@ -196,7 +196,7 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 		KeyFingerprint:    fingerprint,
 	}
 	if err := s.store.CreateKeyMaker(km); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to create keymaker: "+err.Error())
+		writeInternalError(w, r, err, "Failed to create keymaker")
 		return
 	}
 

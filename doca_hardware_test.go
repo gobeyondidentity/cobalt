@@ -11,7 +11,7 @@
 //   - DOCA_PCI_ADDR: DPU PCI address (default: 03:00.0)
 //   - DOCA_REP_PCI_ADDR: Representor PCI address (default: 01:00.0)
 //   - DOCA_SERVER_NAME: ComCh server name (default: secure-infra)
-package main
+package eng
 
 import (
 	"bytes"

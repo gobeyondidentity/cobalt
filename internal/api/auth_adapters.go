@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"strings"
 
 	"github.com/nmelo/secure-infra/pkg/dpop"
@@ -108,7 +109,7 @@ func (v *StoreProofValidator) lookupPublicKey(kid string) ed25519.PublicKey {
 }
 
 // extractJTI extracts the jti claim from a DPoP proof.
-// The proof has already been validated, so we can parse it more simply.
+// The proof has already been validated, so we just need to extract the claim.
 func extractJTI(proof string) string {
 	// Split the JWT into parts
 	parts := strings.Split(proof, ".")
@@ -122,19 +123,14 @@ func extractJTI(proof string) string {
 		return ""
 	}
 
-	// Simple extraction: look for "jti":"<value>"
-	// This is faster than full JSON parsing for a validated token
-	payload := string(payloadBytes)
-	jtiStart := strings.Index(payload, `"jti":"`)
-	if jtiStart == -1 {
+	// Parse as JSON to extract jti claim
+	var claims struct {
+		JTI string `json:"jti"`
+	}
+	if err := json.Unmarshal(payloadBytes, &claims); err != nil {
 		return ""
 	}
-	jtiStart += 7 // len(`"jti":"`)
-	jtiEnd := strings.Index(payload[jtiStart:], `"`)
-	if jtiEnd == -1 {
-		return ""
-	}
-	return payload[jtiStart : jtiStart+jtiEnd]
+	return claims.JTI
 }
 
 // StoreIdentityLookup implements dpop.IdentityLookup by querying the store.
