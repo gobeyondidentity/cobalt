@@ -18,11 +18,24 @@ func TestInitCmd_HappyPath(t *testing.T) {
 
 	// Create temp directory for test config
 	tmpDir := t.TempDir()
-	homeDir := tmpDir
 
-	// Override home directory for dpop paths
+	// Create .bluectl directory structure
+	bluectlDir := filepath.Join(tmpDir, ".bluectl")
+	if err := os.MkdirAll(bluectlDir, 0700); err != nil {
+		t.Fatalf("Failed to create .bluectl directory: %v", err)
+	}
+
+	// Override key paths via environment variables (works on all platforms)
+	os.Setenv("BLUECTL_KEY_PATH", filepath.Join(bluectlDir, "key.pem"))
+	os.Setenv("BLUECTL_KID_PATH", filepath.Join(bluectlDir, "kid"))
+	defer func() {
+		os.Unsetenv("BLUECTL_KEY_PATH")
+		os.Unsetenv("BLUECTL_KID_PATH")
+	}()
+
+	// Also set HOME for config file location
 	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
+	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", origHome)
 
 	t.Log("Setting up mock server that accepts bootstrap requests")
@@ -173,11 +186,24 @@ func TestInitCmd_BootstrapWindowClosed(t *testing.T) {
 
 	// Create temp directory for test config
 	tmpDir := t.TempDir()
-	homeDir := tmpDir
 
-	// Override home directory for dpop paths
+	// Create .bluectl directory structure
+	bluectlDir := filepath.Join(tmpDir, ".bluectl")
+	if err := os.MkdirAll(bluectlDir, 0700); err != nil {
+		t.Fatalf("Failed to create .bluectl directory: %v", err)
+	}
+
+	// Override key paths via environment variables (works on all platforms)
+	os.Setenv("BLUECTL_KEY_PATH", filepath.Join(bluectlDir, "key.pem"))
+	os.Setenv("BLUECTL_KID_PATH", filepath.Join(bluectlDir, "kid"))
+	defer func() {
+		os.Unsetenv("BLUECTL_KEY_PATH")
+		os.Unsetenv("BLUECTL_KID_PATH")
+	}()
+
+	// Also set HOME for config file location
 	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
+	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", origHome)
 
 	t.Log("Setting up mock server that returns window_closed error")
@@ -222,11 +248,24 @@ func TestInitCmd_AlreadyEnrolled(t *testing.T) {
 
 	// Create temp directory for test config
 	tmpDir := t.TempDir()
-	homeDir := tmpDir
 
-	// Override home directory for dpop paths
+	// Create .bluectl directory structure
+	bluectlDir := filepath.Join(tmpDir, ".bluectl")
+	if err := os.MkdirAll(bluectlDir, 0700); err != nil {
+		t.Fatalf("Failed to create .bluectl directory: %v", err)
+	}
+
+	// Override key paths via environment variables (works on all platforms)
+	os.Setenv("BLUECTL_KEY_PATH", filepath.Join(bluectlDir, "key.pem"))
+	os.Setenv("BLUECTL_KID_PATH", filepath.Join(bluectlDir, "kid"))
+	defer func() {
+		os.Unsetenv("BLUECTL_KEY_PATH")
+		os.Unsetenv("BLUECTL_KID_PATH")
+	}()
+
+	// Also set HOME for config file location
 	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
+	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", origHome)
 
 	t.Log("Setting up mock server that returns already_enrolled error")
@@ -271,21 +310,31 @@ func TestInitCmd_AlreadyEnrolledLocally(t *testing.T) {
 
 	// Create temp directory for test config
 	tmpDir := t.TempDir()
-	homeDir := tmpDir
 
-	// Override home directory for dpop paths
+	// Create .bluectl directory structure
+	bluectlDir := filepath.Join(tmpDir, ".bluectl")
+	if err := os.MkdirAll(bluectlDir, 0700); err != nil {
+		t.Fatalf("Failed to create .bluectl directory: %v", err)
+	}
+
+	// Set up key and kid paths
+	keyPath := filepath.Join(bluectlDir, "key.pem")
+	kidPath := filepath.Join(bluectlDir, "kid")
+
+	// Override key paths via environment variables (works on all platforms)
+	os.Setenv("BLUECTL_KEY_PATH", keyPath)
+	os.Setenv("BLUECTL_KID_PATH", kidPath)
+	defer func() {
+		os.Unsetenv("BLUECTL_KEY_PATH")
+		os.Unsetenv("BLUECTL_KID_PATH")
+	}()
+
+	// Also set HOME for config file location
 	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
+	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", origHome)
 
 	t.Log("Creating existing identity files")
-
-	// Create existing identity
-	keyPath, kidPath := dpop.DefaultKeyPaths("bluectl")
-	keyDir := filepath.Dir(keyPath)
-	if err := os.MkdirAll(keyDir, 0700); err != nil {
-		t.Fatalf("Failed to create key directory: %v", err)
-	}
 
 	// Create dummy key file
 	if err := os.WriteFile(keyPath, []byte("dummy-key"), 0600); err != nil {
@@ -320,21 +369,31 @@ func TestInitCmd_ForceReenrollment(t *testing.T) {
 
 	// Create temp directory for test config
 	tmpDir := t.TempDir()
-	homeDir := tmpDir
 
-	// Override home directory for dpop paths
+	// Create .bluectl directory structure
+	bluectlDir := filepath.Join(tmpDir, ".bluectl")
+	if err := os.MkdirAll(bluectlDir, 0700); err != nil {
+		t.Fatalf("Failed to create .bluectl directory: %v", err)
+	}
+
+	// Set up key and kid paths
+	keyPath := filepath.Join(bluectlDir, "key.pem")
+	kidPath := filepath.Join(bluectlDir, "kid")
+
+	// Override key paths via environment variables (works on all platforms)
+	os.Setenv("BLUECTL_KEY_PATH", keyPath)
+	os.Setenv("BLUECTL_KID_PATH", kidPath)
+	defer func() {
+		os.Unsetenv("BLUECTL_KEY_PATH")
+		os.Unsetenv("BLUECTL_KID_PATH")
+	}()
+
+	// Also set HOME for config file location
 	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
+	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", origHome)
 
 	t.Log("Creating existing identity files")
-
-	// Create existing identity
-	keyPath, kidPath := dpop.DefaultKeyPaths("bluectl")
-	keyDir := filepath.Dir(keyPath)
-	if err := os.MkdirAll(keyDir, 0700); err != nil {
-		t.Fatalf("Failed to create key directory: %v", err)
-	}
 
 	// Create dummy key file
 	if err := os.WriteFile(keyPath, []byte("dummy-key"), 0600); err != nil {
@@ -432,11 +491,24 @@ func TestInitCmd_ServerConfigSaved(t *testing.T) {
 
 	// Create temp directory for test config
 	tmpDir := t.TempDir()
-	homeDir := tmpDir
 
-	// Override home directory for dpop paths
+	// Create .bluectl directory structure
+	bluectlDir := filepath.Join(tmpDir, ".bluectl")
+	if err := os.MkdirAll(bluectlDir, 0700); err != nil {
+		t.Fatalf("Failed to create .bluectl directory: %v", err)
+	}
+
+	// Override key paths via environment variables (works on all platforms)
+	os.Setenv("BLUECTL_KEY_PATH", filepath.Join(bluectlDir, "key.pem"))
+	os.Setenv("BLUECTL_KID_PATH", filepath.Join(bluectlDir, "kid"))
+	defer func() {
+		os.Unsetenv("BLUECTL_KEY_PATH")
+		os.Unsetenv("BLUECTL_KID_PATH")
+	}()
+
+	// Also set HOME for config file location
 	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
+	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", origHome)
 
 	// Track enrollment state

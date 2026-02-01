@@ -219,7 +219,40 @@ func CheckFilePermissions(path string) error {
 }
 
 // DefaultKeyPaths returns the default key and kid paths for each client type.
+// Environment variables can override defaults (useful for testing):
+//   - AEGIS_KEY_PATH, AEGIS_KID_PATH
+//   - BLUECTL_KEY_PATH, BLUECTL_KID_PATH
+//   - KM_KEY_PATH, KM_KID_PATH
 func DefaultKeyPaths(clientType string) (keyPath, kidPath string) {
+	// Check for environment variable overrides (useful for testing)
+	switch clientType {
+	case "aegis":
+		if env := os.Getenv("AEGIS_KEY_PATH"); env != "" {
+			kidEnv := os.Getenv("AEGIS_KID_PATH")
+			if kidEnv == "" {
+				kidEnv = filepath.Join(filepath.Dir(env), "kid")
+			}
+			return env, kidEnv
+		}
+	case "bluectl":
+		if env := os.Getenv("BLUECTL_KEY_PATH"); env != "" {
+			kidEnv := os.Getenv("BLUECTL_KID_PATH")
+			if kidEnv == "" {
+				kidEnv = filepath.Join(filepath.Dir(env), "kid")
+			}
+			return env, kidEnv
+		}
+	case "km":
+		if env := os.Getenv("KM_KEY_PATH"); env != "" {
+			kidEnv := os.Getenv("KM_KID_PATH")
+			if kidEnv == "" {
+				kidEnv = filepath.Join(filepath.Dir(env), "kid")
+			}
+			return env, kidEnv
+		}
+	}
+
+	// Fall back to platform defaults
 	homeDir, _ := os.UserHomeDir()
 
 	switch clientType {

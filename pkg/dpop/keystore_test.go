@@ -316,6 +316,81 @@ func TestDefaultKeyPaths(t *testing.T) {
 	t.Log("Default key paths correct for all client types")
 }
 
+func TestDefaultKeyPaths_EnvOverride(t *testing.T) {
+	t.Log("Testing DefaultKeyPaths respects environment variable overrides")
+
+	// Test aegis override
+	t.Run("aegis_override", func(t *testing.T) {
+		os.Setenv("AEGIS_KEY_PATH", "/custom/aegis/key.pem")
+		os.Setenv("AEGIS_KID_PATH", "/custom/aegis/kid")
+		defer func() {
+			os.Unsetenv("AEGIS_KEY_PATH")
+			os.Unsetenv("AEGIS_KID_PATH")
+		}()
+
+		keyPath, kidPath := DefaultKeyPaths("aegis")
+		if keyPath != "/custom/aegis/key.pem" {
+			t.Errorf("aegis key path override: expected /custom/aegis/key.pem, got %s", keyPath)
+		}
+		if kidPath != "/custom/aegis/kid" {
+			t.Errorf("aegis kid path override: expected /custom/aegis/kid, got %s", kidPath)
+		}
+	})
+
+	// Test aegis override with only KEY_PATH (KID_PATH should be derived)
+	t.Run("aegis_override_derived_kid", func(t *testing.T) {
+		os.Setenv("AEGIS_KEY_PATH", "/custom/path/key.pem")
+		os.Unsetenv("AEGIS_KID_PATH")
+		defer os.Unsetenv("AEGIS_KEY_PATH")
+
+		keyPath, kidPath := DefaultKeyPaths("aegis")
+		if keyPath != "/custom/path/key.pem" {
+			t.Errorf("aegis key path override: expected /custom/path/key.pem, got %s", keyPath)
+		}
+		if kidPath != "/custom/path/kid" {
+			t.Errorf("aegis kid path (derived): expected /custom/path/kid, got %s", kidPath)
+		}
+	})
+
+	// Test bluectl override
+	t.Run("bluectl_override", func(t *testing.T) {
+		os.Setenv("BLUECTL_KEY_PATH", "/tmp/test/.bluectl/key.pem")
+		os.Setenv("BLUECTL_KID_PATH", "/tmp/test/.bluectl/kid")
+		defer func() {
+			os.Unsetenv("BLUECTL_KEY_PATH")
+			os.Unsetenv("BLUECTL_KID_PATH")
+		}()
+
+		keyPath, kidPath := DefaultKeyPaths("bluectl")
+		if keyPath != "/tmp/test/.bluectl/key.pem" {
+			t.Errorf("bluectl key path override: expected /tmp/test/.bluectl/key.pem, got %s", keyPath)
+		}
+		if kidPath != "/tmp/test/.bluectl/kid" {
+			t.Errorf("bluectl kid path override: expected /tmp/test/.bluectl/kid, got %s", kidPath)
+		}
+	})
+
+	// Test km override
+	t.Run("km_override", func(t *testing.T) {
+		os.Setenv("KM_KEY_PATH", "/var/lib/km/key.pem")
+		os.Setenv("KM_KID_PATH", "/var/lib/km/kid")
+		defer func() {
+			os.Unsetenv("KM_KEY_PATH")
+			os.Unsetenv("KM_KID_PATH")
+		}()
+
+		keyPath, kidPath := DefaultKeyPaths("km")
+		if keyPath != "/var/lib/km/key.pem" {
+			t.Errorf("km key path override: expected /var/lib/km/key.pem, got %s", keyPath)
+		}
+		if kidPath != "/var/lib/km/kid" {
+			t.Errorf("km kid path override: expected /var/lib/km/kid, got %s", kidPath)
+		}
+	})
+
+	t.Log("Environment variable overrides work correctly")
+}
+
 func TestGenerateKey(t *testing.T) {
 	t.Log("Testing GenerateKey creates valid Ed25519 keypair")
 
