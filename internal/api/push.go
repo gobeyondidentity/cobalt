@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gobeyondidentity/secure-infra/pkg/attestation"
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 	"github.com/gobeyondidentity/secure-infra/pkg/grpcclient"
 	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
@@ -49,13 +50,24 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "target_dpu is required")
 		return
 	}
-	if req.OperatorID == "" {
+
+	// Get operator ID from authenticated identity (DPoP auth middleware sets this)
+	identity := dpop.IdentityFromContext(r.Context())
+	operatorID := ""
+	if identity != nil && identity.OperatorID != "" {
+		operatorID = identity.OperatorID
+	} else if req.OperatorID != "" {
+		// Fallback to request body for backward compatibility
+		operatorID = req.OperatorID
+	}
+
+	if operatorID == "" {
 		writeError(w, r, http.StatusBadRequest, "operator_id is required")
 		return
 	}
 
 	// Check operator suspension status
-	operator, err := s.store.GetOperator(req.OperatorID)
+	operator, err := s.store.GetOperator(operatorID)
 	if err != nil {
 		writeError(w, r, http.StatusUnauthorized, "operator not found")
 		return
@@ -80,7 +92,7 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check authorization
-	authorized, err := s.store.CheckFullAuthorization(req.OperatorID, ca.ID, dpu.ID)
+	authorized, err := s.store.CheckFullAuthorization(operatorID, ca.ID, dpu.ID)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "failed to check authorization: "+err.Error())
 		return
