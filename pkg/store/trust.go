@@ -1,4 +1,3 @@
-// Package store provides SQLite-based storage for DPU registry.
 // This file contains methods for TrustRelationship entities (M2M trust).
 package store
 

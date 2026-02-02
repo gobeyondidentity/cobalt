@@ -1,4 +1,3 @@
-// Package attestation provides attestation verification and gating logic.
 package attestation
 
 import (

@@ -1,4 +1,3 @@
-// Package timeutil provides time formatting utilities for CLI output.
 package timeutil
 
 import (

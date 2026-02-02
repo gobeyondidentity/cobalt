@@ -1,4 +1,3 @@
-// Package transport defines the Transport interface for Host-DPU communication.
 // This abstraction allows multiple transport implementations (DOCA Comch, tmfifo_net,
 // network, mock) to be used interchangeably based on hardware availability.
 package transport

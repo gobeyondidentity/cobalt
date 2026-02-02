@@ -1,4 +1,3 @@
-// Package store provides SQLite-based storage for DPU registry.
 // This file contains methods for enrollment session management.
 package store
 

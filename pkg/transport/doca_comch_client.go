@@ -1,7 +1,6 @@
 //go:build doca
 
-// Package transport provides DOCA ComCh transport for BlueField DPU communication.
-// This file requires the DOCA SDK and BlueField hardware to build.
+// Client-side (host) DOCA ComCh implementation. Requires DOCA SDK.
 package transport
 
 /*

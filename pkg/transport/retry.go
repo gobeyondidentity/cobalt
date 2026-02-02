@@ -1,4 +1,3 @@
-// Package transport provides retry and circuit breaker logic for DOCA ComCh connections.
 package transport
 
 import (

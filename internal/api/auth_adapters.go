@@ -1,4 +1,3 @@
-// Package api implements HTTP API server and adapters.
 package api
 
 import (

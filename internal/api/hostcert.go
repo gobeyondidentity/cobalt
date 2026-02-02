@@ -1,4 +1,3 @@
-// Package api implements the HTTP API server for the dashboard.
 // This file contains the host certificate issuance endpoint.
 package api
 

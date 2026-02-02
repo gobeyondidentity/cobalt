@@ -1,4 +1,3 @@
-// Package api implements the HTTP API server for the dashboard.
 package api
 
 import (

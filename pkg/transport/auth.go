@@ -1,4 +1,3 @@
-// Package transport provides authentication types and helpers for Host-DPU communication.
 package transport
 
 import (

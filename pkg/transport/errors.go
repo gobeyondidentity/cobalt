@@ -1,4 +1,3 @@
-// Package transport error definitions.
 // This file has no build tags so errors are available in all build configurations.
 package transport
 

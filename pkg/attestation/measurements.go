@@ -1,4 +1,3 @@
-// Package attestation provides DICE/SPDM attestation retrieval and validation
 package attestation
 
 import (

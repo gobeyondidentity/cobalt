@@ -1,4 +1,3 @@
-// Package sentry implements the Host Agent functionality.
 package sentry
 
 import (

@@ -1,4 +1,3 @@
-// Package dpop provides DPoP proof types and utilities for RFC 9449 authentication.
 //
 // DPoP (Demonstrating Proof of Possession) binds requests to the caller's key,
 // preventing token theft and replay attacks. This package provides the core types

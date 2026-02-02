@@ -1,4 +1,3 @@
-// Package store provides SQLite-based storage for DPU registry.
 // This file contains the InviteService which combines crypto primitives with store operations.
 package store
 

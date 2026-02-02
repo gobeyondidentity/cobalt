@@ -1,8 +1,7 @@
 //go:build hardware
 
-// Package transport provides hardware integration tests for DOCA ComCh.
-// These tests require real BlueField hardware and are intended for CI nightly builds.
-//
+// Hardware integration tests for DOCA ComCh.
+// Requires real BlueField hardware. Intended for CI nightly builds.
 // Run with: go test -tags=hardware ./pkg/transport/... -v
 package transport
 

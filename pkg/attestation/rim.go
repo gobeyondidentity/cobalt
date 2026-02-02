@@ -1,4 +1,3 @@
-// Package attestation provides DICE/SPDM attestation retrieval and validation
 // via the BlueField BMC Redfish API and NVIDIA RIM service.
 //
 // NOTE: As of January 2026, BlueField-3 CoRIM files are not available in NVIDIA's RIM service.

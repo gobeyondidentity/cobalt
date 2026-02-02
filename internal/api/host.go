@@ -1,4 +1,3 @@
-// Package api implements the HTTP API server for the dashboard.
 // This file contains Host Agent API endpoints for Phase 5.
 package api
 

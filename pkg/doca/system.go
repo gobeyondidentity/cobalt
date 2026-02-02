@@ -1,4 +1,3 @@
-// Package doca provides collectors for DOCA/BlueField system information.
 package doca
 
 import (

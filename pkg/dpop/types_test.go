@@ -1,4 +1,3 @@
-// Package dpop provides DPoP proof types and utilities for RFC 9449 authentication.
 package dpop
 
 import (

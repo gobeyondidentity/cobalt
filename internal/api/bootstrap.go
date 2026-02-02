@@ -1,4 +1,3 @@
-// Package api implements the HTTP API server for the dashboard.
 // This file contains the bootstrap enrollment endpoints for first-admin registration.
 package api
 

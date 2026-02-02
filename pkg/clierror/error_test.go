@@ -1,4 +1,3 @@
-// Package clierror provides structured errors for CLI output.
 package clierror
 
 import (

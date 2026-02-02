@@ -1,4 +1,3 @@
-// Package api contains security-focused tests for the enrollment system.
 //
 // This test file covers all enrollment attack vectors as defined in si-d2y.2.8:
 // - Invite code attacks (invalid, expired, consumed, concurrent, entropy)

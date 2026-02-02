@@ -1,4 +1,3 @@
-// Package store provides SQLite-based storage for DPU registry.
 // This file contains methods for identity entities: Operators, OperatorTenants, KeyMakers, and InviteCodes.
 // Type definitions are in sqlite.go.
 package store

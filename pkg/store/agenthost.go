@@ -1,4 +1,3 @@
-// Package store provides SQLite-based storage for DPU registry.
 // This file contains methods for AgentHost and AgentHostPosture entities (Phase 5: Host Agent).
 package store
 

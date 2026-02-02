@@ -1,4 +1,3 @@
-// Package transport provides communication abstractions for Host-DPU communication.
 //
 // # Tmfifo Transport Architecture
 //

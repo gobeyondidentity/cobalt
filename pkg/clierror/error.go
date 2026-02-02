@@ -1,4 +1,3 @@
-// Package clierror provides structured errors for CLI output with codes,
 // exit codes, and remediation hints.
 package clierror
 

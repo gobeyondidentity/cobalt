@@ -1,4 +1,3 @@
-// Package store provides SQLite-based storage for audit logging.
 package store
 
 import (
