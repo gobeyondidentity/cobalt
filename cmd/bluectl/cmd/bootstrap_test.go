@@ -298,11 +298,11 @@ func TestInitCmd_AlreadyEnrolled(t *testing.T) {
 		t.Fatal("Expected error for already enrolled, got nil")
 	}
 
-	if err.Error() != "first admin already enrolled" {
+	if err.Error() != "server already has an admin enrolled. Use --force to re-enroll" {
 		t.Errorf("Unexpected error message: %v", err)
 	}
 
-	t.Log("Already enrolled error handled correctly")
+	t.Log("Server already enrolled error handled correctly")
 }
 
 func TestInitCmd_AlreadyEnrolledLocally(t *testing.T) {
@@ -357,11 +357,11 @@ func TestInitCmd_AlreadyEnrolledLocally(t *testing.T) {
 		t.Fatal("Expected error for local already enrolled, got nil")
 	}
 
-	if err.Error() != "already enrolled. Use --force to re-enroll" {
+	if err.Error() != "local identity already exists. Use --force to re-enroll" {
 		t.Errorf("Unexpected error message: %v", err)
 	}
 
-	t.Log("Local already enrolled check works correctly")
+	t.Log("Local identity exists check works correctly")
 }
 
 func TestInitCmd_ForceReenrollment(t *testing.T) {

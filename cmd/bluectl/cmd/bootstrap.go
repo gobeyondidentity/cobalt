@@ -107,7 +107,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	if dpop.IsEnrolled(idCfg) {
 		if !force {
-			return fmt.Errorf("already enrolled. Use --force to re-enroll")
+			return fmt.Errorf("local identity already exists. Use --force to re-enroll")
 		}
 		fmt.Println("Removing existing identity (--force)...")
 		// Remove existing key and kid files
@@ -166,11 +166,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("bootstrap window closed")
 
 		case "bootstrap.already_enrolled":
-			fmt.Fprintln(os.Stderr, "Error: First admin already enrolled.")
+			fmt.Fprintln(os.Stderr, "Error: Server already has an admin enrolled.")
 			fmt.Fprintln(os.Stderr)
-			fmt.Fprintln(os.Stderr, "Bootstrap is complete. Ask an existing admin to invite you:")
+			fmt.Fprintln(os.Stderr, "Use --force to re-enroll, or ask an existing admin to invite you:")
 			fmt.Fprintln(os.Stderr, "  bluectl operator invite --email you@example.com")
-			return fmt.Errorf("first admin already enrolled")
+			return fmt.Errorf("server already has an admin enrolled. Use --force to re-enroll")
 		}
 
 		return fmt.Errorf("bootstrap failed: %s", errResp.Error)
