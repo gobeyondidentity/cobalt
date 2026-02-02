@@ -22,7 +22,7 @@ bluectl version --check
 # bluectl version 0.6.0
 #
 # A newer version is available: 0.7.0
-#   Release notes: https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.7.0
+#   Release notes: https://github.com/gobeyondidentity/cobalt/releases/tag/v0.7.0
 #
 # To upgrade:
 #   brew upgrade nmelo/tap/bluectl
@@ -129,7 +129,7 @@ bluectl version | awk '{print $3}'
 
 **Cause:** Install method detection failed
 
-**Solution:** Manually check releases at https://github.com/gobeyondidentity/secure-infra/releases
+**Solution:** Manually check releases at https://github.com/gobeyondidentity/cobalt/releases
 
 ### Cache issues
 

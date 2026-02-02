@@ -1,6 +1,6 @@
 # Hardware Setup: BlueField DPU
 
-Deploy Secure Infrastructure with real BlueField DPUs. This guide covers the full production path including trust relationships between hosts.
+Deploy Project Cobalt with real BlueField DPUs. This guide covers the full production path including trust relationships between hosts.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ Requires Go 1.22+ and Make. See [Clone and Build](#clone-and-build).
 *Skip this section if you installed via package manager.*
 
 ```bash
-git clone git@github.com:gobeyondidentity/secure-infra.git
+git clone git@github.com:gobeyondidentity/cobalt.git
 cd secure-infra
 make aegis
 # Expected:

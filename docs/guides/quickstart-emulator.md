@@ -1,6 +1,6 @@
 # Quickstart: DPU Emulator
 
-Run Secure Infrastructure locally using an emulated DPU instead of real hardware. By the end, you'll automate SSH CA distribution without manual key copying or authorized_keys management.
+Run Project Cobalt locally using an emulated DPU instead of real hardware. By the end, you'll automate SSH CA distribution without manual key copying or authorized_keys management.
 
 **What's a DPU?** A Data Processing Unit is a SmartNIC that handles credential distribution automatically. In production, it verifies host health before delivering credentials, eliminating manual rotation and key sprawl.
 
@@ -50,7 +50,7 @@ Open all three now. If you installed via package manager, skip to Step 1. If bui
 *Skip this section if you installed via package manager.*
 
 ```bash
-git clone https://github.com/gobeyondidentity/secure-infra.git
+git clone https://github.com/gobeyondidentity/cobalt.git
 cd secure-infra
 make
 # Expected:
@@ -77,7 +77,7 @@ nexus              # if installed via package manager
 # or: bin/server   # if built from source
 
 # Expected:
-# Secure Infrastructure Control Plane v0.6.3 starting...
+# Project Cobalt Control Plane v0.6.3 starting...
 # HTTP server listening on :18080
 ```
 

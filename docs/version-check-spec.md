@@ -11,7 +11,7 @@ CLI tools (bluectl, km) should notify users when newer versions are available, w
 Use GitHub Releases API. No custom endpoint needed.
 
 ```
-GET https://api.github.com/repos/gobeyondidentity/secure-infra/releases/latest
+GET https://api.github.com/repos/gobeyondidentity/cobalt/releases/latest
 ```
 
 Response fields used:
@@ -41,7 +41,7 @@ Check for updates and display upgrade instructions.
 bluectl version 0.5.1
 
 A newer version is available: 0.5.2
-  Release notes: https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2
+  Release notes: https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.2
 
 To upgrade:
   brew upgrade nmelo/tap/bluectl
@@ -112,7 +112,7 @@ func DetectInstallMethod() InstallMethod {
 | Apt | `sudo apt update && sudo apt upgrade bluectl` | `sudo apt update && sudo apt upgrade km` |
 | RPM | `sudo dnf upgrade bluectl` | `sudo dnf upgrade km` |
 | Docker | `docker pull ghcr.io/gobeyondidentity/sentry:VERSION` | N/A |
-| Direct | `Download from https://github.com/gobeyondidentity/secure-infra/releases` | Same |
+| Direct | `Download from https://github.com/gobeyondidentity/cobalt/releases` | Same |
 
 For Docker, replace VERSION with the actual new version number.
 
@@ -155,7 +155,7 @@ $XDG_CACHE_HOME/secureinfra/version-cache.json
 ```json
 {
   "latest_version": "0.5.2",
-  "release_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2",
+  "release_url": "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.2",
   "checked_at": "2026-01-20T15:04:05Z"
 }
 ```

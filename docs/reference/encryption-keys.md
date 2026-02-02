@@ -1,6 +1,6 @@
 # Encryption Key Management
 
-Secure Infrastructure encrypts all local databases at rest. This document explains how encryption keys work and when you might need to manage them manually.
+Project Cobalt encrypts all local databases at rest. This document explains how encryption keys work and when you might need to manage them manually.
 
 ## How It Works
 

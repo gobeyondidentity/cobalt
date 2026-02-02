@@ -1,4 +1,4 @@
-# Secure Infrastructure
+# Project Cobalt
 
 **v0.6.11** | [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
@@ -8,7 +8,7 @@ Automated credential lifecycle for AI infrastructure. No manual rotation. No sec
 
 ## Overview
 
-Secure Infrastructure eliminates credential management overhead in GPU clusters. Push credentials once; the system handles distribution, rotation, and cleanup automatically. When you reimage a node, fresh credentials appear without tickets or manual intervention.
+Project Cobalt eliminates credential management overhead in GPU clusters. Push credentials once; the system handles distribution, rotation, and cleanup automatically. When you reimage a node, fresh credentials appear without tickets or manual intervention.
 
 This works because credentials are tied to specific hardware via NVIDIA BlueField DPUs. They can't accidentally spread to other machines, so reimaging a node doesn't require hunting down credentials elsewhere. The DPU verifies host health before any credential operation, giving you automated distribution at scale.
 
@@ -77,7 +77,7 @@ For local development with Docker Compose, see [Local Dev: Docker](docs/guides/l
 ### From Source
 
 ```bash
-git clone git@github.com:gobeyondidentity/secure-infra.git
+git clone git@github.com:gobeyondidentity/cobalt.git
 cd secure-infra
 make
 ```

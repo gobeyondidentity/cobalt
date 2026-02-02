@@ -1,6 +1,6 @@
 # Local Development with Docker Compose
 
-Run Secure Infrastructure locally for development and demos using Docker Compose.
+Run Project Cobalt locally for development and demos using Docker Compose.
 
 ## 1. Prerequisites
 
