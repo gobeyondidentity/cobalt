@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -269,16 +272,75 @@ func IsEnrolled(cfg IdentityConfig) bool {
 // CLI clients should log this at startup when using FileKeyStore.
 const MVPWarning = "Using file-based key storage (MVP mode). Hardware binding required for production."
 
-// mvpWarningOnce ensures the MVP warning is logged only once per session.
+// mvpWarningOnce ensures the MVP warning is logged only once per process.
 var mvpWarningOnce sync.Once
 
-// logMVPWarning logs the MVP warning once per session using the provided logger.
-func logMVPWarning(logger Logger) {
+// sessionMarkerPath returns the path for the MVP warning session marker file.
+func sessionMarkerPath(clientType string) string {
+	keyPath, _ := DefaultKeyPaths(clientType)
+	if keyPath == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(keyPath), ".mvp-session")
+}
+
+// getSessionPPID returns the parent process ID for session tracking.
+// Can be overridden via MVP_TEST_PPID environment variable for testing.
+func getSessionPPID() string {
+	if testPPID := os.Getenv("MVP_TEST_PPID"); testPPID != "" {
+		return testPPID
+	}
+	return strconv.Itoa(os.Getppid())
+}
+
+// shouldShowMVPWarning checks if the MVP warning should be shown for this session.
+// Returns true if the warning hasn't been shown in the current terminal session.
+func shouldShowMVPWarning(clientType string) bool {
+	markerPath := sessionMarkerPath(clientType)
+	if markerPath == "" {
+		return true // Unknown client type, show warning
+	}
+
+	currentPPID := getSessionPPID()
+
+	// Read existing marker
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		return true // File doesn't exist or error reading, show warning
+	}
+
+	// Check if PPID matches current session
+	return strings.TrimSpace(string(data)) != currentPPID
+}
+
+// markMVPWarningShown records that the MVP warning was shown for this session.
+func markMVPWarningShown(clientType string) {
+	markerPath := sessionMarkerPath(clientType)
+	if markerPath == "" {
+		return
+	}
+
+	// Ensure directory exists
+	dir := filepath.Dir(markerPath)
+	os.MkdirAll(dir, 0700)
+
+	// Write current PPID to marker file
+	currentPPID := getSessionPPID()
+	os.WriteFile(markerPath, []byte(currentPPID), 0600)
+}
+
+// logMVPWarning logs the MVP warning once per terminal session using a file-based marker.
+// The warning is shown on the first km command in a terminal session, then suppressed
+// for subsequent commands in the same session (identified by parent shell PID).
+func logMVPWarning(logger Logger, clientType string) {
 	if logger == nil {
 		return
 	}
 	mvpWarningOnce.Do(func() {
-		logger.Warn(MVPWarning)
+		if shouldShowMVPWarning(clientType) {
+			logger.Warn(MVPWarning)
+			markMVPWarningShown(clientType)
+		}
 	})
 }
 
@@ -286,6 +348,16 @@ func logMVPWarning(logger Logger) {
 // This is only intended for use in tests.
 func ResetMVPWarning() {
 	mvpWarningOnce = sync.Once{}
+}
+
+// ResetMVPWarningWithMarker resets both the in-memory state and removes the marker file.
+// This is only intended for use in tests.
+func ResetMVPWarningWithMarker(clientType string) {
+	mvpWarningOnce = sync.Once{}
+	markerPath := sessionMarkerPath(clientType)
+	if markerPath != "" {
+		os.Remove(markerPath)
+	}
 }
 
 // Logger is a simple logging interface for DPoP warnings.
@@ -319,8 +391,8 @@ func NewClientFromConfig(cfg ClientConfig) (*Client, ed25519.PrivateKey, string,
 	keyStore := NewFileKeyStore(keyPath)
 	kidStore := NewFileKIDStore(kidPath)
 
-	// Log MVP warning for file-based keys (once per session)
-	logMVPWarning(cfg.Logger)
+	// Log MVP warning for file-based keys (once per terminal session)
+	logMVPWarning(cfg.Logger, cfg.ClientType)
 
 	idCfg := IdentityConfig{
 		KeyStore:  keyStore,
@@ -360,8 +432,8 @@ func NewClientFromConfig(cfg ClientConfig) (*Client, ed25519.PrivateKey, string,
 // Generates a new keypair and returns the client, private key, and public key.
 // Logs MVP warning for file-based key storage.
 func NewEnrollmentClient(cfg ClientConfig) (*Client, ed25519.PrivateKey, ed25519.PublicKey, error) {
-	// Log MVP warning for file-based keys (once per session)
-	logMVPWarning(cfg.Logger)
+	// Log MVP warning for file-based keys (once per terminal session)
+	logMVPWarning(cfg.Logger, cfg.ClientType)
 
 	// Generate new keypair
 	pubKey, privKey, err := GenerateKey()

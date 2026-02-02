@@ -568,8 +568,10 @@ func TestNewEnrollmentClientLogsWarning(t *testing.T) {
 	// NOT parallel - this test modifies global state (mvpWarningOnce)
 	t.Log("Testing NewEnrollmentClient logs MVP warning")
 
-	// Reset warning state for this test
-	ResetMVPWarning()
+	// Reset warning state and marker file for this test
+	ResetMVPWarningWithMarker("km")
+	// Use unique PPID for this test
+	t.Setenv("MVP_TEST_PPID", "test-enrollment-warning-12345")
 
 	logger := &mockLogger{}
 	cfg := ClientConfig{
@@ -609,10 +611,12 @@ func TestNewEnrollmentClientLogsWarning(t *testing.T) {
 
 func TestMVPWarningLoggedOnce(t *testing.T) {
 	// NOT parallel - this test modifies global state (mvpWarningOnce)
-	t.Log("Testing MVP warning is only logged once per session")
+	t.Log("Testing MVP warning is only logged once per process")
 
-	// Reset warning state for this test
-	ResetMVPWarning()
+	// Reset warning state and marker file for this test
+	ResetMVPWarningWithMarker("km")
+	// Use unique PPID for this test
+	t.Setenv("MVP_TEST_PPID", "test-logged-once-67890")
 
 	logger := &mockLogger{}
 	cfg := ClientConfig{
@@ -621,17 +625,88 @@ func TestMVPWarningLoggedOnce(t *testing.T) {
 		Logger:     logger,
 	}
 
-	// Create multiple enrollment clients
+	// Create multiple enrollment clients within same process
 	_, _, _, _ = NewEnrollmentClient(cfg)
 	_, _, _, _ = NewEnrollmentClient(cfg)
 	_, _, _, _ = NewEnrollmentClient(cfg)
 
-	// Verify warning was logged only once
+	// Verify warning was logged only once (sync.Once within process)
 	if len(logger.warnings) != 1 {
 		t.Errorf("expected warning to be logged exactly once, got %d times", len(logger.warnings))
 	}
 
-	t.Log("MVP warning correctly logged only once")
+	t.Log("MVP warning correctly logged only once per process")
+}
+
+func TestMVPWarningSessionMarker(t *testing.T) {
+	// NOT parallel - this test modifies global state
+	t.Log("Testing MVP warning uses session marker to suppress across processes")
+
+	// Reset warning state and marker file for this test
+	ResetMVPWarningWithMarker("km")
+
+	// Simulate first process in session 1
+	t.Setenv("MVP_TEST_PPID", "session-1-ppid-111")
+	logger1 := &mockLogger{}
+	cfg := ClientConfig{
+		ClientType: "km",
+		ServerURL:  "https://example.com",
+		Logger:     logger1,
+	}
+
+	// First call in session 1 should show warning
+	ResetMVPWarning() // Reset sync.Once to simulate new process
+	_, _, _, _ = NewEnrollmentClient(cfg)
+	if len(logger1.warnings) != 1 {
+		t.Errorf("first call: expected 1 warning, got %d", len(logger1.warnings))
+	}
+	t.Log("First call in session showed warning as expected")
+
+	// Simulate second process in same session 1 (same PPID)
+	logger2 := &mockLogger{}
+	cfg.Logger = logger2
+	ResetMVPWarning() // Reset sync.Once to simulate new process
+	_, _, _, _ = NewEnrollmentClient(cfg)
+	if len(logger2.warnings) != 0 {
+		t.Errorf("second call (same session): expected 0 warnings, got %d", len(logger2.warnings))
+	}
+	t.Log("Second call in same session correctly suppressed warning")
+
+	// Simulate new session (different PPID)
+	t.Setenv("MVP_TEST_PPID", "session-2-ppid-222")
+	logger3 := &mockLogger{}
+	cfg.Logger = logger3
+	ResetMVPWarning() // Reset sync.Once to simulate new process
+	_, _, _, _ = NewEnrollmentClient(cfg)
+	if len(logger3.warnings) != 1 {
+		t.Errorf("new session: expected 1 warning, got %d", len(logger3.warnings))
+	}
+	t.Log("New session correctly showed warning again")
+}
+
+func TestMVPWarningSessionMarkerPath(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing session marker path generation")
+
+	// Test valid client types
+	kmPath := sessionMarkerPath("km")
+	if kmPath == "" {
+		t.Error("km marker path should not be empty")
+	}
+	if !strings.Contains(kmPath, ".km") {
+		t.Errorf("km marker path should be in .km directory, got: %s", kmPath)
+	}
+	if !strings.HasSuffix(kmPath, ".mvp-session") {
+		t.Errorf("marker path should end with .mvp-session, got: %s", kmPath)
+	}
+
+	// Test unknown client type returns empty
+	unknownPath := sessionMarkerPath("unknown")
+	if unknownPath != "" {
+		t.Errorf("unknown client type should return empty path, got: %s", unknownPath)
+	}
+
+	t.Log("Session marker paths generated correctly")
 }
 
 func TestCompleteEnrollment(t *testing.T) {
