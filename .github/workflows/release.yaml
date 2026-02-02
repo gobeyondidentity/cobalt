@@ -344,14 +344,14 @@ jobs:
 
       - name: Create and push multi-arch manifest
         run: |
-          # Create versioned manifest
-          docker manifest create ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }} \
+          # Create versioned manifest (--amend handles re-runs)
+          docker manifest create --amend ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }} \
             ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 \
             ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
           docker manifest push ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}
 
           # Create latest manifest
-          docker manifest create ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:latest \
+          docker manifest create --amend ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:latest \
             ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 \
             ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
           docker manifest push ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:latest
