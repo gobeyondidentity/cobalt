@@ -1241,6 +1241,96 @@ func TestNormalizeFirmwareName_Priority(t *testing.T) {
 	}
 }
 
+func TestRedfishClient_GetSPDMIdentity(t *testing.T) {
+	// GetSPDMIdentity is a trivial wrapper that delegates to GetCertificateChain(ctx, TargetIRoT).
+	// This test verifies the delegation is correct.
+
+	testCertPEM := `-----BEGIN CERTIFICATE-----
+MIIBeTCCASOgAwIBAgIUU5Bc283EaiPcwzSGuq0ZgOGSEg0wDQYJKoZIhvcNAQEL
+BQAwETEPMA0GA1UEAwwGdGVzdENBMB4XDTI2MDEyODIwNDYyNVoXDTI3MDEyODIw
+NDYyNVowETEPMA0GA1UEAwwGdGVzdENBMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJB
+AK0Ka3RU4ISKhFNkiJoMYrVoakjnBVu3I3dMLjNzjFhoH1Z22GvLGiUwC75vQJa1
+Lz8tuDdJGE6AYZjqBUzZ3jMCAwEAAaNTMFEwHQYDVR0OBBYEFOEERuBmBMTjZhZP
++u4wjdYtybAcMB8GA1UdIwQYMBaAFOEERuBmBMTjZhZP+u4wjdYtybAcMA8GA1Ud
+EwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADQQCsveQtgomHTSDCxgy+pkdzO6Q9
+qDTdCAM+3r5jzeiuM5jn0GUZxD7IsnamRzKztHo+MsLO2V19nox+qqS/PKJS
+-----END CERTIFICATE-----`
+
+	t.Run("delegates to GetCertificateChain with TargetIRoT", func(t *testing.T) {
+		t.Log("Creating mock server to verify GetSPDMIdentity uses TargetIRoT")
+
+		requestedTarget := ""
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+
+			// Track which target was requested
+			if strings.Contains(r.URL.Path, "ComponentIntegrity/") {
+				parts := strings.Split(r.URL.Path, "/")
+				for i, part := range parts {
+					if part == "ComponentIntegrity" && i+1 < len(parts) {
+						requestedTarget = parts[i+1]
+						break
+					}
+				}
+			}
+
+			switch {
+			case strings.Contains(r.URL.Path, "Bluefield_DPU_IRoT") && r.Method == "GET" && !strings.Contains(r.URL.Path, "Certificates"):
+				t.Log("Received ComponentIntegrity request for IRoT")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"ComponentIntegrityEnabled":     true,
+					"ComponentIntegrityTypeVersion": "1.1",
+					"SPDM": map[string]interface{}{
+						"IdentityAuthentication": map[string]interface{}{
+							"ResponderAuthentication": map[string]interface{}{
+								"ComponentCertificate": map[string]string{
+									"@odata.id": "/redfish/v1/ComponentIntegrity/Bluefield_DPU_IRoT/Certificates/1",
+								},
+							},
+						},
+					},
+				})
+			case strings.Contains(r.URL.Path, "Certificates/1"):
+				t.Log("Received Certificate request")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"CertificateString": testCertPEM,
+					"CertificateType":   "PEM",
+				})
+			default:
+				t.Logf("Unexpected path: %s", r.URL.Path)
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer server.Close()
+
+		client := newTestRedfishClient(server.URL, "admin", "secret", server.Client())
+
+		t.Log("Calling deprecated GetSPDMIdentity method")
+		result, err := client.GetSPDMIdentity(context.Background())
+		if err != nil {
+			t.Fatalf("GetSPDMIdentity failed: %v", err)
+		}
+
+		t.Logf("Result: Target=%s, SPDMVersion=%s, Certs=%d",
+			result.Target, result.SPDMVersion, len(result.CertificateChain))
+
+		// Verify it requested IRoT target
+		if requestedTarget != string(TargetIRoT) {
+			t.Errorf("expected target %s, got %s", TargetIRoT, requestedTarget)
+		}
+
+		// Verify result matches IRoT target
+		if result.Target != TargetIRoT {
+			t.Errorf("expected result.Target %s, got %s", TargetIRoT, result.Target)
+		}
+		if len(result.CertificateChain) == 0 {
+			t.Error("expected certificate chain to be populated")
+		}
+
+		t.Log("GetSPDMIdentity correctly delegates to GetCertificateChain with TargetIRoT")
+	})
+}
+
 func TestNewRedfishClient_SSRFValidation(t *testing.T) {
 	t.Run("rejects localhost", func(t *testing.T) {
 		t.Log("Testing SSRF validation rejects localhost")

@@ -14,6 +14,17 @@ import (
 	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
+// AttestationClient defines the interface for fetching attestation from DPUs.
+// This abstraction enables testing without real gRPC connections.
+type AttestationClient interface {
+	GetAttestation(ctx context.Context, target string) (*agentv1.GetAttestationResponse, error)
+	Close() error
+}
+
+// AttestationClientFactory creates AttestationClient instances.
+// The default implementation wraps grpcclient.NewClient.
+type AttestationClientFactory func(address string) (AttestationClient, error)
+
 // RefreshResult contains the outcome of an attestation refresh.
 type RefreshResult struct {
 	Success     bool
@@ -27,13 +38,29 @@ const DefaultRefreshTimeout = 10 * time.Second
 
 // Refresher handles auto-refreshing attestation from DPUs.
 type Refresher struct {
-	store   *store.Store
-	Timeout time.Duration // RPC timeout; defaults to DefaultRefreshTimeout
+	store         *store.Store
+	Timeout       time.Duration // RPC timeout; defaults to DefaultRefreshTimeout
+	clientFactory AttestationClientFactory
 }
 
 // NewRefresher creates a new attestation refresher.
 func NewRefresher(s *store.Store) *Refresher {
-	return &Refresher{store: s, Timeout: DefaultRefreshTimeout}
+	return &Refresher{
+		store:         s,
+		Timeout:       DefaultRefreshTimeout,
+		clientFactory: defaultClientFactory,
+	}
+}
+
+// WithClientFactory sets a custom client factory for testing.
+func (r *Refresher) WithClientFactory(f AttestationClientFactory) *Refresher {
+	r.clientFactory = f
+	return r
+}
+
+// defaultClientFactory wraps grpcclient.NewClient to implement AttestationClientFactory.
+func defaultClientFactory(address string) (AttestationClient, error) {
+	return grpcclient.NewClient(address)
 }
 
 // Refresh fetches fresh attestation from a DPU and saves it.
@@ -41,7 +68,11 @@ func NewRefresher(s *store.Store) *Refresher {
 // The triggeredBy field should be the operator email for audit trail.
 func (r *Refresher) Refresh(ctx context.Context, dpuAddress, dpuName, trigger, triggeredBy string) *RefreshResult {
 	// Connect to DPU via gRPC
-	client, err := grpcclient.NewClient(dpuAddress)
+	factory := r.clientFactory
+	if factory == nil {
+		factory = defaultClientFactory
+	}
+	client, err := factory(dpuAddress)
 	if err != nil {
 		return &RefreshResult{
 			Success: false,
