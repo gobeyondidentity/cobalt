@@ -190,13 +190,18 @@ func startEchoServerOnDPU(ctx context.Context, t *testing.T, serverName string, 
 	dpuKillProcess(ctx, t, "dpu_server_test")
 	time.Sleep(500 * time.Millisecond)
 
-	// Start server in background using ssh -f (forks SSH to background properly)
-	// Note: nohup ... & hangs because SSH waits for child file descriptors
-	// Note: Use "sudo env VAR=val" not "sudo VAR=val" - sudo strips env vars
+	// Start server in background with full detachment from SSH session.
+	// Requirements:
+	// - ssh -f: forks SSH after auth so parent returns immediately
+	// - nohup: ignores SIGHUP when SSH session ends
+	// - < /dev/null: closes stdin to prevent fd inheritance blocking SSH
+	// - &: backgrounds process in bash so bash can exit
+	// - sudo env VAR=val: preserves env vars (sudo alone strips them)
+	// Without all of these, the process gets "Killed" when SSH detaches.
 	cmd := fmt.Sprintf(
-		"cd %s && sudo env DPU_SERVER_MODE=echo DOCA_PCI_ADDR=%s DOCA_REP_PCI_ADDR=%s DOCA_SERVER_NAME=%s "+
+		"cd %s && nohup sudo env DPU_SERVER_MODE=echo DOCA_PCI_ADDR=%s DOCA_REP_PCI_ADDR=%s DOCA_SERVER_NAME=%s "+
 			"ECHO_COUNT=%d MAX_MSG_SIZE=%d /tmp/dpu_server_test -test.run=TestDPU_ServerHelper -test.timeout=120s "+
-			"> /tmp/dpu_server.log 2>&1",
+			"> /tmp/dpu_server.log 2>&1 < /dev/null &",
 		dpuRepoPath, defaultDPUPCIAddr, defaultDPURepPCIAddr, serverName, echoCount, maxMsgSize)
 
 	_, err := runCmd(ctx, t, "ssh",
