@@ -21,6 +21,7 @@ SSH_CA_NAME="prod-ca"
 # State tracking
 NEXUS_PID=""
 DPUEMU_PID=""
+DPUEMU2_PID=""
 INVITE_CODE=""
 CLEANUP_DONE=false
 INTERRUPTED=false
@@ -235,6 +236,9 @@ cleanup() {
     fi
     if [[ -n "$DPUEMU_PID" ]] && ps -p "$DPUEMU_PID" > /dev/null 2>&1; then
         kill "$DPUEMU_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$DPUEMU2_PID" ]] && ps -p "$DPUEMU2_PID" > /dev/null 2>&1; then
+        kill "$DPUEMU2_PID" 2>/dev/null || true
     fi
 
     # Also kill any orphaned processes
@@ -593,28 +597,68 @@ step_10_sign_cert() {
 step_11_attestation_failure() {
     print_step 11 "❌" "What Happens When a Node Fails Health Check?"
 
-    print_failure_highlight " SIMULATING UNHEALTHY NODE "
+    print_failure_highlight " DEMONSTRATING ATTESTATION FAILURE "
     echo ""
 
-    print_narrative "Sometimes nodes drift from known-good state. The system catches this automatically..."
+    print_narrative "Sometimes nodes drift from known-good state. Let's add a compromised DPU and see what happens..."
     echo ""
 
-    echo -e "Scenario: A GPU node has outdated firmware or misconfiguration."
-    echo -e "The health check detects the node is out of spec."
+    # Get the script's directory to find the fixture file
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local fixture_path="${script_dir}/../dpuemu/fixtures/bf3-compromised.json"
+
+    # Start a second dpuemu with compromised fixture
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Start a DPU emulator with failed attestation..."
+    print_command "dpuemu serve --fixture bf3-compromised.json --port 18052 &"
+    dpuemu serve --fixture "$fixture_path" --port 18052 > /dev/null 2>&1 &
+    DPUEMU2_PID=$!
+    sleep 2
+
+    if ! ps -p "$DPUEMU2_PID" > /dev/null 2>&1; then
+        print_error "  Failed to start compromised DPU emulator"
+        return
+    fi
+    print_success "  Compromised DPU emulator started on :18052"
     echo ""
 
-    echo -e "${RED}When an operator tries to bind credentials:${RESET}"
+    # Register the compromised DPU
+    run_command "Register the compromised DPU..." "bluectl dpu add localhost:18052 --name compromised-node"
+
+    # Assign to tenant
+    run_command "Assign to tenant..." "bluectl tenant assign $TENANT compromised-node"
+
+    # Grant operator access to the compromised DPU
+    run_command "Grant operator access..." "bluectl operator grant $OPERATOR_EMAIL $TENANT $SSH_CA_NAME compromised-node"
+
+    # Show attestation status (will show INVALID)
+    run_command "Check attestation status..." "bluectl attestation compromised-node"
+
     echo ""
-    echo -e "  ${DIM}\$ km push ssh-ca $SSH_CA_NAME compromised-node${RESET}"
+    print_failure_highlight " ATTESTATION_STATUS_INVALID "
     echo ""
-    echo -e "  ${RED}Error: Attestation failed${RESET}"
-    echo -e "  ${RED}  Status: ATTESTATION_STATUS_INVALID${RESET}"
-    echo -e "  ${RED}  Reason: Firmware measurements do not match expected values${RESET}"
-    echo -e "  ${RED}  Action: Credential bind blocked${RESET}"
+
+    print_narrative "Now watch what happens when the operator tries to push credentials..."
+    echo ""
+
+    # Run the actual push command and show real error
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Attempt to push CA to compromised node..."
+    print_command "km push ssh-ca $SSH_CA_NAME compromised-node"
+    echo ""
+    echo -en "${RED}"
+    km push ssh-ca "$SSH_CA_NAME" compromised-node 2>&1 || true
+    echo -e "${RESET}"
     echo ""
 
     print_failure_highlight " CREDENTIAL PUSH BLOCKED "
     echo ""
+
+    # Clean up compromised DPU emulator
+    if [[ -n "$DPUEMU2_PID" ]] && ps -p "$DPUEMU2_PID" > /dev/null 2>&1; then
+        kill "$DPUEMU2_PID" 2>/dev/null || true
+    fi
 
     print_why \
         "Problem nodes get isolated automatically. No 3am pages." \

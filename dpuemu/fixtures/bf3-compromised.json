@@ -1,0 +1,44 @@
+{
+  "system_info": {
+    "hostname": "compromised-node",
+    "model": "BlueField-3 E-Series DPU 100GbE/HDR100",
+    "serial_number": "COMPROMISED-001",
+    "firmware_version": "bf-bundle-3.0.0-outdated",
+    "doca_version": "",
+    "arm_cores": 16,
+    "memory_gb": 32,
+    "uptime_seconds": 0,
+    "ovs_version": "2.17.0",
+    "kernel_version": "6.8.0-1013-bluefield-64k"
+  },
+  "bridges": [],
+  "flows": {},
+  "attestation": {
+    "status": "ATTESTATION_STATUS_INVALID",
+    "certificates": [],
+    "measurements": {
+      "boot_hash": "sha384:TAMPERED0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "firmware_hash": "sha384:MISMATCH1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "config_hash": "sha384:MODIFIED2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+    }
+  },
+  "health": {
+    "healthy": false,
+    "version": "0.1.0",
+    "uptime_seconds": 0,
+    "components": {
+      "firmware": {
+        "healthy": false,
+        "message": "Firmware measurements do not match expected values"
+      },
+      "secureboot": {
+        "healthy": false,
+        "message": "Secure boot integrity check failed"
+      }
+    }
+  },
+  "_metadata": {
+    "source": "Demo fixture for attestation failure scenario",
+    "description": "Simulates a compromised DPU with failed attestation"
+  }
+}
