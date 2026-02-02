@@ -148,30 +148,39 @@ Examples:
 }
 
 func addDPURemote(ctx context.Context, serverURL, name, host string, port int, offline bool) error {
-	// When using remote server, we always require --name since the server
-	// handles connectivity checks and may not be able to reach the DPU directly
-	if name == "" {
-		// Try to get name from DPU if we can reach it
-		if !offline {
-			fmt.Printf("Checking connectivity to %s:%d...\n", host, port)
-			checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			defer cancel()
+	// Connectivity check (unless --offline)
+	if !offline {
+		fmt.Printf("Checking connectivity to %s:%d...\n", host, port)
+		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-			grpcClient, err := grpcclient.NewClient(fmt.Sprintf("%s:%d", host, port))
-			if err != nil {
-				return fmt.Errorf("cannot connect to DPU agent at %s:%d: %w\n\nUse --name to specify a name manually", host, port, err)
+		grpcClient, err := grpcclient.NewClient(fmt.Sprintf("%s:%d", host, port))
+		if err != nil {
+			if name == "" {
+				return fmt.Errorf("cannot connect to DPU agent at %s:%d: %w\n\nUse --offline with --name to skip connectivity check", host, port, err)
 			}
-			defer grpcClient.Close()
-
-			info, err := grpcClient.GetSystemInfo(checkCtx)
-			if err != nil {
-				return fmt.Errorf("failed to get DPU system info: %w\n\nUse --name to specify a name manually", err)
-			}
-			name = info.Hostname
-			fmt.Printf("Using hostname from agent: %s\n", name)
-		} else {
-			return fmt.Errorf("--name is required when using --offline or when server cannot reach DPU")
+			return fmt.Errorf("cannot connect to DPU agent at %s:%d: %w\n\nUse --offline to skip connectivity check", host, port, err)
 		}
+		defer grpcClient.Close()
+
+		info, err := grpcClient.GetSystemInfo(checkCtx)
+		if err != nil {
+			return fmt.Errorf("failed to get DPU system info: %w", err)
+		}
+
+		// Show DPU identity info
+		fmt.Println("Connected to DPU:")
+		fmt.Printf("  Hostname: %s\n", info.Hostname)
+		if info.SerialNumber != "" {
+			fmt.Printf("  Serial:   %s\n", info.SerialNumber)
+		}
+
+		// Use hostname as name if not provided
+		if name == "" {
+			name = info.Hostname
+		}
+	} else if name == "" {
+		return fmt.Errorf("--name is required when using --offline")
 	}
 
 	if name == "" {

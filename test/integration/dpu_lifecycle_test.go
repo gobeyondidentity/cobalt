@@ -100,10 +100,10 @@ func TestDPURegistrationFlows(t *testing.T) {
 	}
 	logOK(t, fmt.Sprintf("Created tenants: %s, %s", tenantA, tenantB))
 
-	// Step 3: Test DPU add with unreachable address (should succeed but show offline)
-	logStep(t, 3, "Testing DPU add with unreachable address (should succeed with offline status)...")
+	// Step 3: Test DPU add with unreachable address using --offline (skip connectivity check)
+	logStep(t, 3, "Testing DPU add with unreachable address using --offline flag...")
 	badOutput, badErr := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-		"dpu", "add", "10.255.255.255:18051", "--name", "bad-dpu", "--server", "http://localhost:18080")
+		"dpu", "add", "10.255.255.255:18051", "--name", "bad-dpu", "--offline", "--server", "http://localhost:18080")
 
 	if badErr != nil {
 		t.Fatalf("Failed to add unreachable DPU (should succeed with offline status): %v\nOutput: %s", badErr, badOutput)
