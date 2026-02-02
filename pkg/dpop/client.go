@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 // ProofGenerator generates DPoP proofs for HTTP requests.
@@ -139,7 +141,7 @@ func (e *AuthError) UserFriendlyMessage() string {
 	case "dpop.invalid_signature":
 		return "Authentication failed: signature verification failed"
 	case "dpop.invalid_iat":
-		return "Authentication failed: system clock may be out of sync (check NTP)"
+		return clockSyncErrorMessage()
 	case "dpop.method_mismatch":
 		return "Authentication failed: request method mismatch"
 	case "dpop.uri_mismatch":
@@ -160,6 +162,21 @@ func (e *AuthError) UserFriendlyMessage() string {
 // IsClockError returns true if the error suggests clock synchronization issues.
 func (e *AuthError) IsClockError() bool {
 	return e.Code == "dpop.invalid_iat"
+}
+
+// clockSyncErrorMessage returns a user-friendly error message with platform-specific fix commands.
+func clockSyncErrorMessage() string {
+	base := "Authentication failed: system clock is out of sync"
+	switch runtime.GOOS {
+	case "linux":
+		return base + "\nFix: sudo timedatectl set-ntp true"
+	case "darwin":
+		return base + "\nFix: sudo sntp -sS time.apple.com"
+	case "windows":
+		return base + "\nFix: w32tm /resync"
+	default:
+		return base + " (check NTP settings)"
+	}
 }
 
 // IsRevoked returns true if the identity has been revoked.
@@ -252,6 +269,25 @@ func IsEnrolled(cfg IdentityConfig) bool {
 // CLI clients should log this at startup when using FileKeyStore.
 const MVPWarning = "Using file-based key storage (MVP mode). Hardware binding required for production."
 
+// mvpWarningOnce ensures the MVP warning is logged only once per session.
+var mvpWarningOnce sync.Once
+
+// logMVPWarning logs the MVP warning once per session using the provided logger.
+func logMVPWarning(logger Logger) {
+	if logger == nil {
+		return
+	}
+	mvpWarningOnce.Do(func() {
+		logger.Warn(MVPWarning)
+	})
+}
+
+// ResetMVPWarning resets the warning state, allowing it to be logged again.
+// This is only intended for use in tests.
+func ResetMVPWarning() {
+	mvpWarningOnce = sync.Once{}
+}
+
 // Logger is a simple logging interface for DPoP warnings.
 type Logger interface {
 	Warn(msg string)
@@ -283,10 +319,8 @@ func NewClientFromConfig(cfg ClientConfig) (*Client, ed25519.PrivateKey, string,
 	keyStore := NewFileKeyStore(keyPath)
 	kidStore := NewFileKIDStore(kidPath)
 
-	// Log MVP warning for file-based keys
-	if cfg.Logger != nil {
-		cfg.Logger.Warn(MVPWarning)
-	}
+	// Log MVP warning for file-based keys (once per session)
+	logMVPWarning(cfg.Logger)
 
 	idCfg := IdentityConfig{
 		KeyStore:  keyStore,
@@ -326,10 +360,8 @@ func NewClientFromConfig(cfg ClientConfig) (*Client, ed25519.PrivateKey, string,
 // Generates a new keypair and returns the client, private key, and public key.
 // Logs MVP warning for file-based key storage.
 func NewEnrollmentClient(cfg ClientConfig) (*Client, ed25519.PrivateKey, ed25519.PublicKey, error) {
-	// Log MVP warning for file-based keys
-	if cfg.Logger != nil {
-		cfg.Logger.Warn(MVPWarning)
-	}
+	// Log MVP warning for file-based keys (once per session)
+	logMVPWarning(cfg.Logger)
 
 	// Generate new keypair
 	pubKey, privKey, err := GenerateKey()

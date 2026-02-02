@@ -387,13 +387,15 @@ func TestAuthErrorUserFriendlyMessages(t *testing.T) {
 	testCases := []struct {
 		code            string
 		expectedMessage string
+		substringMatch  bool // true if expectedMessage is a substring to match
 	}{
-		{"dpop.missing_proof", "Authentication failed: DPoP proof required"},
-		{"dpop.invalid_proof", "Authentication failed: invalid proof format"},
-		{"dpop.unknown_key", "Authentication failed: key not recognized (re-enrollment may be required)"},
-		{"dpop.invalid_signature", "Authentication failed: signature verification failed"},
-		{"dpop.invalid_iat", "Authentication failed: system clock may be out of sync (check NTP)"},
-		{"auth.revoked", "Access has been revoked. Contact your administrator."},
+		{"dpop.missing_proof", "Authentication failed: DPoP proof required", false},
+		{"dpop.invalid_proof", "Authentication failed: invalid proof format", false},
+		{"dpop.unknown_key", "Authentication failed: key not recognized (re-enrollment may be required)", false},
+		{"dpop.invalid_signature", "Authentication failed: signature verification failed", false},
+		// Clock sync error is platform-specific, check for common prefix
+		{"dpop.invalid_iat", "Authentication failed: system clock is out of sync", true},
+		{"auth.revoked", "Access has been revoked. Contact your administrator.", false},
 	}
 
 	for _, tc := range testCases {
@@ -405,8 +407,14 @@ func TestAuthErrorUserFriendlyMessages(t *testing.T) {
 		}
 
 		msg := authErr.UserFriendlyMessage()
-		if msg != tc.expectedMessage {
-			t.Errorf("code %s: expected %q, got %q", tc.code, tc.expectedMessage, msg)
+		if tc.substringMatch {
+			if !strings.Contains(msg, tc.expectedMessage) {
+				t.Errorf("code %s: expected message to contain %q, got %q", tc.code, tc.expectedMessage, msg)
+			}
+		} else {
+			if msg != tc.expectedMessage {
+				t.Errorf("code %s: expected %q, got %q", tc.code, tc.expectedMessage, msg)
+			}
 		}
 	}
 

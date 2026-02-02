@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -318,6 +319,37 @@ func TestAuthErrorIsClockError(t *testing.T) {
 	t.Log("IsClockError correctly identifies clock-related errors")
 }
 
+func TestClockSyncErrorMessageIncludesFix(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing clock sync error includes platform-specific fix command")
+
+	err := &AuthError{Code: "dpop.invalid_iat"}
+	msg := err.UserFriendlyMessage()
+
+	// Verify the message includes the fix instruction
+	if !strings.Contains(msg, "Fix:") {
+		t.Error("clock sync error should include 'Fix:' instruction")
+	}
+
+	// Verify platform-specific command is present (test for current platform)
+	switch runtime.GOOS {
+	case "linux":
+		if !strings.Contains(msg, "timedatectl") {
+			t.Error("Linux clock sync error should mention timedatectl")
+		}
+	case "darwin":
+		if !strings.Contains(msg, "sntp") {
+			t.Error("macOS clock sync error should mention sntp")
+		}
+	case "windows":
+		if !strings.Contains(msg, "w32tm") {
+			t.Error("Windows clock sync error should mention w32tm")
+		}
+	}
+
+	t.Logf("Clock sync error message on %s: %s", runtime.GOOS, msg)
+}
+
 func TestAuthErrorIsRevoked(t *testing.T) {
 	t.Parallel()
 	t.Log("Testing AuthError.IsRevoked identifies revocation")
@@ -533,8 +565,11 @@ func TestNewClientFromConfigLogsWarning(t *testing.T) {
 }
 
 func TestNewEnrollmentClientLogsWarning(t *testing.T) {
-	t.Parallel()
+	// NOT parallel - this test modifies global state (mvpWarningOnce)
 	t.Log("Testing NewEnrollmentClient logs MVP warning")
+
+	// Reset warning state for this test
+	ResetMVPWarning()
 
 	logger := &mockLogger{}
 	cfg := ClientConfig{
@@ -570,6 +605,33 @@ func TestNewEnrollmentClientLogsWarning(t *testing.T) {
 	}
 
 	t.Log("Enrollment client created with MVP warning logged")
+}
+
+func TestMVPWarningLoggedOnce(t *testing.T) {
+	// NOT parallel - this test modifies global state (mvpWarningOnce)
+	t.Log("Testing MVP warning is only logged once per session")
+
+	// Reset warning state for this test
+	ResetMVPWarning()
+
+	logger := &mockLogger{}
+	cfg := ClientConfig{
+		ClientType: "km",
+		ServerURL:  "https://example.com",
+		Logger:     logger,
+	}
+
+	// Create multiple enrollment clients
+	_, _, _, _ = NewEnrollmentClient(cfg)
+	_, _, _, _ = NewEnrollmentClient(cfg)
+	_, _, _, _ = NewEnrollmentClient(cfg)
+
+	// Verify warning was logged only once
+	if len(logger.warnings) != 1 {
+		t.Errorf("expected warning to be logged exactly once, got %d times", len(logger.warnings))
+	}
+
+	t.Log("MVP warning correctly logged only once")
 }
 
 func TestCompleteEnrollment(t *testing.T) {

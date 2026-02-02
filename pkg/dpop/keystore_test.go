@@ -89,6 +89,51 @@ func TestFileKeyStoreNotFound(t *testing.T) {
 	t.Log("Missing file correctly returns ErrKeyNotFound")
 }
 
+func TestKeyNotFoundErrorIncludesPath(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing KeyNotFoundError includes the file path in error message")
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "specific-key.pem")
+
+	store := NewFileKeyStore(keyPath)
+	_, err := store.Load()
+
+	if err == nil {
+		t.Fatal("expected error for missing key file")
+	}
+
+	// Verify the error message includes the path
+	errMsg := err.Error()
+	if errMsg == "key not found" {
+		t.Error("error message should include the path, but got generic message")
+	}
+	if !containsString(errMsg, keyPath) {
+		t.Errorf("error message should include path %q, got: %s", keyPath, errMsg)
+	}
+
+	// Verify errors.Is still works for backward compatibility
+	if !errors.Is(err, ErrKeyNotFound) {
+		t.Error("KeyNotFoundError should match ErrKeyNotFound via errors.Is")
+	}
+
+	t.Logf("KeyNotFoundError correctly includes path: %s", errMsg)
+}
+
+func containsString(haystack, needle string) bool {
+	return len(haystack) >= len(needle) && (haystack == needle || len(needle) == 0 ||
+		(len(haystack) > 0 && len(needle) > 0 && findString(haystack, needle)))
+}
+
+func findString(haystack, needle string) bool {
+	for i := 0; i <= len(haystack)-len(needle); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
+}
+
 func TestFileKeyStoreInvalidPermissions(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {

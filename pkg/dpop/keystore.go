@@ -42,6 +42,7 @@ type KIDStore interface {
 
 var (
 	// ErrKeyNotFound indicates the key does not exist in storage.
+	// Deprecated: Use KeyNotFoundError for errors with path information.
 	ErrKeyNotFound = errors.New("key not found")
 
 	// ErrInvalidPermissions indicates the key file has insecure permissions.
@@ -56,6 +57,20 @@ var (
 	ErrKIDNotFound = errors.New("kid not found")
 )
 
+// KeyNotFoundError indicates the key does not exist at the specified path.
+type KeyNotFoundError struct {
+	Path string
+}
+
+func (e *KeyNotFoundError) Error() string {
+	return fmt.Sprintf("key not found at %s", e.Path)
+}
+
+// Is allows errors.Is to match against ErrKeyNotFound for backward compatibility.
+func (e *KeyNotFoundError) Is(target error) bool {
+	return target == ErrKeyNotFound
+}
+
 // FileKeyStore stores Ed25519 private keys in PEM-encoded files.
 // It enforces 0600 permissions to protect key confidentiality.
 type FileKeyStore struct {
@@ -68,13 +83,13 @@ func NewFileKeyStore(path string) *FileKeyStore {
 }
 
 // Load loads the private key from the file.
-// Returns ErrKeyNotFound if the file doesn't exist.
+// Returns KeyNotFoundError if the file doesn't exist.
 // Returns ErrInvalidPermissions if the file is accessible to other users.
 func (s *FileKeyStore) Load() (ed25519.PrivateKey, error) {
 	// Check if file exists
 	_, err := os.Stat(s.path)
 	if os.IsNotExist(err) {
-		return nil, ErrKeyNotFound
+		return nil, &KeyNotFoundError{Path: s.path}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("stat key file: %w", err)
