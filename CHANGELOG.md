@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.12] - 2026-02-02
+
+### Added
+- **Enrollment System** for secure onboarding (si-d2y.2):
+  - Bootstrap endpoint for first admin enrollment (si-d2y.2.5)
+  - Operator enrollment endpoints with invite codes (si-d2y.2.4)
+  - DPU enrollment with DICE binding (si-d2y.2.6)
+  - Client enrollment integration (si-d2y.2.7)
+  - Invite code management service (si-d2y.2.3)
+  - Enrollment tables schema (si-d2y.2.1)
+  - Core enrollment library with types, errors, and challenge utilities
+  - Comprehensive enrollment security test suite (si-d2y.2.8)
+- **CLI Enhancements**:
+  - `--output/-o` flag for `km ssh-ca sign` to write certificate to file (si-d2y.2.18)
+  - `--yes/-y` flag for destructive CLI commands to skip confirmation (si-d2y.2.13)
+  - MVP warning shown once per terminal session (si-d2y.2.19)
+  - Operator email and tenant context in `km init` output
+- **Health & Readiness**:
+  - `/health` endpoint for dpuemu (consistency with nexus) (si-d2y.2.17)
+  - `/ready` endpoint for Kubernetes readiness probes
+  - Consolidated health endpoints across services
+- **Testing Infrastructure**:
+  - Shared CLI test utilities package (si-61z.6)
+  - mockhttp package for reusable mock HTTP test servers
+  - Tests for attestation security-critical functions
+  - Tests for pkg/doca with bluefield build tag
+  - Unit tests for zero-coverage packages
+  - `t.Parallel()` for independent tests (si-61z.4)
+  - `t.Log` statements for transport test observability
+  - `t.Helper()` annotations for test utilities
+  - Server config step in demo script (si-d2y.2.16)
+
+### Changed
+- **Project Rename**: Secure Infrastructure renamed to Project Cobalt
+- **CLI Flags**:
+  - `km init --control-plane` migrated to `--server` (si-dct.2)
+  - `aegis --control-plane` renamed to `--server`
+  - `aegis --local-api` removed (simplified CLI)
+  - `BLUECTL_SERVER` env var removed (use `--server` flag)
+  - `SERVER_URL` env var standardized across all CLIs (si-dct.3)
+- **Operator Management**: Operator invite now idempotent with audit logging (si-d2y.2.12)
+- **Module Path**: Changed from `nmelo` to `gobeyondidentity`
+- **Test Refactoring**: Monolithic integration test split into focused modules (si-61z.5)
+- **Makefile Cleanup**: Removed deprecated demo-*, hw-*, qa-*, and release targets
+- **Error Messages**: Clearer bluectl init errors for local vs server state
+
+### Fixed
+- **km push**: Extract operator_id from DPoP context correctly (si-d2y.2.15)
+- **km ssh-ca create**: Server registration now works properly (si-d2y.15)
+- **km state directory**: No longer cross-contaminates with bluectl config
+- **km error messages**: Distinguish config missing from auth failures
+- **km HTTP fallback**: Fixed silent fallback security bug (si-d2y.9)
+- **bluectl dpu add**: Shows connectivity check and device identity
+- **bluectl operator list**: Fixed empty TENANT column
+- **/api/health**: Now bypasses DPoP authentication
+- **DPoP UX**: 4 targeted fixes for better error handling
+- **ComCh cleanup**: Drain events before stop, check actual ctx state
+- **DOCA build tags**: Fixed conflicts for host-side testing
+- **sync.Mutex**: Use Lock instead of RLock (correctness fix)
+- **TestDPU_LargeMessage**: Respects DOCA negotiated limits
+- **DPU tests**: Fixed SSH blocking, process detach, and sudo env issues
+- **Enrollment routes**: Fixed mismatch blocking all enrollment
+- **Unknown DPU status**: Now defaults to Revoked (si-d2y.2.10)
+
 ## [0.6.11] - 2026-01-30
 
 ### Added
