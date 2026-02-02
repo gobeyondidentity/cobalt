@@ -461,7 +461,7 @@ func TestTwoPhaseEnrollment_HappyPath(t *testing.T) {
 	t.Log("Running doEnrollment with mock server")
 
 	// Run enrollment
-	kid, err := doEnrollment("test-invite-code", server.URL)
+	result, err := doEnrollment("test-invite-code", server.URL)
 	if err != nil {
 		t.Fatalf("doEnrollment failed: %v", err)
 	}
@@ -486,8 +486,8 @@ func TestTwoPhaseEnrollment_HappyPath(t *testing.T) {
 	}
 
 	// Verify returned kid
-	if kid != "km_test123" {
-		t.Errorf("Expected kid 'km_test123', got %q", kid)
+	if result.ID != "km_test123" {
+		t.Errorf("Expected kid 'km_test123', got %q", result.ID)
 	}
 
 	t.Log("Two-phase enrollment completed successfully")
@@ -833,14 +833,14 @@ func TestEnrollment_ReturnsKid(t *testing.T) {
 	}))
 	defer server.Close()
 
-	kid, err := doEnrollment("test-code", server.URL)
+	result, err := doEnrollment("test-code", server.URL)
 	if err != nil {
 		t.Fatalf("doEnrollment failed: %v", err)
 	}
 
 	// Verify kid is returned correctly
-	if kid != "km_returned_kid" {
-		t.Errorf("Expected kid 'km_returned_kid', got %q", kid)
+	if result.ID != "km_returned_kid" {
+		t.Errorf("Expected kid 'km_returned_kid', got %q", result.ID)
 	}
 
 	t.Log("doEnrollment correctly returns the kid from server")

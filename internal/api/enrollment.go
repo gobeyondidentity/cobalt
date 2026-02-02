@@ -225,10 +225,19 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 		},
 	})
 
-	// Return response
+	// Get tenant name for response
+	var tenantName string
+	if tenant, err := s.store.GetTenant(inviteCode.TenantID); err == nil {
+		tenantName = tenant.Name
+	}
+
+	// Return response with operator context
 	resp := EnrollCompleteResponse{
-		ID:          keymakerID,
-		Fingerprint: fingerprint,
+		ID:            keymakerID,
+		Fingerprint:   fingerprint,
+		OperatorEmail: inviteCode.OperatorEmail,
+		TenantName:    tenantName,
+		TenantRole:    inviteCode.Role,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

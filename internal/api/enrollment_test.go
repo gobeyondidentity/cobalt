@@ -301,6 +301,18 @@ func TestEnrollComplete_OperatorSession(t *testing.T) {
 		t.Errorf("expected fingerprint %s, got %s", expectedFingerprint, completeResp.Fingerprint)
 	}
 
+	// Verify operator context is returned in response
+	t.Log("Verifying operator context fields in response")
+	if completeResp.OperatorEmail != "operator@example.com" {
+		t.Errorf("expected operator_email 'operator@example.com', got %q", completeResp.OperatorEmail)
+	}
+	if completeResp.TenantName != "Test Tenant" {
+		t.Errorf("expected tenant_name 'Test Tenant', got %q", completeResp.TenantName)
+	}
+	if completeResp.TenantRole != "operator" {
+		t.Errorf("expected tenant_role 'operator', got %q", completeResp.TenantRole)
+	}
+
 	// Verify keymaker was created in database
 	t.Log("Verifying keymaker was stored in database")
 	km, err := server.store.GetKeyMaker(completeResp.ID)

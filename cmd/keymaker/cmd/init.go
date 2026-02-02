@@ -160,15 +160,16 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("Enrolling with server...")
 
 	// Perform two-phase enrollment
-	kid, err := doEnrollment(inviteCode, serverURL)
+	enrollResult, err := doEnrollment(inviteCode, serverURL)
 	if err != nil {
 		return err
 	}
 
 	// Save config
 	config := KMConfig{
-		KID:             kid,
+		KID:             enrollResult.ID,
 		ControlPlaneURL: serverURL,
+		OperatorEmail:   enrollResult.OperatorEmail,
 	}
 
 	configData, _ := json.MarshalIndent(config, "", "  ")
@@ -181,8 +182,18 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Print success output
 	fmt.Println()
-	fmt.Println("Enrolled successfully.")
-	fmt.Printf("  Identity: %s\n", kid)
+	fmt.Println("Bound successfully.")
+	if enrollResult.OperatorEmail != "" {
+		fmt.Printf("  Operator: %s\n", enrollResult.OperatorEmail)
+	}
+	if enrollResult.TenantName != "" {
+		if enrollResult.TenantRole != "" {
+			fmt.Printf("  Tenant: %s (%s)\n", enrollResult.TenantName, enrollResult.TenantRole)
+		} else {
+			fmt.Printf("  Tenant: %s\n", enrollResult.TenantName)
+		}
+	}
+	fmt.Printf("  KeyMaker: %s\n", enrollResult.ID)
 	fmt.Println()
 	fmt.Printf("Config saved to %s\n", configPath)
 
@@ -194,12 +205,21 @@ func runInit(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// enrollmentResult contains the full response from enrollment completion.
+type enrollmentResult struct {
+	ID            string
+	Fingerprint   string
+	OperatorEmail string
+	TenantName    string
+	TenantRole    string
+}
+
 // doEnrollment performs the two-phase enrollment flow:
 // 1. POST /api/v1/enroll/init with invite code to get challenge
 // 2. Generate keypair, sign challenge
 // 3. POST /api/v1/enroll/complete with public key and signed challenge
 // 4. Save identity using dpop.CompleteEnrollment
-func doEnrollment(inviteCode, serverURL string) (string, error) {
+func doEnrollment(inviteCode, serverURL string) (*enrollmentResult, error) {
 	// Phase 1: Initialize enrollment
 	initReq := map[string]string{
 		"code": inviteCode,
@@ -212,13 +232,13 @@ func doEnrollment(inviteCode, serverURL string) (string, error) {
 		strings.NewReader(string(initBody)),
 	)
 	if err != nil {
-		return "", fmt.Errorf("cannot connect to server at %s: %w\nVerify the URL and check your network connection", serverURL, err)
+		return nil, fmt.Errorf("cannot connect to server at %s: %w\nVerify the URL and check your network connection", serverURL, err)
 	}
 	defer resp.Body.Close()
 
 	// Handle error response from init
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", parseEnrollmentError(resp)
+		return nil, parseEnrollmentError(resp)
 	}
 
 	// Parse init response
@@ -227,19 +247,19 @@ func doEnrollment(inviteCode, serverURL string) (string, error) {
 		EnrollmentID string `json:"enrollment_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&initResp); err != nil {
-		return "", fmt.Errorf("failed to parse enrollment init response: %w", err)
+		return nil, fmt.Errorf("failed to parse enrollment init response: %w", err)
 	}
 
 	// Decode challenge from base64
 	challengeBytes, err := base64.StdEncoding.DecodeString(initResp.Challenge)
 	if err != nil {
-		return "", fmt.Errorf("failed to decode challenge: %w", err)
+		return nil, fmt.Errorf("failed to decode challenge: %w", err)
 	}
 
 	// Generate keypair using crypto/rand via dpop package
 	pubKey, privKey, err := dpop.GenerateKeyPair()
 	if err != nil {
-		return "", fmt.Errorf("failed to generate keypair: %w", err)
+		return nil, fmt.Errorf("failed to generate keypair: %w", err)
 	}
 
 	// Sign the challenge (raw bytes) with private key
@@ -259,30 +279,39 @@ func doEnrollment(inviteCode, serverURL string) (string, error) {
 		strings.NewReader(string(completeBody)),
 	)
 	if err != nil {
-		return "", fmt.Errorf("cannot connect to server: %w", err)
+		return nil, fmt.Errorf("cannot connect to server: %w", err)
 	}
 	defer resp2.Body.Close()
 
 	// Handle error response from complete
 	if resp2.StatusCode != http.StatusOK && resp2.StatusCode != http.StatusCreated {
-		return "", parseEnrollmentError(resp2)
+		return nil, parseEnrollmentError(resp2)
 	}
 
 	// Parse complete response
 	var completeResp struct {
-		ID          string `json:"id"`
-		Fingerprint string `json:"fingerprint"`
+		ID            string `json:"id"`
+		Fingerprint   string `json:"fingerprint"`
+		OperatorEmail string `json:"operator_email"`
+		TenantName    string `json:"tenant_name"`
+		TenantRole    string `json:"tenant_role"`
 	}
 	if err := json.NewDecoder(resp2.Body).Decode(&completeResp); err != nil {
-		return "", fmt.Errorf("failed to parse enrollment complete response: %w", err)
+		return nil, fmt.Errorf("failed to parse enrollment complete response: %w", err)
 	}
 
 	// Save identity using dpop utilities (handles key storage with correct permissions)
 	if err := dpop.CompleteEnrollment("km", privKey, completeResp.ID); err != nil {
-		return "", fmt.Errorf("failed to save identity: %w", err)
+		return nil, fmt.Errorf("failed to save identity: %w", err)
 	}
 
-	return completeResp.ID, nil
+	return &enrollmentResult{
+		ID:            completeResp.ID,
+		Fingerprint:   completeResp.Fingerprint,
+		OperatorEmail: completeResp.OperatorEmail,
+		TenantName:    completeResp.TenantName,
+		TenantRole:    completeResp.TenantRole,
+	}, nil
 }
 
 // parseEnrollmentError parses an error response from the enrollment endpoints.

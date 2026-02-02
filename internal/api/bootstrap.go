@@ -44,6 +44,11 @@ type EnrollCompleteRequest struct {
 type EnrollCompleteResponse struct {
 	ID          string `json:"id"`          // e.g., "adm_abc123"
 	Fingerprint string `json:"fingerprint"` // SHA256 hex of public key
+
+	// Operator enrollment context (optional, only for operator enrollments)
+	OperatorEmail string `json:"operator_email,omitempty"`
+	TenantName    string `json:"tenant_name,omitempty"`
+	TenantRole    string `json:"tenant_role,omitempty"`
 }
 
 // handleAdminBootstrap handles POST /api/v1/admin/bootstrap.
