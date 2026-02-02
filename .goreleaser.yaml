@@ -171,8 +171,8 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/gobeyondidentity/secure-infra"
-    description: "CLI for managing BlueField DPUs via Secure Infrastructure"
+    homepage: "https://github.com/gobeyondidentity/cobalt"
+    description: "CLI for managing BlueField DPUs via Project Cobalt"
     license: "Apache-2.0"
     install: |
       bin.install "bluectl"
@@ -187,8 +187,8 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/gobeyondidentity/secure-infra"
-    description: "Key management CLI for Secure Infrastructure"
+    homepage: "https://github.com/gobeyondidentity/cobalt"
+    description: "Key management CLI for Project Cobalt"
     license: "Apache-2.0"
     install: |
       bin.install "km"
@@ -203,8 +203,8 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/gobeyondidentity/secure-infra"
-    description: "Sentry host agent for Secure Infrastructure attestation"
+    homepage: "https://github.com/gobeyondidentity/cobalt"
+    description: "Sentry host agent for Project Cobalt attestation"
     license: "Apache-2.0"
     install: |
       bin.install "sentry"
@@ -219,8 +219,8 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/gobeyondidentity/secure-infra"
-    description: "Nexus control plane for Secure Infrastructure"
+    homepage: "https://github.com/gobeyondidentity/cobalt"
+    description: "Nexus control plane for Project Cobalt"
     license: "Apache-2.0"
     install: |
       bin.install "control-plane" => "nexus"
@@ -235,8 +235,8 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/gobeyondidentity/secure-infra"
-    description: "DPU emulator for Secure Infrastructure local development"
+    homepage: "https://github.com/gobeyondidentity/cobalt"
+    description: "DPU emulator for Project Cobalt local development"
     license: "Apache-2.0"
     install: |
       bin.install "dpuemu"
@@ -250,9 +250,9 @@ nfpms:
     ids:
       - bluectl
     vendor: Beyond Identity
-    homepage: https://github.com/gobeyondidentity/secure-infra
+    homepage: https://github.com/gobeyondidentity/cobalt
     maintainer: Beyond Identity <support@beyondidentity.com>
-    description: CLI for managing BlueField DPUs via Secure Infrastructure
+    description: CLI for managing BlueField DPUs via Project Cobalt
     license: Apache-2.0
     formats:
       - deb
@@ -266,9 +266,9 @@ nfpms:
     ids:
       - km
     vendor: Beyond Identity
-    homepage: https://github.com/gobeyondidentity/secure-infra
+    homepage: https://github.com/gobeyondidentity/cobalt
     maintainer: Beyond Identity <support@beyondidentity.com>
-    description: Key management CLI for Secure Infrastructure
+    description: Key management CLI for Project Cobalt
     license: Apache-2.0
     formats:
       - deb
@@ -283,9 +283,9 @@ nfpms:
     ids:
       - host-agent
     vendor: Beyond Identity
-    homepage: https://github.com/gobeyondidentity/secure-infra
+    homepage: https://github.com/gobeyondidentity/cobalt
     maintainer: Beyond Identity <support@beyondidentity.com>
-    description: Sentry - Secure Infrastructure host agent for attestation and posture collection
+    description: Sentry - Project Cobalt host agent for attestation and posture collection
     license: Apache-2.0
     formats:
       - deb
@@ -316,9 +316,9 @@ nfpms:
     ids:
       - control-plane
     vendor: Beyond Identity
-    homepage: https://github.com/gobeyondidentity/secure-infra
+    homepage: https://github.com/gobeyondidentity/cobalt
     maintainer: Beyond Identity <support@beyondidentity.com>
-    description: Nexus - Secure Infrastructure control plane for policy enforcement and attestation verification
+    description: Nexus - Project Cobalt control plane for policy enforcement and attestation verification
     license: Apache-2.0
     formats:
       - deb
@@ -347,7 +347,7 @@ nfpms:
 release:
   github:
     owner: gobeyondidentity
-    name: secure-infra
+    name: cobalt
   draft: false
   prerelease: auto
   name_template: "v{{.Version}}"
