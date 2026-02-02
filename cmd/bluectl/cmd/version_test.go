@@ -1,14 +1,13 @@
 package cmd
 
 import (
-	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/gobeyondidentity/secure-infra/internal/testutil/cli"
 	"github.com/gobeyondidentity/secure-infra/internal/testutil/mockhttp"
 	"github.com/gobeyondidentity/secure-infra/internal/version"
 	"github.com/gobeyondidentity/secure-infra/internal/versioncheck"
@@ -16,31 +15,21 @@ import (
 
 func TestVersionCommand_BasicOutput(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
-	// Test that version command shows current version
+	t.Log("Test that version command shows current version")
+
 	cmd := newVersionCmd()
-
-	// Capture output
-	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stdout)
-
-	// Execute without --check flag
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("version command failed: %v", err)
-	}
-
-	output := stdout.String()
+	result := cli.Run(cmd)
+	result.AssertSuccess(t)
 
 	// Should contain "bluectl version X.Y.Z"
 	expectedPrefix := "bluectl version " + version.Version
-	if !strings.HasPrefix(strings.TrimSpace(output), expectedPrefix) {
-		t.Errorf("expected output to start with %q, got %q", expectedPrefix, output)
-	}
+	result.AssertPrefix(t, expectedPrefix)
 }
 
 func TestVersionCommand_CheckFlag_UpdateAvailable(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
+	t.Log("Test that version --check shows newer version available")
+
 	// Save and restore original version (may be "dev" in dev builds)
 	originalVersion := version.Version
 	version.Version = "1.0.0"
@@ -67,42 +56,26 @@ func TestVersionCommand_CheckFlag_UpdateAvailable(t *testing.T) {
 	}
 
 	cmd := newVersionCmdWithChecker(checker)
-
-	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stdout)
-	cmd.SetArgs([]string{"--check"})
-
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("version --check failed: %v", err)
-	}
-
-	output := stdout.String()
+	result := cli.Run(cmd, "--check")
+	result.AssertSuccess(t)
 
 	// Should show current version
-	if !strings.Contains(output, "bluectl version "+version.Version) {
-		t.Errorf("expected output to contain current version, got %q", output)
-	}
+	result.AssertContains(t, "bluectl version "+version.Version)
 
 	// Should show newer version available
-	if !strings.Contains(output, "A newer version is available: 99.99.99") {
-		t.Errorf("expected output to contain newer version message, got %q", output)
-	}
+	result.AssertContains(t, "A newer version is available: 99.99.99")
 
 	// Should show release notes URL
-	if !strings.Contains(output, "Release notes:") {
-		t.Errorf("expected output to contain release notes, got %q", output)
-	}
+	result.AssertContains(t, "Release notes:")
 
 	// Should show upgrade command
-	if !strings.Contains(output, "To upgrade:") {
-		t.Errorf("expected output to contain upgrade instructions, got %q", output)
-	}
+	result.AssertContains(t, "To upgrade:")
 }
 
 func TestVersionCommand_CheckFlag_NoUpdate(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
+	t.Log("Test that version --check shows up to date when current")
+
 	// Mock server that returns current version
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -125,32 +98,20 @@ func TestVersionCommand_CheckFlag_NoUpdate(t *testing.T) {
 	}
 
 	cmd := newVersionCmdWithChecker(checker)
-
-	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stdout)
-	cmd.SetArgs([]string{"--check"})
-
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("version --check failed: %v", err)
-	}
-
-	output := stdout.String()
+	result := cli.Run(cmd, "--check")
+	result.AssertSuccess(t)
 
 	// Should show current version
-	if !strings.Contains(output, "bluectl version "+version.Version) {
-		t.Errorf("expected output to contain current version, got %q", output)
-	}
+	result.AssertContains(t, "bluectl version "+version.Version)
 
 	// Should indicate no update available
-	if !strings.Contains(output, "You are running the latest version") {
-		t.Errorf("expected 'latest version' message, got %q", output)
-	}
+	result.AssertContains(t, "You are running the latest version")
 }
 
 func TestVersionCommand_CheckFlag_NetworkError(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
+	t.Log("Test that version --check handles network errors gracefully")
+
 	// Mock server that returns an error using mockhttp builder
 	url, close := mockhttp.New().
 		Status("/repos/gobeyondidentity/secure-infra/releases/latest", http.StatusServiceUnavailable).
@@ -168,32 +129,20 @@ func TestVersionCommand_CheckFlag_NetworkError(t *testing.T) {
 	}
 
 	cmd := newVersionCmdWithChecker(checker)
-
-	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stdout)
-	cmd.SetArgs([]string{"--check"})
-
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("version --check should not error on network failure: %v", err)
-	}
-
-	output := stdout.String()
+	result := cli.Run(cmd, "--check")
+	result.AssertSuccess(t)
 
 	// Should still show current version
-	if !strings.Contains(output, "bluectl version "+version.Version) {
-		t.Errorf("expected output to contain current version, got %q", output)
-	}
+	result.AssertContains(t, "bluectl version "+version.Version)
 
 	// Should show graceful error message
-	if !strings.Contains(output, "Could not check for updates") {
-		t.Errorf("expected graceful error message, got %q", output)
-	}
+	result.AssertContains(t, "Could not check for updates")
 }
 
 func TestVersionCommand_SkipUpdateCheck(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
+	t.Log("Test that version --skip-update-check does not contact server")
+
 	// Server should NOT be called when --skip-update-check is set
 	serverCalled := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -212,36 +161,25 @@ func TestVersionCommand_SkipUpdateCheck(t *testing.T) {
 	}
 
 	cmd := newVersionCmdWithChecker(checker)
-
-	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stdout)
-	cmd.SetArgs([]string{"--skip-update-check"})
-
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("version --skip-update-check failed: %v", err)
-	}
+	result := cli.Run(cmd, "--skip-update-check")
+	result.AssertSuccess(t)
 
 	if serverCalled {
 		t.Error("server should not be called when --skip-update-check is set")
 	}
 
-	output := stdout.String()
-
 	// Should only show version
-	if !strings.Contains(output, "bluectl version "+version.Version) {
-		t.Errorf("expected output to contain version, got %q", output)
-	}
+	result.AssertContains(t, "bluectl version "+version.Version)
 
 	// Should NOT contain update check messages
-	if strings.Contains(output, "newer version") || strings.Contains(output, "latest version") {
-		t.Errorf("should not contain update check messages, got %q", output)
-	}
+	result.AssertNotContains(t, "newer version")
+	result.AssertNotContains(t, "latest version")
 }
 
 func TestVersionCommand_NoFlags_ShowsOnlyVersion(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
+	t.Log("Test that version without flags shows only version")
+
 	// Without flags, should only show version (no network call)
 	serverCalled := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -260,54 +198,35 @@ func TestVersionCommand_NoFlags_ShowsOnlyVersion(t *testing.T) {
 	}
 
 	cmd := newVersionCmdWithChecker(checker)
-
-	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stdout)
-	// No args
-
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("version command failed: %v", err)
-	}
+	result := cli.Run(cmd)
+	result.AssertSuccess(t)
 
 	if serverCalled {
 		t.Error("server should not be called without --check flag")
 	}
 
-	output := stdout.String()
 	expected := "bluectl version " + version.Version + "\n"
-	if output != expected {
-		t.Errorf("expected exactly %q, got %q", expected, output)
-	}
+	result.AssertExact(t, expected)
 }
 
 func TestVersionCommand_OutputFormat(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
-	// Verify exact output format matches spec
+	t.Log("Verify exact output format matches spec")
+
 	cmd := newVersionCmd()
-
-	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stdout)
-
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("version command failed: %v", err)
-	}
-
-	output := stdout.String()
+	result := cli.Run(cmd)
+	result.AssertSuccess(t)
 
 	// Should be exactly "bluectl version X.Y.Z\n"
 	expected := "bluectl version " + version.Version + "\n"
-	if output != expected {
-		t.Errorf("output format mismatch:\nexpected: %q\ngot:      %q", expected, output)
-	}
+	result.AssertExact(t, expected)
 }
 
 // TestVersionCommandRegistered verifies version command is added to root
 func TestVersionCommandRegistered(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
+	t.Log("Verify version command is registered in rootCmd")
+
 	// Find version command in rootCmd
 	found := false
 	for _, cmd := range rootCmd.Commands() {
@@ -325,6 +244,8 @@ func TestVersionCommandRegistered(t *testing.T) {
 // TestRootCmdVersionFieldRemoved verifies we removed the built-in Version field
 func TestRootCmdVersionFieldRemoved(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
+	t.Log("Verify rootCmd.Version is empty (we use version subcommand)")
+
 	// rootCmd.Version should be empty since we use a subcommand instead
 	if rootCmd.Version != "" {
 		t.Errorf("rootCmd.Version should be empty (we use version subcommand), got %q", rootCmd.Version)

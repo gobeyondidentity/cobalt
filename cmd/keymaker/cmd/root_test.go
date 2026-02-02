@@ -1,9 +1,10 @@
 package cmd
 
 import (
-	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/gobeyondidentity/secure-infra/internal/testutil/cli"
 )
 
 func TestRootCmd_ShortContainsEmoji(t *testing.T) {
@@ -19,26 +20,14 @@ func TestRootCmd_HelpShowsSubcommands(t *testing.T) {
 	// Cannot run in parallel - uses shared global rootCmd
 	t.Log("Verifying help output shows available subcommands")
 
-	var stdout bytes.Buffer
-	rootCmd.SetOut(&stdout)
-	rootCmd.SetArgs([]string{"--help"})
-
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("help command failed: %v", err)
-	}
-
-	output := stdout.String()
+	result := cli.Run(rootCmd, "--help")
+	result.AssertSuccess(t)
 
 	// Should contain "Available Commands" section
-	if !strings.Contains(output, "Available Commands") {
-		t.Errorf("expected help output to contain 'Available Commands', got:\n%s", output)
-	}
+	result.AssertContains(t, "Available Commands")
 
 	// Should list help command
-	if !strings.Contains(output, "help") {
-		t.Errorf("expected help output to list 'help' subcommand, got:\n%s", output)
-	}
+	result.AssertContains(t, "help")
 }
 
 func TestRootCmd_ShortDescription(t *testing.T) {
