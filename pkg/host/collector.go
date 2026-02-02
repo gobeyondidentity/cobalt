@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -74,7 +72,7 @@ func (c *Collector) CollectHostInfo(ctx context.Context) (*HostInfo, error) {
 	}
 
 	// Hostname
-	hostname, err := os.Hostname()
+	hostname, err := osHostname()
 	if err == nil {
 		info.Hostname = hostname
 	}
@@ -86,7 +84,7 @@ func (c *Collector) CollectHostInfo(ctx context.Context) (*HostInfo, error) {
 	}
 
 	// Kernel version
-	if data, err := os.ReadFile("/proc/version"); err == nil {
+	if data, err := osReadFile("/proc/version"); err == nil {
 		parts := strings.Fields(string(data))
 		if len(parts) >= 3 {
 			info.KernelVersion = parts[2]
@@ -105,11 +103,11 @@ func (c *Collector) CollectHostInfo(ctx context.Context) (*HostInfo, error) {
 // CollectGPUInfo gathers GPU information using nvidia-smi.
 func (c *Collector) CollectGPUInfo(ctx context.Context) ([]GPUInfo, error) {
 	// Check if nvidia-smi exists
-	if _, err := exec.LookPath("nvidia-smi"); err != nil {
+	if _, err := execLookPath("nvidia-smi"); err != nil {
 		return nil, nil // No NVIDIA GPUs or drivers not installed
 	}
 
-	cmd := exec.CommandContext(ctx, "nvidia-smi",
+	cmd := execCommand(ctx, "nvidia-smi",
 		"--query-gpu=index,name,uuid,driver_version,memory.total,temperature.gpu,power.draw,utilization.gpu",
 		"--format=csv,noheader,nounits")
 
@@ -162,12 +160,12 @@ func (c *Collector) CollectSecurityInfo(ctx context.Context) (*SecurityInfo, err
 	info := &SecurityInfo{}
 
 	// Check Secure Boot
-	if data, err := os.ReadFile("/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"); err == nil {
+	if data, err := osReadFile("/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"); err == nil {
 		if len(data) >= 5 {
 			info.SecureBootEnabled = data[4] == 1
 		}
 		info.UEFIMode = true
-	} else if _, err := os.Stat("/sys/firmware/efi"); err == nil {
+	} else if _, err := osStat("/sys/firmware/efi"); err == nil {
 		info.UEFIMode = true
 	}
 
@@ -191,7 +189,7 @@ func (c *Collector) CollectDPUConnections(ctx context.Context) ([]DPUConnection,
 	var connections []DPUConnection
 
 	// Look for rshim devices
-	matches, err := filepath.Glob("/dev/rshim*")
+	matches, err := filepathGlob("/dev/rshim*")
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +205,7 @@ func (c *Collector) CollectDPUConnections(ctx context.Context) ([]DPUConnection,
 		}
 
 		// Try to get name from rshim path
-		base := filepath.Base(rshimPath)
+		base := filepathBase(rshimPath)
 		conn.Name = base
 
 		// Try to find PCI address
@@ -225,7 +223,7 @@ func (c *Collector) CollectDPUConnections(ctx context.Context) ([]DPUConnection,
 // Helper functions
 
 func (c *Collector) readOSRelease() (map[string]string, error) {
-	data, err := os.ReadFile("/etc/os-release")
+	data, err := osReadFile("/etc/os-release")
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +242,7 @@ func (c *Collector) readOSRelease() (map[string]string, error) {
 }
 
 func (c *Collector) getMemoryGB() int64 {
-	data, err := os.ReadFile("/proc/meminfo")
+	data, err := osReadFile("/proc/meminfo")
 	if err != nil {
 		return 0
 	}
@@ -265,7 +263,7 @@ func (c *Collector) getMemoryGB() int64 {
 
 func (c *Collector) getUptime() int64 {
 	// Read uptime from /proc/uptime (Linux)
-	data, err := os.ReadFile("/proc/uptime")
+	data, err := osReadFile("/proc/uptime")
 	if err != nil {
 		return 0
 	}
@@ -281,14 +279,14 @@ func (c *Collector) getCUDAVersion(ctx context.Context) string {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader")
+	cmd := execCommand(ctx, "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader")
 	output, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
 
 	// Try nvcc for CUDA version
-	nvccCmd := exec.CommandContext(ctx, "nvcc", "--version")
+	nvccCmd := execCommand(ctx, "nvcc", "--version")
 	nvccOutput, err := nvccCmd.Output()
 	if err == nil {
 		lines := strings.Split(string(nvccOutput), "\n")
@@ -308,9 +306,9 @@ func (c *Collector) getCUDAVersion(ctx context.Context) string {
 
 func (c *Collector) getTPMVersion() (string, error) {
 	// Check TPM 2.0
-	if _, err := os.Stat("/dev/tpm0"); err == nil {
+	if _, err := osStat("/dev/tpm0"); err == nil {
 		// Try to read TPM version from sysfs
-		if data, err := os.ReadFile("/sys/class/tpm/tpm0/tpm_version_major"); err == nil {
+		if data, err := osReadFile("/sys/class/tpm/tpm0/tpm_version_major"); err == nil {
 			version := strings.TrimSpace(string(data))
 			if version == "2" {
 				return "2.0", nil
@@ -321,7 +319,7 @@ func (c *Collector) getTPMVersion() (string, error) {
 	}
 
 	// Check TPM 1.2
-	if _, err := os.Stat("/dev/tpm"); err == nil {
+	if _, err := osStat("/dev/tpm"); err == nil {
 		return "1.2", nil
 	}
 
@@ -333,7 +331,7 @@ func (c *Collector) getFirewallStatus(ctx context.Context) string {
 	defer cancel()
 
 	// Try ufw first (Ubuntu/Debian)
-	if cmd := exec.CommandContext(ctx, "ufw", "status"); cmd != nil {
+	if cmd := execCommand(ctx, "ufw", "status"); cmd != nil {
 		if output, err := cmd.Output(); err == nil {
 			if strings.Contains(string(output), "active") {
 				return "active"
@@ -343,14 +341,14 @@ func (c *Collector) getFirewallStatus(ctx context.Context) string {
 	}
 
 	// Try firewalld (RHEL/Fedora)
-	if cmd := exec.CommandContext(ctx, "firewall-cmd", "--state"); cmd != nil {
+	if cmd := execCommand(ctx, "firewall-cmd", "--state"); cmd != nil {
 		if output, err := cmd.Output(); err == nil {
 			return strings.TrimSpace(string(output))
 		}
 	}
 
 	// Try iptables
-	if cmd := exec.CommandContext(ctx, "iptables", "-L", "-n"); cmd != nil {
+	if cmd := execCommand(ctx, "iptables", "-L", "-n"); cmd != nil {
 		if _, err := cmd.Output(); err == nil {
 			return "iptables"
 		}
@@ -364,11 +362,11 @@ func (c *Collector) getSELinuxStatus(ctx context.Context) string {
 	defer cancel()
 
 	// Check if SELinux is available
-	if _, err := os.Stat("/etc/selinux"); os.IsNotExist(err) {
+	if _, err := osStat("/etc/selinux"); os.IsNotExist(err) {
 		return "n/a"
 	}
 
-	cmd := exec.CommandContext(ctx, "getenforce")
+	cmd := execCommand(ctx, "getenforce")
 	output, err := cmd.Output()
 	if err != nil {
 		return "n/a"
@@ -380,14 +378,14 @@ func (c *Collector) getSELinuxStatus(ctx context.Context) string {
 func (c *Collector) findPCIForRShim(rshimName string) (string, error) {
 	// rshim devices are numbered, try to find corresponding mlx5 device
 	// This is a simplified implementation
-	matches, err := filepath.Glob("/sys/class/infiniband/mlx5_*/device")
+	matches, err := filepathGlob("/sys/class/infiniband/mlx5_*/device")
 	if err != nil {
 		return "", err
 	}
 
 	for _, match := range matches {
 		// Get the PCI address from symlink
-		target, err := os.Readlink(match)
+		target, err := osReadlink(match)
 		if err != nil {
 			continue
 		}

@@ -36,9 +36,20 @@ func NewClient(addr string) (*Client, error) {
 	}, nil
 }
 
+// NewClientWithService creates a client with injected dependencies for testing.
+func NewClientWithService(conn *grpc.ClientConn, client hostv1.HostAgentServiceClient) *Client {
+	return &Client{
+		conn:   conn,
+		client: client,
+	}
+}
+
 // Close closes the gRPC connection.
 func (c *Client) Close() error {
-	return c.conn.Close()
+	if c.conn != nil {
+		return c.conn.Close()
+	}
+	return nil
 }
 
 // GetHostInfo returns basic information about the host machine.

@@ -32,6 +32,14 @@ func NewClient(addr string) (*Client, error) {
 	}, nil
 }
 
+// NewClientWithService creates a client with injected dependencies for testing.
+func NewClientWithService(conn *grpc.ClientConn, client agentv1.DPUAgentServiceClient) *Client {
+	return &Client{
+		conn:   conn,
+		client: client,
+	}
+}
+
 // Close closes the gRPC connection.
 func (c *Client) Close() error {
 	if c.conn != nil {

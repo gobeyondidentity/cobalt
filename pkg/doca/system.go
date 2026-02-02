@@ -4,8 +4,6 @@ package doca
 import (
 	"bufio"
 	"context"
-	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -57,17 +55,17 @@ func (c *Collector) Collect(ctx context.Context) (*SystemInfo, error) {
 	info := &SystemInfo{}
 
 	// Hostname
-	if hostname, err := os.Hostname(); err == nil {
+	if hostname, err := osHostname(); err == nil {
 		info.Hostname = hostname
 	}
 
 	// Kernel version
-	if out, err := exec.CommandContext(ctx, "uname", "-r").Output(); err == nil {
+	if out, err := execCommand(ctx, "uname", "-r").Output(); err == nil {
 		info.KernelVersion = strings.TrimSpace(string(out))
 	}
 
 	// DOCA version from /etc/mlnx-release
-	if data, err := os.ReadFile("/etc/mlnx-release"); err == nil {
+	if data, err := osReadFile("/etc/mlnx-release"); err == nil {
 		info.DOCAVersion = strings.TrimSpace(string(data))
 	}
 
@@ -87,7 +85,7 @@ func (c *Collector) Collect(ctx context.Context) (*SystemInfo, error) {
 	}
 
 	// OVS version
-	if out, err := exec.CommandContext(ctx, "ovs-vsctl", "--version").Output(); err == nil {
+	if out, err := execCommand(ctx, "ovs-vsctl", "--version").Output(); err == nil {
 		info.OVSVersion = parseOVSVersion(string(out))
 	}
 
@@ -106,7 +104,7 @@ func (c *Collector) Collect(ctx context.Context) (*SystemInfo, error) {
 }
 
 func countCPUCores() (int, error) {
-	f, err := os.Open("/proc/cpuinfo")
+	f, err := osOpen("/proc/cpuinfo")
 	if err != nil {
 		return 0, err
 	}
@@ -123,7 +121,7 @@ func countCPUCores() (int, error) {
 }
 
 func getTotalMemoryKB() (int64, error) {
-	f, err := os.Open("/proc/meminfo")
+	f, err := osOpen("/proc/meminfo")
 	if err != nil {
 		return 0, err
 	}
@@ -143,7 +141,7 @@ func getTotalMemoryKB() (int64, error) {
 }
 
 func getUptimeSeconds() (int64, error) {
-	data, err := os.ReadFile("/proc/uptime")
+	data, err := osReadFile("/proc/uptime")
 	if err != nil {
 		return 0, err
 	}
@@ -174,7 +172,7 @@ func parseOVSVersion(output string) string {
 }
 
 func getMSTInfo(ctx context.Context) (model, serial string, err error) {
-	out, err := exec.CommandContext(ctx, "sudo", "mst", "status").Output()
+	out, err := execCommand(ctx, "sudo", "mst", "status").Output()
 	if err != nil {
 		return "", "", err
 	}
@@ -209,7 +207,7 @@ func getMSTInfo(ctx context.Context) (model, serial string, err error) {
 
 	// Get serial (Base GUID) from flint if we have a device path
 	if devicePath != "" {
-		flintOut, err := exec.CommandContext(ctx, "sudo", "flint", "-d", devicePath, "q").Output()
+		flintOut, err := execCommand(ctx, "sudo", "flint", "-d", devicePath, "q").Output()
 		if err == nil {
 			for _, line := range strings.Split(string(flintOut), "\n") {
 				if strings.Contains(line, "Base GUID:") {
@@ -227,7 +225,7 @@ func getMSTInfo(ctx context.Context) (model, serial string, err error) {
 
 func getFirmwareVersion(ctx context.Context) (string, error) {
 	// Find MST device first (requires sudo)
-	mstOut, err := exec.CommandContext(ctx, "sudo", "mst", "status").Output()
+	mstOut, err := execCommand(ctx, "sudo", "mst", "status").Output()
 	if err != nil {
 		return "", err
 	}
@@ -249,7 +247,7 @@ func getFirmwareVersion(ctx context.Context) (string, error) {
 	}
 
 	// Query flint for firmware version (requires sudo)
-	out, err := exec.CommandContext(ctx, "sudo", "flint", "-d", devicePath, "q").Output()
+	out, err := execCommand(ctx, "sudo", "flint", "-d", devicePath, "q").Output()
 	if err != nil {
 		return "", err
 	}

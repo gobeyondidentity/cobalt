@@ -4,8 +4,6 @@ package doca
 import (
 	"bufio"
 	"context"
-	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -112,7 +110,7 @@ func (c *InventoryCollector) collectFirmwares(ctx context.Context) []FirmwareCom
 // getNICFirmware gets NIC firmware version using flint.
 func (c *InventoryCollector) getNICFirmware(ctx context.Context) *FirmwareComponent {
 	// Find MST device
-	mstOut, err := exec.CommandContext(ctx, "sudo", "mst", "status").Output()
+	mstOut, err := execCommand(ctx, "sudo", "mst", "status").Output()
 	if err != nil {
 		return nil
 	}
@@ -133,7 +131,7 @@ func (c *InventoryCollector) getNICFirmware(ctx context.Context) *FirmwareCompon
 	}
 
 	// Get firmware version from flint
-	out, err := exec.CommandContext(ctx, "sudo", "flint", "-d", devicePath, "q").Output()
+	out, err := execCommand(ctx, "sudo", "flint", "-d", devicePath, "q").Output()
 	if err != nil {
 		return nil
 	}
@@ -163,7 +161,7 @@ func (c *InventoryCollector) getNICFirmware(ctx context.Context) *FirmwareCompon
 // collectPackages gets installed Debian packages.
 func (c *InventoryCollector) collectPackages(ctx context.Context) []InstalledPackage {
 	// Get DOCA-related packages only to keep the list manageable
-	out, err := exec.CommandContext(ctx, "dpkg-query", "-W", "-f", "${Package} ${Version}\n").Output()
+	out, err := execCommand(ctx, "dpkg-query", "-W", "-f", "${Package} ${Version}\n").Output()
 	if err != nil {
 		return nil
 	}
@@ -199,7 +197,7 @@ func (c *InventoryCollector) collectPackages(ctx context.Context) []InstalledPac
 
 // collectModules reads loaded kernel modules from /proc/modules.
 func (c *InventoryCollector) collectModules() []KernelModule {
-	f, err := os.Open("/proc/modules")
+	f, err := osOpen("/proc/modules")
 	if err != nil {
 		return nil
 	}
@@ -242,12 +240,12 @@ func (c *InventoryCollector) collectBootInfo(ctx context.Context) BootInfo {
 	info := BootInfo{}
 
 	// Check if UEFI mode
-	if _, err := os.Stat("/sys/firmware/efi"); err == nil {
+	if _, err := osStat("/sys/firmware/efi"); err == nil {
 		info.UEFIMode = true
 	}
 
 	// Check secure boot status
-	out, err := exec.CommandContext(ctx, "mokutil", "--sb-state").Output()
+	out, err := execCommand(ctx, "mokutil", "--sb-state").Output()
 	if err == nil {
 		if strings.Contains(string(out), "SecureBoot enabled") {
 			info.SecureBoot = true
@@ -255,7 +253,7 @@ func (c *InventoryCollector) collectBootInfo(ctx context.Context) BootInfo {
 	}
 
 	// Get boot device from /proc/cmdline
-	if data, err := os.ReadFile("/proc/cmdline"); err == nil {
+	if data, err := osReadFile("/proc/cmdline"); err == nil {
 		cmdline := string(data)
 		// Look for root= parameter
 		for _, part := range strings.Fields(cmdline) {
@@ -272,7 +270,7 @@ func (c *InventoryCollector) collectBootInfo(ctx context.Context) BootInfo {
 // collectOperationMode gets the DPU operation mode from mlxconfig.
 func (c *InventoryCollector) collectOperationMode(ctx context.Context) string {
 	// Find MST device
-	mstOut, err := exec.CommandContext(ctx, "sudo", "mst", "status").Output()
+	mstOut, err := execCommand(ctx, "sudo", "mst", "status").Output()
 	if err != nil {
 		return "unknown"
 	}
@@ -293,7 +291,7 @@ func (c *InventoryCollector) collectOperationMode(ctx context.Context) string {
 	}
 
 	// Query mlxconfig for INTERNAL_CPU_MODEL
-	out, err := exec.CommandContext(ctx, "sudo", "mlxconfig", "-d", devicePath, "q", "INTERNAL_CPU_MODEL").Output()
+	out, err := execCommand(ctx, "sudo", "mlxconfig", "-d", devicePath, "q", "INTERNAL_CPU_MODEL").Output()
 	if err != nil {
 		return "unknown"
 	}
