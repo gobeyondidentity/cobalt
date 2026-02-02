@@ -35,6 +35,7 @@ func init() {
 	sshCASignCmd.Flags().StringP("principal", "p", "", "Certificate principal (required)")
 	sshCASignCmd.Flags().StringP("validity", "v", "8h", "Certificate validity duration")
 	sshCASignCmd.Flags().String("pubkey", "", "Path to user's public key file (required)")
+	sshCASignCmd.Flags().StringP("output", "o", "", "Write certificate to file instead of stdout")
 	sshCASignCmd.MarkFlagRequired("principal")
 	sshCASignCmd.MarkFlagRequired("pubkey")
 
@@ -281,14 +282,15 @@ Validity formats: "8h" (hours), "24h" (hours), "7d" (days)
 
 Examples:
   km ssh-ca sign ops-ca --principal alice --pubkey ~/.ssh/id_ed25519.pub
-  km ssh-ca sign ops-ca -p alice -v 24h --pubkey ~/.ssh/id_ed25519.pub > ~/.ssh/id_ed25519-cert.pub
-  km ssh-ca sign ops-ca -p admin -v 7d --pubkey /path/to/key.pub`,
+  km ssh-ca sign ops-ca -p alice -v 24h --pubkey ~/.ssh/id_ed25519.pub -o ~/.ssh/id_ed25519-cert.pub
+  km ssh-ca sign ops-ca -p admin -v 7d --pubkey /path/to/key.pub --output /path/to/cert.pub`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		caName := args[0]
 		principal, _ := cmd.Flags().GetString("principal")
 		validityStr, _ := cmd.Flags().GetString("validity")
 		pubkeyPath, _ := cmd.Flags().GetString("pubkey")
+		outputPath, _ := cmd.Flags().GetString("output")
 
 		// Check authorization before signing
 		if err := checkAuthorization(caName, ""); err != nil {
@@ -347,8 +349,15 @@ Examples:
 			return fmt.Errorf("failed to sign certificate: %w", err)
 		}
 
-		// Output certificate to stdout
-		fmt.Println(certStr)
+		// Output certificate to file or stdout
+		if outputPath != "" {
+			if err := os.WriteFile(outputPath, []byte(certStr+"\n"), 0600); err != nil {
+				return fmt.Errorf("failed to write certificate to %s: %w", outputPath, err)
+			}
+			fmt.Fprintf(os.Stderr, "Certificate written to %s\n", outputPath)
+		} else {
+			fmt.Println(certStr)
+		}
 		return nil
 	},
 }

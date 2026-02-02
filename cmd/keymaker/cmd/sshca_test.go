@@ -191,6 +191,29 @@ func TestRegisterSSHCA_BadRequest(t *testing.T) {
 	t.Log("Bad request handled correctly")
 }
 
+func TestSSHCASign_OutputFlagExists(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing ssh-ca sign command has --output/-o flag")
+
+	// Verify the flag exists on the sign command
+	outputFlag := sshCASignCmd.Flags().Lookup("output")
+	if outputFlag == nil {
+		t.Fatal("Expected --output flag to exist on ssh-ca sign command")
+	}
+
+	// Verify short flag
+	if outputFlag.Shorthand != "o" {
+		t.Errorf("Expected short flag -o, got -%s", outputFlag.Shorthand)
+	}
+
+	// Verify default is empty (stdout)
+	if outputFlag.DefValue != "" {
+		t.Errorf("Expected default value to be empty, got %q", outputFlag.DefValue)
+	}
+
+	t.Log("--output/-o flag exists with correct configuration")
+}
+
 func TestRegisterSSHCA_RequestBody(t *testing.T) {
 	// Cannot run in parallel - registerSSHCA uses global DPoP state
 	t.Log("Testing SSH CA registration sends correct request body")
