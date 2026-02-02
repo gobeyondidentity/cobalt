@@ -309,10 +309,13 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 
 // operatorResponse is the response for operator endpoints.
 type operatorResponse struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"createdAt"`
+	ID         string `json:"id"`
+	Email      string `json:"email"`
+	TenantID   string `json:"tenant_id,omitempty"`
+	TenantName string `json:"tenant_name,omitempty"`
+	Role       string `json:"role,omitempty"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"created_at"`
 }
 
 // updateOperatorStatusRequest is the request body for updating operator status.
@@ -329,34 +332,73 @@ func operatorToResponse(op *store.Operator) operatorResponse {
 	}
 }
 
+func operatorToResponseWithTenant(op *store.Operator, tenantID, tenantName, role string) operatorResponse {
+	return operatorResponse{
+		ID:         op.ID,
+		Email:      op.Email,
+		TenantID:   tenantID,
+		TenantName: tenantName,
+		Role:       role,
+		Status:     op.Status,
+		CreatedAt:  op.CreatedAt.Format(time.RFC3339),
+	}
+}
+
 // handleListOperators handles GET /api/v1/operators
 // Supports optional ?tenant=<name> query parameter to filter by tenant.
+// Returns one row per operator-tenant membership.
 func (s *Server) handleListOperators(w http.ResponseWriter, r *http.Request) {
 	tenantName := r.URL.Query().Get("tenant")
 
-	var operators []*store.Operator
-	var err error
+	var result []operatorResponse
 
 	if tenantName != "" {
-		// Resolve tenant name to ID
+		// Filtered by tenant: return operators for that specific tenant
 		tenant, terr := s.store.GetTenant(tenantName)
 		if terr != nil {
 			writeError(w, r, http.StatusNotFound, fmt.Sprintf("tenant not found: %s", tenantName))
 			return
 		}
-		operators, err = s.store.ListOperatorsByTenant(tenant.ID)
+		operators, err := s.store.ListOperatorsByTenant(tenant.ID)
+		if err != nil {
+			writeError(w, r, http.StatusInternalServerError, "Failed to list operators: "+err.Error())
+			return
+		}
+		result = make([]operatorResponse, 0, len(operators))
+		for _, op := range operators {
+			// Get role for this operator-tenant membership
+			role, err := s.store.GetOperatorRole(op.ID, tenant.ID)
+			if err != nil {
+				role = "" // Should not happen, but degrade gracefully
+			}
+			result = append(result, operatorToResponseWithTenant(op, tenant.ID, tenant.Name, role))
+		}
 	} else {
-		operators, err = s.store.ListOperators()
-	}
-
-	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to list operators: "+err.Error())
-		return
-	}
-
-	result := make([]operatorResponse, 0, len(operators))
-	for _, op := range operators {
-		result = append(result, operatorToResponse(op))
+		// No filter: return all operators with all their tenant memberships
+		operators, err := s.store.ListOperators()
+		if err != nil {
+			writeError(w, r, http.StatusInternalServerError, "Failed to list operators: "+err.Error())
+			return
+		}
+		result = make([]operatorResponse, 0)
+		for _, op := range operators {
+			// Get all tenant memberships for this operator
+			memberships, err := s.store.GetOperatorTenants(op.ID)
+			if err != nil || len(memberships) == 0 {
+				// Operator with no tenant memberships: include without tenant info
+				result = append(result, operatorToResponse(op))
+				continue
+			}
+			// One row per tenant membership
+			for _, m := range memberships {
+				tenant, err := s.store.GetTenant(m.TenantID)
+				tenantName := ""
+				if err == nil {
+					tenantName = tenant.Name
+				}
+				result = append(result, operatorToResponseWithTenant(op, m.TenantID, tenantName, m.Role))
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, result)
