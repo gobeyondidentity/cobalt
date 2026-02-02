@@ -14,6 +14,7 @@ import (
 )
 
 func TestGenerateKeyPair(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair")
 	pub, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -37,6 +38,7 @@ func TestGenerateKeyPair(t *testing.T) {
 }
 
 func TestGenerateKeyPairUniqueness(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating 1000 key pairs to verify uniqueness")
 	seen := make(map[string]bool)
 
@@ -56,6 +58,7 @@ func TestGenerateKeyPairUniqueness(t *testing.T) {
 }
 
 func TestKeyFingerprintSameKey(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying same key produces same fingerprint")
 	pub, _, err := GenerateKeyPair()
 	if err != nil {
@@ -72,6 +75,7 @@ func TestKeyFingerprintSameKey(t *testing.T) {
 }
 
 func TestKeyFingerprintDifferentKeys(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying different keys produce different fingerprints")
 	pub1, _, err := GenerateKeyPair()
 	if err != nil {
@@ -93,6 +97,7 @@ func TestKeyFingerprintDifferentKeys(t *testing.T) {
 }
 
 func TestKeyFingerprintFormat(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying fingerprint is 64-character hex (SHA256)")
 	pub, _, err := GenerateKeyPair()
 	if err != nil {
@@ -114,6 +119,7 @@ func TestKeyFingerprintFormat(t *testing.T) {
 }
 
 func TestLoadPrivateKeyPEMValid(t *testing.T) {
+	t.Parallel()
 	t.Log("Loading valid Ed25519 private key from PEM")
 	pub, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -151,6 +157,7 @@ func TestLoadPrivateKeyPEMValid(t *testing.T) {
 }
 
 func TestLoadPrivateKeyPEMRejectsRSA(t *testing.T) {
+	t.Parallel()
 	t.Log("Rejecting RSA private key in Ed25519 loader")
 
 	// Generate RSA key
@@ -180,6 +187,7 @@ func TestLoadPrivateKeyPEMRejectsRSA(t *testing.T) {
 }
 
 func TestLoadPrivateKeyPEMRejectsECDSA(t *testing.T) {
+	t.Parallel()
 	t.Log("Rejecting ECDSA P-256 private key in Ed25519 loader")
 
 	// Generate ECDSA P-256 key
@@ -209,6 +217,7 @@ func TestLoadPrivateKeyPEMRejectsECDSA(t *testing.T) {
 }
 
 func TestLoadPublicKeyPEMValid(t *testing.T) {
+	t.Parallel()
 	t.Log("Loading valid Ed25519 public key from PEM")
 	pub, _, err := GenerateKeyPair()
 	if err != nil {
@@ -238,6 +247,7 @@ func TestLoadPublicKeyPEMValid(t *testing.T) {
 }
 
 func TestLoadPublicKeyPEMRejectsRSA(t *testing.T) {
+	t.Parallel()
 	t.Log("Rejecting RSA public key in Ed25519 loader")
 
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -263,6 +273,7 @@ func TestLoadPublicKeyPEMRejectsRSA(t *testing.T) {
 }
 
 func TestLoadPublicKeyPEMRejectsECDSA(t *testing.T) {
+	t.Parallel()
 	t.Log("Rejecting ECDSA P-256 public key in Ed25519 loader")
 
 	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -288,6 +299,7 @@ func TestLoadPublicKeyPEMRejectsECDSA(t *testing.T) {
 }
 
 func TestPublicKeyToJWKAndBack(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing JWK round-trip: public key -> JWK -> public key")
 	pub, _, err := GenerateKeyPair()
 	if err != nil {
@@ -321,6 +333,7 @@ func TestPublicKeyToJWKAndBack(t *testing.T) {
 }
 
 func TestJWKToPublicKeyRejectsWrongKty(t *testing.T) {
+	t.Parallel()
 	t.Log("Rejecting JWK with wrong kty")
 
 	tests := []struct {
@@ -334,6 +347,7 @@ func TestJWKToPublicKeyRejectsWrongKty(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.kty, func(t *testing.T) {
+			t.Parallel()
 			jwk := &JWK{
 				Kty: tt.kty,
 				Crv: "Ed25519",
@@ -350,6 +364,7 @@ func TestJWKToPublicKeyRejectsWrongKty(t *testing.T) {
 }
 
 func TestJWKToPublicKeyRejectsWrongCrv(t *testing.T) {
+	t.Parallel()
 	t.Log("Rejecting JWK with wrong crv")
 
 	tests := []struct {
@@ -365,6 +380,7 @@ func TestJWKToPublicKeyRejectsWrongCrv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.crv, func(t *testing.T) {
+			t.Parallel()
 			jwk := &JWK{
 				Kty: "OKP",
 				Crv: tt.crv,
@@ -381,6 +397,7 @@ func TestJWKToPublicKeyRejectsWrongCrv(t *testing.T) {
 }
 
 func TestJWKToPublicKeyRejectsInvalidBase64(t *testing.T) {
+	t.Parallel()
 	t.Log("Rejecting JWK with invalid base64url in X")
 
 	jwk := &JWK{
@@ -397,6 +414,7 @@ func TestJWKToPublicKeyRejectsInvalidBase64(t *testing.T) {
 }
 
 func TestJWKToPublicKeyRejectsWrongKeyLength(t *testing.T) {
+	t.Parallel()
 	t.Log("Rejecting JWK with wrong key length")
 
 	// Only 16 bytes instead of 32
@@ -414,6 +432,7 @@ func TestJWKToPublicKeyRejectsWrongKeyLength(t *testing.T) {
 }
 
 func TestMalformedPEMHandling(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing graceful handling of malformed PEM data")
 
 	tests := []struct {
@@ -428,6 +447,7 @@ func TestMalformedPEMHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run("private_"+tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := LoadPrivateKeyPEM(tt.data)
 			if err == nil {
 				t.Error("LoadPrivateKeyPEM should return error for malformed PEM")
@@ -436,6 +456,7 @@ func TestMalformedPEMHandling(t *testing.T) {
 		})
 
 		t.Run("public_"+tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := LoadPublicKeyPEM(tt.data)
 			if err == nil {
 				t.Error("LoadPublicKeyPEM should return error for malformed PEM")
@@ -446,6 +467,7 @@ func TestMalformedPEMHandling(t *testing.T) {
 }
 
 func TestErrorMessagesNoPrivateKeyMaterial(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying error messages do not contain private key material")
 
 	// Generate a key and create intentionally malformed PEM

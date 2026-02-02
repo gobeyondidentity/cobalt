@@ -15,6 +15,7 @@ const (
 )
 
 func TestParseSSHOutput(t *testing.T) {
+	t.Parallel()
 	t.Run("parse output with file paths", func(t *testing.T) {
 		// Simulate output from: cat /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys
 		output := `/root/.ssh/authorized_keys:` + testSSHEd25519Key + `
@@ -109,6 +110,7 @@ cat: /home/missing/.ssh/authorized_keys: No such file or directory
 }
 
 func TestExtractPathAndKey(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		line     string
@@ -161,6 +163,7 @@ func TestExtractPathAndKey(t *testing.T) {
 }
 
 func TestBuildSSHCommand(t *testing.T) {
+	t.Parallel()
 	t.Run("command format", func(t *testing.T) {
 		cmd := buildAuthorizedKeysCommand(true)
 		if !strings.Contains(cmd, "sudo") {
@@ -186,6 +189,7 @@ func TestBuildSSHCommand(t *testing.T) {
 }
 
 func TestParseSSHOutputHostField(t *testing.T) {
+	t.Parallel()
 	// Verify the host field is correctly set on all keys
 	output := `/root/.ssh/authorized_keys:` + testSSHEd25519Key
 
@@ -201,6 +205,7 @@ func TestParseSSHOutputHostField(t *testing.T) {
 }
 
 func TestParseSSHOutputMethod(t *testing.T) {
+	t.Parallel()
 	// Verify the method field is correctly set on all keys
 	output := `/root/.ssh/authorized_keys:` + testSSHEd25519Key
 
@@ -216,6 +221,7 @@ func TestParseSSHOutputMethod(t *testing.T) {
 }
 
 func TestValidateSSHKeyPath(t *testing.T) {
+	t.Parallel()
 	// Get home and cwd for constructing test paths
 	home, _ := os.UserHomeDir()
 	cwd, _ := os.Getwd()
@@ -302,6 +308,7 @@ func TestValidateSSHKeyPath(t *testing.T) {
 }
 
 func TestIsCommonKeyFileName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		want bool

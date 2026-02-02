@@ -32,6 +32,7 @@ func setupTestStore(t *testing.T) (*store.Store, func()) {
 }
 
 func TestGate_FreshVerifiedAttestationAllows(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -63,6 +64,7 @@ func TestGate_FreshVerifiedAttestationAllows(t *testing.T) {
 }
 
 func TestGate_StaleAttestationBlocks(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -91,6 +93,7 @@ func TestGate_StaleAttestationBlocks(t *testing.T) {
 }
 
 func TestGate_FailedAttestationBlocks(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -119,6 +122,7 @@ func TestGate_FailedAttestationBlocks(t *testing.T) {
 }
 
 func TestGate_UnavailableAttestationBlocks(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -140,6 +144,7 @@ func TestGate_UnavailableAttestationBlocks(t *testing.T) {
 }
 
 func TestGate_CustomFreshnessWindow(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -179,6 +184,7 @@ func TestGate_CustomFreshnessWindow(t *testing.T) {
 }
 
 func TestGate_UnavailableStatusBlocks(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -207,6 +213,7 @@ func TestGate_UnavailableStatusBlocks(t *testing.T) {
 }
 
 func TestGate_DefaultFreshnessWindow(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -219,6 +226,7 @@ func TestGate_DefaultFreshnessWindow(t *testing.T) {
 // Tests for CanDistributeWithAutoRefresh
 
 func TestGate_AutoRefresh_FreshAttestationNoRefresh(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -262,6 +270,7 @@ func TestGate_AutoRefresh_FreshAttestationNoRefresh(t *testing.T) {
 }
 
 func TestGate_AutoRefresh_FailedAttestationBlocksNoRefresh(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -309,6 +318,7 @@ func TestGate_AutoRefresh_FailedAttestationBlocksNoRefresh(t *testing.T) {
 }
 
 func TestGate_IsAttestationFailed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		decision *GateDecision
@@ -375,6 +385,7 @@ func TestGate_IsAttestationFailed(t *testing.T) {
 }
 
 func TestRefresher_SavesAttestationResult(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -426,6 +437,7 @@ func TestRefresher_SavesAttestationResult(t *testing.T) {
 }
 
 func TestRefreshResult_Success(t *testing.T) {
+	t.Parallel()
 	result := &RefreshResult{
 		Success: true,
 		Attestation: &store.Attestation{
@@ -445,6 +457,7 @@ func TestRefreshResult_Success(t *testing.T) {
 }
 
 func TestRefreshResult_Failure(t *testing.T) {
+	t.Parallel()
 	result := &RefreshResult{
 		Success: false,
 		Attestation: &store.Attestation{
@@ -472,6 +485,7 @@ func strPtr(s string) *string {
 // These tests verify the acceptance criteria from bead si-jgp.6
 
 func TestGate_RejectionLeavesNoState(t *testing.T) {
+	t.Parallel()
 	// Test: denied enrollment does not create any state (no partial DPU registration)
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
@@ -530,6 +544,7 @@ func TestGate_RejectionLeavesNoState(t *testing.T) {
 }
 
 func TestGate_RejectionDecisionContainsAuditDetails(t *testing.T) {
+	t.Parallel()
 	// Test: denied enrollment logged with full details for audit
 	// Verifies GateDecision contains sufficient information for audit logging
 
@@ -674,6 +689,7 @@ func TestGate_RejectionDecisionContainsAuditDetails(t *testing.T) {
 }
 
 func TestGate_MultipleRejectionScenariosNoSideEffects(t *testing.T) {
+	t.Parallel()
 	// Comprehensive test: multiple rejection scenarios in sequence
 	// Verifies that consecutive denials don't accumulate state
 	s, cleanup := setupTestStore(t)

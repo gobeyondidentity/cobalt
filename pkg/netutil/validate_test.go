@@ -6,6 +6,7 @@ import (
 )
 
 func TestValidateEndpointStrict_Loopback(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -32,6 +33,7 @@ func TestValidateEndpointStrict_Loopback(t *testing.T) {
 }
 
 func TestValidateEndpointStrict_LinkLocal(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -54,6 +56,7 @@ func TestValidateEndpointStrict_LinkLocal(t *testing.T) {
 }
 
 func TestValidateEndpointStrict_PrivateRanges(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -81,6 +84,7 @@ func TestValidateEndpointStrict_PrivateRanges(t *testing.T) {
 }
 
 func TestValidateEndpoint_AllowsPrivateRanges(t *testing.T) {
+	t.Parallel()
 	// ValidateEndpoint (non-strict) should allow private ranges for BMC addresses
 	tests := []struct {
 		name     string
@@ -103,6 +107,7 @@ func TestValidateEndpoint_AllowsPrivateRanges(t *testing.T) {
 }
 
 func TestValidateEndpoint_BlocksLoopbackAndLinkLocal(t *testing.T) {
+	t.Parallel()
 	// ValidateEndpoint should still block loopback and link-local
 	tests := []struct {
 		name     string
@@ -125,6 +130,7 @@ func TestValidateEndpoint_BlocksLoopbackAndLinkLocal(t *testing.T) {
 }
 
 func TestValidateEndpoint_InvalidInput(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -144,6 +150,7 @@ func TestValidateEndpoint_InvalidInput(t *testing.T) {
 }
 
 func TestValidateEndpointStrict_InvalidInput(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -165,6 +172,7 @@ func TestValidateEndpointStrict_InvalidInput(t *testing.T) {
 // TestValidateEndpoint_PublicAddresses tests that public addresses are allowed
 // These tests require DNS resolution and may be skipped in short mode
 func TestValidateEndpoint_PublicAddresses(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping DNS resolution test in short mode")
 	}
@@ -188,6 +196,7 @@ func TestValidateEndpoint_PublicAddresses(t *testing.T) {
 }
 
 func TestValidateEndpointStrict_PublicAddresses(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping DNS resolution test in short mode")
 	}
@@ -212,6 +221,7 @@ func TestValidateEndpointStrict_PublicAddresses(t *testing.T) {
 
 // TestExtractHost tests the internal host extraction logic
 func TestExtractHost(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string

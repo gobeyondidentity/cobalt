@@ -11,6 +11,7 @@ import (
 )
 
 func TestFileKeyStoreSaveAndLoad(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKeyStore save and load round-trip")
 
 	// Create temp directory
@@ -65,6 +66,7 @@ func TestFileKeyStoreSaveAndLoad(t *testing.T) {
 }
 
 func TestFileKeyStoreNotFound(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKeyStore returns ErrKeyNotFound for missing file")
 
 	tmpDir := t.TempDir()
@@ -88,6 +90,7 @@ func TestFileKeyStoreNotFound(t *testing.T) {
 }
 
 func TestFileKeyStoreInvalidPermissions(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-based test not applicable on Windows; see permissions_windows_test.go")
 	}
@@ -120,6 +123,7 @@ func TestFileKeyStoreInvalidPermissions(t *testing.T) {
 }
 
 func TestFileKeyStoreInvalidPermissions0666(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-based test not applicable on Windows; see permissions_windows_test.go")
 	}
@@ -151,6 +155,7 @@ func TestFileKeyStoreInvalidPermissions0666(t *testing.T) {
 }
 
 func TestFileKeyStoreCreatesParentDirectories(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKeyStore creates parent directories")
 
 	tmpDir := t.TempDir()
@@ -180,6 +185,7 @@ func TestFileKeyStoreCreatesParentDirectories(t *testing.T) {
 }
 
 func TestFileKIDStoreSaveAndLoad(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKIDStore save and load round-trip")
 
 	tmpDir := t.TempDir()
@@ -223,6 +229,7 @@ func TestFileKIDStoreSaveAndLoad(t *testing.T) {
 }
 
 func TestFileKIDStoreNotFound(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKIDStore returns ErrKIDNotFound for missing file")
 
 	tmpDir := t.TempDir()
@@ -246,6 +253,7 @@ func TestFileKIDStoreNotFound(t *testing.T) {
 }
 
 func TestFileKIDStoreInvalidPermissions(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-based test not applicable on Windows; see permissions_windows_test.go")
 	}
@@ -276,6 +284,7 @@ func TestFileKIDStoreInvalidPermissions(t *testing.T) {
 }
 
 func TestDefaultKeyPaths(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing DefaultKeyPaths returns correct paths")
 
 	tests := []struct {
@@ -317,6 +326,7 @@ func TestDefaultKeyPaths(t *testing.T) {
 }
 
 func TestDefaultKeyPaths_EnvOverride(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing DefaultKeyPaths respects environment variable overrides")
 
 	// Test aegis override
@@ -394,6 +404,7 @@ func TestDefaultKeyPaths_EnvOverride(t *testing.T) {
 }
 
 func TestGenerateKey(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing GenerateKey creates valid Ed25519 keypair")
 
 	pubKey, privKey, err := GenerateKey()
@@ -421,6 +432,7 @@ func TestGenerateKey(t *testing.T) {
 }
 
 func TestFileKeyStoreRoundTrip(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKeyStore round-trip: generate, save, load")
 
 	tmpDir := t.TempDir()
@@ -447,6 +459,7 @@ func TestFileKeyStoreRoundTrip(t *testing.T) {
 }
 
 func TestFileKeyStoreInvalidPEM(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKeyStore rejects invalid PEM data")
 
 	tmpDir := t.TempDir()
@@ -471,6 +484,7 @@ func TestFileKeyStoreInvalidPEM(t *testing.T) {
 }
 
 func TestFileKeyStoreWrongKeyType(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKeyStore rejects wrong key type")
 
 	tmpDir := t.TempDir()
@@ -499,6 +513,7 @@ dGVzdCBkYXRh
 }
 
 func TestCheckFilePermissions(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing CheckFilePermissions utility function")
 
 	tmpDir := t.TempDir()
@@ -538,6 +553,7 @@ func TestCheckFilePermissions(t *testing.T) {
 // =============================================================================
 
 func TestFileKeyStoreRejects64ByteRawKey(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKeyStore rejects 64-byte raw key (only accepts 32-byte seed)")
 
 	tmpDir := t.TempDir()
@@ -571,6 +587,7 @@ func TestFileKeyStoreRejects64ByteRawKey(t *testing.T) {
 }
 
 func TestFileKeyStoreRejectsPKCS8Format(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKeyStore rejects PKCS8 format (PRIVATE KEY PEM type)")
 
 	tmpDir := t.TempDir()
@@ -602,6 +619,7 @@ MC4CAQAwBQYDK2VwBCIEIHKJh6YGZoSkOl9hn7Nit8y7NbmOAUx2zGzW1lq3klqZ
 }
 
 func TestFileKeyStoreRejectsWrongSizeSeed(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing FileKeyStore rejects wrong size seeds (31 and 33 bytes)")
 
 	tmpDir := t.TempDir()

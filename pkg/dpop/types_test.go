@@ -7,6 +7,7 @@ import (
 )
 
 func TestHeaderJSONMarshal(t *testing.T) {
+	t.Parallel()
 	t.Log("Marshaling DPoP header with kid (post-enrollment)")
 	h := Header{
 		Typ: TypeDPoP,
@@ -41,6 +42,7 @@ func TestHeaderJSONMarshal(t *testing.T) {
 }
 
 func TestHeaderWithJWK(t *testing.T) {
+	t.Parallel()
 	t.Log("Marshaling DPoP header with embedded JWK (enrollment)")
 	jwk := &JWK{
 		Kty: "OKP",
@@ -82,6 +84,7 @@ func TestHeaderWithJWK(t *testing.T) {
 }
 
 func TestClaimsJSONMarshal(t *testing.T) {
+	t.Parallel()
 	t.Log("Marshaling DPoP claims payload")
 	c := Claims{
 		JTI: "550e8400-e29b-41d4-a716-446655440000",
@@ -118,6 +121,7 @@ func TestClaimsJSONMarshal(t *testing.T) {
 }
 
 func TestClaimsRoundTrip(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing claims round-trip serialization")
 	original := Claims{
 		JTI: "test-jti-12345",
@@ -151,6 +155,7 @@ func TestClaimsRoundTrip(t *testing.T) {
 }
 
 func TestJWKRoundTrip(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing JWK round-trip serialization")
 	original := JWK{
 		Kty: "OKP",
@@ -182,6 +187,7 @@ func TestJWKRoundTrip(t *testing.T) {
 }
 
 func TestConstants(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying DPoP type and algorithm constants")
 	if TypeDPoP != "dpop+jwt" {
 		t.Errorf("TypeDPoP = %q, want dpop+jwt", TypeDPoP)

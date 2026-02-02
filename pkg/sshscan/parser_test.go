@@ -20,6 +20,7 @@ const (
 )
 
 func TestParseLine(t *testing.T) {
+	t.Parallel()
 	t.Run("parse ed25519 key with comment", func(t *testing.T) {
 		key, err := ParseLine(testEd25519Key)
 		if err != nil {
@@ -150,6 +151,7 @@ func TestParseLine(t *testing.T) {
 }
 
 func TestParseAuthorizedKeys(t *testing.T) {
+	t.Parallel()
 	t.Run("parse multiple keys", func(t *testing.T) {
 		content := testEd25519Key + "\n" +
 			"# comment line\n" +
@@ -201,6 +203,7 @@ func TestParseAuthorizedKeys(t *testing.T) {
 }
 
 func TestExtractUsername(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		path string
 		want string

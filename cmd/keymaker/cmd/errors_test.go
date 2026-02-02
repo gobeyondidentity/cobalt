@@ -9,6 +9,7 @@ import (
 )
 
 func TestHandleError_CLIError(t *testing.T) {
+	t.Parallel()
 	// Test that CLIError is properly recognized
 	err := clierror.CANotFound("ops-ca")
 
@@ -21,6 +22,7 @@ func TestHandleError_CLIError(t *testing.T) {
 }
 
 func TestHandleError_InternalError(t *testing.T) {
+	t.Parallel()
 	// Test that generic errors are wrapped as InternalError
 	err := clierror.InternalError(nil)
 
@@ -33,6 +35,7 @@ func TestHandleError_InternalError(t *testing.T) {
 }
 
 func TestSSHCAList_EmptyReturnsEmptyArray(t *testing.T) {
+	t.Parallel()
 	// Verify that empty list serializes to [] not null
 	cas := []*store.SSHCA{}
 
@@ -47,6 +50,7 @@ func TestSSHCAList_EmptyReturnsEmptyArray(t *testing.T) {
 }
 
 func TestSSHCAList_NilBecomesEmptyArray(t *testing.T) {
+	t.Parallel()
 	// Verify that nil slice becomes empty array when explicitly set
 	var cas []*store.SSHCA
 	if cas == nil {
@@ -64,6 +68,7 @@ func TestSSHCAList_NilBecomesEmptyArray(t *testing.T) {
 }
 
 func TestAttestationStaleError(t *testing.T) {
+	t.Parallel()
 	err := clierror.AttestationStale("1h30m")
 
 	if err.Code != clierror.CodeAttestationStale {
@@ -78,6 +83,7 @@ func TestAttestationStaleError(t *testing.T) {
 }
 
 func TestAttestationFailedError(t *testing.T) {
+	t.Parallel()
 	err := clierror.AttestationFailed("device failed integrity verification")
 
 	if err.Code != clierror.CodeAttestationFailed {
@@ -92,6 +98,7 @@ func TestAttestationFailedError(t *testing.T) {
 }
 
 func TestAttestationUnavailableError(t *testing.T) {
+	t.Parallel()
 	err := clierror.AttestationUnavailable()
 
 	if err.Code != clierror.CodeAttestationUnavailable {
@@ -106,6 +113,7 @@ func TestAttestationUnavailableError(t *testing.T) {
 }
 
 func TestNotAuthorizedError(t *testing.T) {
+	t.Parallel()
 	err := clierror.NotAuthorized("CA 'ops-ca'")
 
 	if err.Code != clierror.CodeNotAuthorized {
@@ -117,6 +125,7 @@ func TestNotAuthorizedError(t *testing.T) {
 }
 
 func TestDeviceNotFoundError(t *testing.T) {
+	t.Parallel()
 	err := clierror.DeviceNotFound("bf3-node01")
 
 	if err.Code != clierror.CodeDeviceNotFound {
@@ -128,6 +137,7 @@ func TestDeviceNotFoundError(t *testing.T) {
 }
 
 func TestCANotFoundError(t *testing.T) {
+	t.Parallel()
 	err := clierror.CANotFound("ops-ca")
 
 	if err.Code != clierror.CodeCANotFound {
@@ -139,6 +149,7 @@ func TestCANotFoundError(t *testing.T) {
 }
 
 func TestAlreadyExistsError(t *testing.T) {
+	t.Parallel()
 	err := clierror.AlreadyExists("SSH CA", "ops-ca")
 
 	if err.Code != clierror.CodeAlreadyExists {
@@ -150,6 +161,7 @@ func TestAlreadyExistsError(t *testing.T) {
 }
 
 func TestConnectionFailedError(t *testing.T) {
+	t.Parallel()
 	err := clierror.ConnectionFailed("192.168.1.204:50051")
 
 	if err.Code != clierror.CodeConnectionFailed {
@@ -164,6 +176,7 @@ func TestConnectionFailedError(t *testing.T) {
 }
 
 func TestTokenExpiredError(t *testing.T) {
+	t.Parallel()
 	err := clierror.TokenExpired()
 
 	if err.Code != clierror.CodeTokenExpired {
@@ -178,6 +191,7 @@ func TestTokenExpiredError(t *testing.T) {
 }
 
 func TestCLIError_JSONOutput(t *testing.T) {
+	t.Parallel()
 	err := clierror.CANotFound("ops-ca")
 
 	output := clierror.FormatError(err, "json")
@@ -195,6 +209,7 @@ func TestCLIError_JSONOutput(t *testing.T) {
 }
 
 func TestCLIError_TableOutput(t *testing.T) {
+	t.Parallel()
 	err := clierror.CANotFound("ops-ca")
 
 	output := clierror.FormatError(err, "table")

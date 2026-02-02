@@ -16,6 +16,7 @@ var (
 )
 
 func TestRetryConfigDefaults(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing DefaultRetryConfig returns expected default values")
 	cfg := DefaultRetryConfig()
 
@@ -37,6 +38,7 @@ func TestRetryConfigDefaults(t *testing.T) {
 }
 
 func TestIsRetryable(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing IsRetryable correctly classifies errors as retryable or not")
 	tests := []struct {
 		name      string
@@ -67,6 +69,7 @@ func TestIsRetryable(t *testing.T) {
 }
 
 func TestRetrySuccessFirstAttempt(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry succeeds on first attempt when function returns nil")
 	cfg := RetryConfig{
 		InitialDelay: 10 * time.Millisecond,
@@ -91,6 +94,7 @@ func TestRetrySuccessFirstAttempt(t *testing.T) {
 }
 
 func TestRetrySuccessAfterFailures(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry succeeds after retrying through initial failures")
 	cfg := RetryConfig{
 		InitialDelay: 1 * time.Millisecond,
@@ -118,6 +122,7 @@ func TestRetrySuccessAfterFailures(t *testing.T) {
 }
 
 func TestRetryNonRetryableError(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry returns immediately for non-retryable errors")
 	cfg := RetryConfig{
 		InitialDelay: 1 * time.Millisecond,
@@ -142,6 +147,7 @@ func TestRetryNonRetryableError(t *testing.T) {
 }
 
 func TestRetryMaxAttempts(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry stops after reaching max attempts with ErrMaxRetriesExceeded")
 	cfg := RetryConfig{
 		InitialDelay: 1 * time.Millisecond,
@@ -166,6 +172,7 @@ func TestRetryMaxAttempts(t *testing.T) {
 }
 
 func TestRetryContextCancellation(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry respects context cancellation during retry loop")
 	cfg := RetryConfig{
 		InitialDelay: 100 * time.Millisecond,
@@ -194,6 +201,7 @@ func TestRetryContextCancellation(t *testing.T) {
 }
 
 func TestRetryExponentialBackoff(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry uses exponential backoff between attempts")
 	cfg := RetryConfig{
 		InitialDelay: 10 * time.Millisecond,
@@ -226,6 +234,7 @@ func TestRetryExponentialBackoff(t *testing.T) {
 }
 
 func TestRetryMaxDelayRespected(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry caps delays at MaxDelay")
 	cfg := RetryConfig{
 		InitialDelay: 50 * time.Millisecond,
@@ -251,6 +260,7 @@ func TestRetryMaxDelayRespected(t *testing.T) {
 // Circuit Breaker Tests
 
 func TestCircuitBreakerDefaults(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing DefaultCircuitBreakerConfig returns expected default values")
 	cfg := DefaultCircuitBreakerConfig()
 
@@ -263,6 +273,7 @@ func TestCircuitBreakerDefaults(t *testing.T) {
 }
 
 func TestCircuitBreakerInitialState(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing new circuit breaker starts in closed state")
 	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	if cb.State() != CircuitClosed {
@@ -271,6 +282,7 @@ func TestCircuitBreakerInitialState(t *testing.T) {
 }
 
 func TestCircuitBreakerOpensAfterThreshold(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing circuit breaker opens after failure threshold is reached")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 3,
@@ -291,6 +303,7 @@ func TestCircuitBreakerOpensAfterThreshold(t *testing.T) {
 }
 
 func TestCircuitBreakerRejectsWhenOpen(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing circuit breaker rejects calls without executing when open")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
@@ -321,6 +334,7 @@ func TestCircuitBreakerRejectsWhenOpen(t *testing.T) {
 }
 
 func TestCircuitBreakerHalfOpenAfterTimeout(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing circuit breaker transitions to half-open after reset timeout")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
@@ -344,6 +358,7 @@ func TestCircuitBreakerHalfOpenAfterTimeout(t *testing.T) {
 }
 
 func TestCircuitBreakerClosesOnSuccessInHalfOpen(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing circuit breaker closes on successful call in half-open state")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
@@ -375,6 +390,7 @@ func TestCircuitBreakerClosesOnSuccessInHalfOpen(t *testing.T) {
 }
 
 func TestCircuitBreakerReopensOnFailureInHalfOpen(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing circuit breaker reopens on failed call in half-open state")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
@@ -403,6 +419,7 @@ func TestCircuitBreakerReopensOnFailureInHalfOpen(t *testing.T) {
 }
 
 func TestCircuitBreakerReset(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing circuit breaker Reset() returns to closed state")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
@@ -429,6 +446,7 @@ func TestCircuitBreakerReset(t *testing.T) {
 }
 
 func TestCircuitBreakerSuccessResetsFailureCount(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing circuit breaker resets failure count on successful call")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 3,
@@ -461,6 +479,7 @@ func TestCircuitBreakerSuccessResetsFailureCount(t *testing.T) {
 }
 
 func TestCircuitBreakerConcurrency(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing circuit breaker is safe for concurrent access")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 100,
@@ -494,6 +513,7 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 // ============================================================================
 
 func TestCircuitStateString(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing CircuitState.String() returns human-readable names")
 	tests := []struct {
 		state    CircuitState
@@ -520,6 +540,7 @@ func TestCircuitStateString(t *testing.T) {
 // ============================================================================
 
 func TestNewCircuitBreaker_ZeroConfig(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing NewCircuitBreaker applies defaults for zero-value config")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 0,
@@ -537,6 +558,7 @@ func TestNewCircuitBreaker_ZeroConfig(t *testing.T) {
 }
 
 func TestNewCircuitBreaker_NegativeValues(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing NewCircuitBreaker applies defaults for negative config values")
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: -5,
@@ -557,6 +579,7 @@ func TestNewCircuitBreaker_NegativeValues(t *testing.T) {
 // ============================================================================
 
 func TestRetry_ZeroMaxAttempts(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry treats zero MaxAttempts as 1")
 	cfg := RetryConfig{
 		MaxAttempts: 0,
@@ -574,6 +597,7 @@ func TestRetry_ZeroMaxAttempts(t *testing.T) {
 }
 
 func TestRetry_NegativeMaxAttempts(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry treats negative MaxAttempts as 1")
 	cfg := RetryConfig{
 		MaxAttempts: -5,
@@ -591,6 +615,7 @@ func TestRetry_NegativeMaxAttempts(t *testing.T) {
 }
 
 func TestRetry_ContextCancelledBeforeFirstAttempt(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry returns context.Canceled without executing when context already cancelled")
 	cfg := RetryConfig{
 		InitialDelay: time.Second,
@@ -615,6 +640,7 @@ func TestRetry_ContextCancelledBeforeFirstAttempt(t *testing.T) {
 }
 
 func TestRetry_WithJitter(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Retry applies jitter to backoff delays")
 	cfg := RetryConfig{
 		InitialDelay: 10 * time.Millisecond,

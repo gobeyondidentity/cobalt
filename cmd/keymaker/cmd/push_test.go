@@ -40,6 +40,7 @@ func newMockResponse(statusCode int, body interface{}) *http.Response {
 }
 
 func TestCallPushAPI_Success(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing successful push API call")
 
 	mockClient := &mockHTTPClient{
@@ -114,6 +115,7 @@ func TestCallPushAPI_Success(t *testing.T) {
 }
 
 func TestCallPushAPI_SuccessWithForce(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API call with force flag")
 
 	mockClient := &mockHTTPClient{
@@ -155,6 +157,7 @@ func TestCallPushAPI_SuccessWithForce(t *testing.T) {
 }
 
 func TestCallPushAPI_CANotFound(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API when CA is not found (404)")
 
 	mockClient := &mockHTTPClient{
@@ -189,6 +192,7 @@ func TestCallPushAPI_CANotFound(t *testing.T) {
 }
 
 func TestCallPushAPI_DeviceNotFound(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API when DPU is not found (404)")
 
 	mockClient := &mockHTTPClient{
@@ -223,6 +227,7 @@ func TestCallPushAPI_DeviceNotFound(t *testing.T) {
 }
 
 func TestCallPushAPI_NotAuthorized(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API when not authorized (403)")
 
 	mockClient := &mockHTTPClient{
@@ -257,6 +262,7 @@ func TestCallPushAPI_NotAuthorized(t *testing.T) {
 }
 
 func TestCallPushAPI_AttestationStale(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API when attestation is stale (412)")
 
 	mockClient := &mockHTTPClient{
@@ -302,6 +308,7 @@ func TestCallPushAPI_AttestationStale(t *testing.T) {
 }
 
 func TestCallPushAPI_AttestationFailed(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API when attestation failed (412)")
 
 	mockClient := &mockHTTPClient{
@@ -342,6 +349,7 @@ func TestCallPushAPI_AttestationFailed(t *testing.T) {
 }
 
 func TestCallPushAPI_ConnectionError(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API when server connection fails")
 
 	mockClient := &mockHTTPClient{
@@ -374,6 +382,7 @@ func TestCallPushAPI_ConnectionError(t *testing.T) {
 }
 
 func TestCallPushAPI_ServerError(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API when server returns 500")
 
 	mockClient := &mockHTTPClient{
@@ -408,6 +417,7 @@ func TestCallPushAPI_ServerError(t *testing.T) {
 }
 
 func TestCallPushAPI_ServiceUnavailable(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API when DPU connection fails (503)")
 
 	mockClient := &mockHTTPClient{
@@ -446,6 +456,7 @@ func TestCallPushAPI_ServiceUnavailable(t *testing.T) {
 }
 
 func TestCallPushAPI_BadRequest(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing push API with bad request (400)")
 
 	mockClient := &mockHTTPClient{
@@ -480,6 +491,7 @@ func TestCallPushAPI_BadRequest(t *testing.T) {
 }
 
 func TestHandlePushError_DeviceAuthorization(t *testing.T) {
+	// Cannot run in parallel - callPushAPI uses global DPoP state
 	t.Log("Testing error handling for device authorization failure")
 
 	body := []byte(`{"error": "not authorized for device"}`)

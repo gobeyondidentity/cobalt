@@ -19,6 +19,7 @@ import (
 // =============================================================================
 
 func TestAlgorithmConfusion_AlgNone(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker tries to use "alg": "none" to bypass signature verification.
 	// This is CVE-2015-2951, a critical JWT vulnerability where servers accept unsigned tokens
 	// when they see alg=none in the header.
@@ -59,6 +60,7 @@ func TestAlgorithmConfusion_AlgNone(t *testing.T) {
 }
 
 func TestAlgorithmConfusion_HS256_Symmetric(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker uses HS256 (HMAC-SHA256), a symmetric algorithm.
 	// The attack: if the server uses the public key as the HMAC secret, an attacker
 	// who knows the public key can forge valid signatures.
@@ -99,6 +101,7 @@ func TestAlgorithmConfusion_HS256_Symmetric(t *testing.T) {
 }
 
 func TestAlgorithmConfusion_RS256_WrongAsymmetric(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker specifies RS256 (RSA) hoping to exploit type confusion
 	// or library fallback behavior.
 	//
@@ -138,6 +141,7 @@ func TestAlgorithmConfusion_RS256_WrongAsymmetric(t *testing.T) {
 }
 
 func TestAlgorithmConfusion_MissingAlg(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker omits the alg field entirely, hoping for default behavior.
 	//
 	// Expected behavior: Proof rejected with dpop.invalid_proof.
@@ -185,6 +189,7 @@ func TestAlgorithmConfusion_MissingAlg(t *testing.T) {
 }
 
 func TestAlgorithmConfusion_EmptyAlg(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker sets alg to empty string.
 	//
 	// Expected behavior: Proof rejected with dpop.invalid_proof.
@@ -223,6 +228,7 @@ func TestAlgorithmConfusion_EmptyAlg(t *testing.T) {
 }
 
 func TestAlgorithmConfusion_CaseSensitivity(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker uses "eddsa" (lowercase) or "EDDSA" (uppercase)
 	// hoping for case-insensitive comparison.
 	//
@@ -283,6 +289,7 @@ func TestAlgorithmConfusion_CaseSensitivity(t *testing.T) {
 // =============================================================================
 
 func TestClockManipulation_ExactlyAtPastBoundary(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Proof iat is exactly 60 seconds in the past.
 	//
 	// Expected behavior: Accepted (boundary is inclusive).
@@ -315,6 +322,7 @@ func TestClockManipulation_ExactlyAtPastBoundary(t *testing.T) {
 }
 
 func TestClockManipulation_JustPastBoundary(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Proof iat is 61 seconds in the past (just over limit).
 	//
 	// Expected behavior: Rejected with dpop.invalid_iat.
@@ -349,6 +357,7 @@ func TestClockManipulation_JustPastBoundary(t *testing.T) {
 }
 
 func TestClockManipulation_ExactlyAtFutureBoundary(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Proof iat is exactly 60 seconds in the future.
 	//
 	// Expected behavior: Accepted (clock skew tolerance).
@@ -381,6 +390,7 @@ func TestClockManipulation_ExactlyAtFutureBoundary(t *testing.T) {
 }
 
 func TestClockManipulation_JustFutureBoundary(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Proof iat is 61 seconds in the future (just over limit).
 	//
 	// Expected behavior: Rejected with dpop.invalid_iat.
@@ -422,6 +432,7 @@ func TestClockManipulation_JustFutureBoundary(t *testing.T) {
 // =============================================================================
 
 func TestReplayAttack_ExactReplay(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker intercepts a valid proof and reuses it immediately.
 	//
 	// Expected behavior: Second use rejected with dpop.replay.
@@ -455,6 +466,7 @@ func TestReplayAttack_ExactReplay(t *testing.T) {
 }
 
 func TestReplayAttack_ReplayAfter1Second(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker replays proof after a delay.
 	//
 	// Expected behavior: Rejected with dpop.replay.
@@ -490,6 +502,7 @@ func TestReplayAttack_ReplayAfter1Second(t *testing.T) {
 }
 
 func TestReplayAttack_ReplayWithinValidityWindow(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker replays proof within TTL window.
 	//
 	// Expected behavior: Rejected with dpop.replay (still in cache).
@@ -526,6 +539,7 @@ func TestReplayAttack_ReplayWithinValidityWindow(t *testing.T) {
 }
 
 func TestReplayAttack_ReplayAfterExpiry(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker replays proof after JTI has expired from cache,
 	// but the proof's iat is now too old to be valid.
 	//
@@ -575,6 +589,7 @@ func TestReplayAttack_ReplayAfterExpiry(t *testing.T) {
 // =============================================================================
 
 func TestRequestBinding_MethodMismatch_GETvsPOST(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker intercepts a proof for GET /resource and tries
 	// to use it for POST /resource.
 	//
@@ -611,6 +626,7 @@ func TestRequestBinding_MethodMismatch_GETvsPOST(t *testing.T) {
 }
 
 func TestRequestBinding_PathMismatch(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker intercepts a proof for /api/v1/foo and tries
 	// to use it for /api/v1/bar.
 	//
@@ -647,6 +663,7 @@ func TestRequestBinding_PathMismatch(t *testing.T) {
 }
 
 func TestRequestBinding_HostMismatch(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker intercepts a proof for host A and tries
 	// to use it for host B.
 	//
@@ -683,6 +700,7 @@ func TestRequestBinding_HostMismatch(t *testing.T) {
 }
 
 func TestRequestBinding_SchemeMismatch(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker downgrades HTTPS proof to HTTP or vice versa.
 	//
 	// Expected behavior: Rejected with dpop.uri_mismatch.
@@ -725,6 +743,7 @@ func TestRequestBinding_SchemeMismatch(t *testing.T) {
 // =============================================================================
 
 func TestMalformedInput_EmptyDPoPHeader(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Empty DPoP header value.
 	//
 	// Expected behavior: Graceful rejection with dpop.missing_proof.
@@ -746,6 +765,7 @@ func TestMalformedInput_EmptyDPoPHeader(t *testing.T) {
 }
 
 func TestMalformedInput_NonBase64Characters(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: JWT parts contain characters invalid for base64url.
 	//
 	// Expected behavior: Graceful rejection with dpop.invalid_proof.
@@ -784,6 +804,7 @@ func TestMalformedInput_NonBase64Characters(t *testing.T) {
 }
 
 func TestMalformedInput_ExtremelyLongJWT(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker sends a 1MB JWT to cause DoS.
 	//
 	// Expected behavior: Graceful rejection with dpop.invalid_proof (size limit).
@@ -810,6 +831,7 @@ func TestMalformedInput_ExtremelyLongJWT(t *testing.T) {
 }
 
 func TestMalformedInput_JWTWithFourParts(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: JWT with extra dot-separated part.
 	//
 	// Expected behavior: Graceful rejection with dpop.invalid_proof.
@@ -833,6 +855,7 @@ func TestMalformedInput_JWTWithFourParts(t *testing.T) {
 }
 
 func TestMalformedInput_UnicodeInClaims(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: JWT claims contain unicode characters.
 	//
 	// Expected behavior: Graceful handling (reject if invalid, accept if valid JSON).
@@ -869,6 +892,7 @@ func TestMalformedInput_UnicodeInClaims(t *testing.T) {
 }
 
 func TestMalformedInput_JSONInjection(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker tries JSON injection in claims.
 	//
 	// Expected behavior: JSON unmarshal handles this safely.
@@ -906,6 +930,7 @@ func TestMalformedInput_JSONInjection(t *testing.T) {
 // =============================================================================
 
 func TestIdentityStatus_Documentation(t *testing.T) {
+	t.Parallel()
 	// Identity status tests are in auth_test.go:
 	// - TestIdentityRevoked: revoked identity returns 401 auth.revoked
 	// - TestIdentitySuspended: suspended identity returns 403 auth.suspended
@@ -928,6 +953,7 @@ func TestIdentityStatus_Documentation(t *testing.T) {
 // =============================================================================
 
 func TestTimingAttack_SignatureVerification(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker measures response time to detect valid vs invalid
 	// signatures, potentially recovering the private key.
 	//
@@ -1016,6 +1042,7 @@ func TestTimingAttack_SignatureVerification(t *testing.T) {
 // =============================================================================
 
 func TestGoJose_UnknownCritHeader(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker includes an unknown critical header extension.
 	// Per RFC 7515 Section 4.1.11, if "crit" contains an unknown header, the JWT
 	// MUST be rejected.
@@ -1064,6 +1091,7 @@ func TestGoJose_UnknownCritHeader(t *testing.T) {
 }
 
 func TestGoJose_Base64PaddingRejection(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker sends proof with standard base64 padding (=).
 	// JWTs MUST use base64url encoding WITHOUT padding per RFC 7515.
 	//
@@ -1090,6 +1118,7 @@ func TestGoJose_Base64PaddingRejection(t *testing.T) {
 }
 
 func TestGoJose_JWKWrongKeyType(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: During enrollment, attacker sends a JWK with wrong kty/crv
 	// (e.g., EC key instead of OKP/Ed25519).
 	//
@@ -1138,6 +1167,7 @@ func TestGoJose_JWKWrongKeyType(t *testing.T) {
 }
 
 func TestGoJose_OversizedProofDoSPrevention(t *testing.T) {
+	t.Parallel()
 	// Attack scenario: Attacker sends a 1MB proof to cause memory exhaustion.
 	// The size check MUST happen BEFORE any parsing to prevent DoS.
 	//
@@ -1170,6 +1200,7 @@ func TestGoJose_OversizedProofDoSPrevention(t *testing.T) {
 }
 
 func TestGoJose_WireFormatInterop(t *testing.T) {
+	t.Parallel()
 	// Test wire format compatibility: proofs generated with go-jose should validate
 	// with the old code path (if preserved), and vice versa.
 	// This test ensures the refactoring doesn't break existing clients.
@@ -1224,6 +1255,7 @@ func TestGoJose_WireFormatInterop(t *testing.T) {
 }
 
 func TestGoJose_EnrollmentJWKFormat(t *testing.T) {
+	t.Parallel()
 	// Test that enrollment proofs (with embedded JWK) work correctly
 	t.Log("Testing enrollment proof with embedded JWK")
 
@@ -1289,6 +1321,7 @@ func TestGoJose_EnrollmentJWKFormat(t *testing.T) {
 }
 
 func TestGoJose_ValidatorAcceptsGoJoseProof(t *testing.T) {
+	t.Parallel()
 	// End-to-end test: generate with go-jose, validate with go-jose validator
 	t.Log("Testing end-to-end: generate and validate with go-jose")
 

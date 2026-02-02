@@ -5,6 +5,7 @@ import (
 )
 
 func TestGenerateChallenge(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating single challenge")
 	challenge, err := GenerateChallenge()
 	if err != nil {
@@ -18,6 +19,7 @@ func TestGenerateChallenge(t *testing.T) {
 }
 
 func TestGenerateChallengeUniqueness(t *testing.T) {
+	t.Parallel()
 	const iterations = 10000
 	t.Logf("Generating %d challenges to verify uniqueness", iterations)
 
@@ -44,6 +46,7 @@ func TestGenerateChallengeUniqueness(t *testing.T) {
 }
 
 func TestGenerateChallengeNotZero(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying challenge is not all zeros")
 	challenge, err := GenerateChallenge()
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 
 // TestDPoPHeaderPresent verifies that the DPoP HTTP client adds a DPoP header to requests.
 func TestDPoPHeaderPresent(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Creating test server to verify DPoP header presence")
 
 	var capturedHeaders http.Header
@@ -73,6 +74,7 @@ func TestDPoPHeaderPresent(t *testing.T) {
 
 // TestDPoPHeaderOnPOST verifies DPoP header is added to POST requests.
 func TestDPoPHeaderOnPOST(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Creating test server for POST request")
 
 	var capturedHeaders http.Header
@@ -120,6 +122,7 @@ func TestDPoPHeaderOnPOST(t *testing.T) {
 
 // TestDPoPProofContainsRequiredClaims verifies the DPoP proof JWT contains required claims.
 func TestDPoPProofContainsRequiredClaims(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Creating test server to capture DPoP proof")
 
 	var capturedDPoP string
@@ -192,6 +195,7 @@ func TestDPoPProofContainsRequiredClaims(t *testing.T) {
 
 // TestInitDPoPClient verifies the initialization function creates a valid client.
 func TestInitDPoPClient(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Setting up test environment with temporary key files")
 
 	// Create temp directory for test keys
@@ -254,6 +258,7 @@ func TestInitDPoPClient(t *testing.T) {
 
 // TestDPoPHTTPClientWrapper verifies the wrapper HTTP client adds DPoP to requests.
 func TestDPoPHTTPClientWrapper(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Creating test server")
 
 	var capturedDPoP string
@@ -304,6 +309,7 @@ func TestDPoPHTTPClientWrapper(t *testing.T) {
 
 // TestGetDPoPHTTPClientNotEnrolled verifies behavior when not enrolled.
 func TestGetDPoPHTTPClientNotEnrolled(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Testing getDPoPHTTPClient when not enrolled")
 
 	// Create temp directory without keys
@@ -336,6 +342,7 @@ func TestGetDPoPHTTPClientNotEnrolled(t *testing.T) {
 
 // TestAuthErrorUserFriendlyMessages verifies user-friendly error messages for 401 responses.
 func TestAuthErrorUserFriendlyMessages(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Testing user-friendly error messages for auth errors")
 
 	testCases := []struct {
@@ -369,6 +376,7 @@ func TestAuthErrorUserFriendlyMessages(t *testing.T) {
 
 // TestParseAuthErrorFrom401 verifies parsing of 401 responses.
 func TestParseAuthErrorFrom401(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Testing ParseAuthError from 401 response")
 
 	// Create a mock 401 response
@@ -398,6 +406,7 @@ func TestParseAuthErrorFrom401(t *testing.T) {
 
 // TestParseAuthErrorNon401 verifies non-auth responses return nil.
 func TestParseAuthErrorNon401(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Testing ParseAuthError with non-401 response")
 
 	resp := &http.Response{
@@ -415,6 +424,7 @@ func TestParseAuthErrorNon401(t *testing.T) {
 
 // TestGetDPoPHTTPClientWithKeys verifies getDPoPHTTPClient works with enrolled keys.
 func TestGetDPoPHTTPClientWithKeys(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Setting up test environment with enrolled keys")
 
 	// Reset state
@@ -448,6 +458,7 @@ func TestGetDPoPHTTPClientWithKeys(t *testing.T) {
 
 // TestDPoPClientWrapperAddsHeaders verifies the wrapper adds DPoP headers correctly.
 func TestDPoPClientWrapperAddsHeaders(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Testing that dpopHTTPClientWrapper adds DPoP headers")
 
 	var capturedHeaders http.Header
@@ -505,6 +516,7 @@ func TestDPoPClientWrapperAddsHeaders(t *testing.T) {
 
 // TestMVPWarningConstant verifies the MVP warning constant is accessible and correct.
 func TestMVPWarningConstant(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Testing MVPWarning constant is correctly defined")
 
 	expected := "Using file-based key storage (MVP mode). Hardware binding required for production."
@@ -517,6 +529,7 @@ func TestMVPWarningConstant(t *testing.T) {
 
 // TestStderrLoggerWarn verifies the stderr logger outputs warnings correctly.
 func TestStderrLoggerWarn(t *testing.T) {
+	// Cannot run in parallel - uses global DPoP or dpopClient state
 	t.Log("Testing StderrLogger.Warn outputs to stderr")
 
 	// Capture stderr

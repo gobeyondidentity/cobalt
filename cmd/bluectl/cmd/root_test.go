@@ -7,6 +7,7 @@ import (
 )
 
 func TestRootCmd_ShortContainsEmoji(t *testing.T) {
+	// Cannot run in parallel - uses shared global rootCmd
 	t.Log("Verifying Short description contains ice cube emoji")
 
 	if !strings.Contains(rootCmd.Short, "🧊") {
@@ -15,6 +16,7 @@ func TestRootCmd_ShortContainsEmoji(t *testing.T) {
 }
 
 func TestRootCmd_HelpShowsSubcommands(t *testing.T) {
+	// Cannot run in parallel - uses shared global rootCmd
 	t.Log("Verifying help output shows available subcommands")
 
 	var stdout bytes.Buffer
@@ -45,6 +47,7 @@ func TestRootCmd_HelpShowsSubcommands(t *testing.T) {
 }
 
 func TestRootCmd_ShortDescription(t *testing.T) {
+	// Cannot run in parallel - uses shared global rootCmd
 	t.Log("Verifying root command Short description contains emoji and expected text")
 
 	expected := "🧊 Fabric Console CLI for DPU management"

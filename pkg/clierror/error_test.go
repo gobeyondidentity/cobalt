@@ -8,6 +8,7 @@ import (
 )
 
 func TestExitCodes(t *testing.T) {
+	t.Parallel()
 	// Verify exit code constants match spec
 	tests := []struct {
 		name     string
@@ -32,6 +33,7 @@ func TestExitCodes(t *testing.T) {
 }
 
 func TestErrorCodes(t *testing.T) {
+	t.Parallel()
 	// Verify error code constants match spec
 	tests := []struct {
 		name     string
@@ -62,6 +64,7 @@ func TestErrorCodes(t *testing.T) {
 }
 
 func TestCLIError_Error(t *testing.T) {
+	t.Parallel()
 	err := &CLIError{
 		Code:    CodeDeviceNotFound,
 		Message: "device 'test-dpu' not found",
@@ -73,6 +76,7 @@ func TestCLIError_Error(t *testing.T) {
 }
 
 func TestAttestationStale(t *testing.T) {
+	t.Parallel()
 	err := AttestationStale("15m30s")
 
 	if err.Code != CodeAttestationStale {
@@ -93,6 +97,7 @@ func TestAttestationStale(t *testing.T) {
 }
 
 func TestAttestationFailed(t *testing.T) {
+	t.Parallel()
 	err := AttestationFailed("PCR mismatch")
 
 	if err.Code != CodeAttestationFailed {
@@ -110,6 +115,7 @@ func TestAttestationFailed(t *testing.T) {
 }
 
 func TestAttestationUnavailable(t *testing.T) {
+	t.Parallel()
 	err := AttestationUnavailable()
 
 	if err.Code != CodeAttestationUnavailable {
@@ -127,6 +133,7 @@ func TestAttestationUnavailable(t *testing.T) {
 }
 
 func TestNotAuthorized(t *testing.T) {
+	t.Parallel()
 	err := NotAuthorized("ssh-ca/ops-ca")
 
 	if err.Code != CodeNotAuthorized {
@@ -144,6 +151,7 @@ func TestNotAuthorized(t *testing.T) {
 }
 
 func TestTokenExpired(t *testing.T) {
+	t.Parallel()
 	err := TokenExpired()
 
 	if err.Code != CodeTokenExpired {
@@ -161,6 +169,7 @@ func TestTokenExpired(t *testing.T) {
 }
 
 func TestDeviceNotFound(t *testing.T) {
+	t.Parallel()
 	err := DeviceNotFound("bf3-node01")
 
 	if err.Code != CodeDeviceNotFound {
@@ -178,6 +187,7 @@ func TestDeviceNotFound(t *testing.T) {
 }
 
 func TestCANotFound(t *testing.T) {
+	t.Parallel()
 	err := CANotFound("ops-ca")
 
 	if err.Code != CodeCANotFound {
@@ -195,6 +205,7 @@ func TestCANotFound(t *testing.T) {
 }
 
 func TestOperatorNotFound(t *testing.T) {
+	t.Parallel()
 	err := OperatorNotFound("alice@example.com")
 
 	if err.Code != CodeOperatorNotFound {
@@ -212,6 +223,7 @@ func TestOperatorNotFound(t *testing.T) {
 }
 
 func TestAlreadyExists(t *testing.T) {
+	t.Parallel()
 	err := AlreadyExists("SSH CA", "ops-ca")
 
 	if err.Code != CodeAlreadyExists {
@@ -232,6 +244,7 @@ func TestAlreadyExists(t *testing.T) {
 }
 
 func TestRateLimited(t *testing.T) {
+	t.Parallel()
 	err := RateLimited()
 
 	if err.Code != CodeRateLimited {
@@ -249,6 +262,7 @@ func TestRateLimited(t *testing.T) {
 }
 
 func TestConnectionFailed(t *testing.T) {
+	t.Parallel()
 	err := ConnectionFailed("192.168.1.204:50051")
 
 	if err.Code != CodeConnectionFailed {
@@ -269,6 +283,7 @@ func TestConnectionFailed(t *testing.T) {
 }
 
 func TestInternalError(t *testing.T) {
+	t.Parallel()
 	originalErr := strings.NewReader("test").Read // just need any error
 	err := InternalError(nil)
 
@@ -299,6 +314,7 @@ func (e *testError) Error() string {
 }
 
 func TestCLIError_JSONSerialization(t *testing.T) {
+	t.Parallel()
 	err := &CLIError{
 		Code:      CodeDeviceNotFound,
 		Message:   "device 'test-dpu' not found",
@@ -338,6 +354,7 @@ func TestCLIError_JSONSerialization(t *testing.T) {
 }
 
 func TestCLIError_JSONSerialization_OmitEmptyHint(t *testing.T) {
+	t.Parallel()
 	err := &CLIError{
 		Code:      CodeInternalError,
 		Message:   "unexpected error",
@@ -363,6 +380,7 @@ func TestCLIError_JSONSerialization_OmitEmptyHint(t *testing.T) {
 }
 
 func TestFormatError_JSON(t *testing.T) {
+	t.Parallel()
 	err := DeviceNotFound("bf3-node01")
 
 	output := FormatError(err, "json")
@@ -383,6 +401,7 @@ func TestFormatError_JSON(t *testing.T) {
 }
 
 func TestFormatError_Table(t *testing.T) {
+	t.Parallel()
 	err := DeviceNotFound("bf3-node01")
 
 	output := FormatError(err, "table")
@@ -404,6 +423,7 @@ func TestFormatError_Table(t *testing.T) {
 }
 
 func TestFormatError_TableWithHint(t *testing.T) {
+	t.Parallel()
 	err := TokenExpired()
 
 	output := FormatError(err, "table")
@@ -415,6 +435,7 @@ func TestFormatError_TableWithHint(t *testing.T) {
 }
 
 func TestFormatError_DefaultToTable(t *testing.T) {
+	t.Parallel()
 	err := DeviceNotFound("bf3-node01")
 
 	// Unknown format should default to table

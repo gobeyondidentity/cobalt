@@ -73,6 +73,7 @@ func formatKnownHostsLine(hostname string, key ssh.PublicKey) string {
 }
 
 func TestGetKnownHostsPath(t *testing.T) {
+	t.Parallel()
 	t.Run("returns path in user home directory", func(t *testing.T) {
 		path := getKnownHostsPath()
 
@@ -90,6 +91,7 @@ func TestGetKnownHostsPath(t *testing.T) {
 }
 
 func TestCreateHostKeyCallback(t *testing.T) {
+	t.Parallel()
 	t.Run("known host matches returns no error", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		pubKey, _ := generateTestHostKey(t)
@@ -275,6 +277,7 @@ func TestCreateHostKeyCallback(t *testing.T) {
 }
 
 func TestUnknownHostKeyError(t *testing.T) {
+	t.Parallel()
 	t.Run("error message format", func(t *testing.T) {
 		pubKey, _ := generateTestHostKey(t)
 		fingerprint := ssh.FingerprintSHA256(pubKey)
@@ -309,6 +312,7 @@ func TestUnknownHostKeyError(t *testing.T) {
 }
 
 func TestHostKeyFingerprintFormat(t *testing.T) {
+	t.Parallel()
 	pubKey, _ := generateTestHostKey(t)
 	fingerprint := ssh.FingerprintSHA256(pubKey)
 

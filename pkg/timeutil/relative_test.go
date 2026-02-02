@@ -7,6 +7,7 @@ import (
 )
 
 func TestRelativeTime(t *testing.T) {
+	t.Parallel()
 	// Use a fixed reference time for deterministic testing
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 
@@ -62,6 +63,7 @@ func TestRelativeTime(t *testing.T) {
 }
 
 func TestRelativeTimeWithNow(t *testing.T) {
+	t.Parallel()
 	// Use a fixed reference time for deterministic testing
 	ref := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 
@@ -88,6 +90,7 @@ func TestRelativeTimeWithNow(t *testing.T) {
 }
 
 func TestFormatExpiration(t *testing.T) {
+	t.Parallel()
 	// Use a fixed reference time for deterministic testing
 	now := time.Date(2026, 1, 10, 11, 14, 0, 0, time.Local)
 
@@ -124,6 +127,7 @@ func TestFormatExpiration(t *testing.T) {
 }
 
 func TestFormatSimpleExpiration(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 1, 10, 11, 14, 0, 0, time.Local)
 
 	tests := []struct {

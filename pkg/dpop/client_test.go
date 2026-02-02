@@ -28,6 +28,7 @@ func (m *mockProofGenerator) Generate(method, uri, kid string) (string, error) {
 }
 
 func TestClientAddsDPoPHeader(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Client adds DPoP header to requests")
 
 	// Create test server that checks for DPoP header
@@ -56,6 +57,7 @@ func TestClientAddsDPoPHeader(t *testing.T) {
 }
 
 func TestClientGeneratesFreshProofPerRequest(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Client generates fresh proof for each request")
 
 	callCount := 0
@@ -87,6 +89,7 @@ func TestClientGeneratesFreshProofPerRequest(t *testing.T) {
 }
 
 func TestClientUsesCorrectMethodAndURI(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Client passes correct method and URI to proof generator")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +127,7 @@ func TestClientUsesCorrectMethodAndURI(t *testing.T) {
 }
 
 func TestClientSetKID(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Client.SetKID updates kid for subsequent requests")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -160,6 +164,7 @@ func TestClientSetKID(t *testing.T) {
 }
 
 func TestClientPostJSON(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Client.PostJSON sends JSON body with correct content type")
 
 	var receivedBody string
@@ -200,6 +205,7 @@ func TestClientPostJSON(t *testing.T) {
 }
 
 func TestParseAuthError(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing ParseAuthError extracts error code from response")
 
 	tests := []struct {
@@ -243,6 +249,7 @@ func TestParseAuthError(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			resp := &http.Response{
 				StatusCode: tc.statusCode,
 				Body:       io.NopCloser(strings.NewReader(tc.body)),
@@ -270,6 +277,7 @@ func TestParseAuthError(t *testing.T) {
 }
 
 func TestAuthErrorUserFriendlyMessages(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing AuthError.UserFriendlyMessage returns helpful messages")
 
 	tests := []struct {
@@ -294,6 +302,7 @@ func TestAuthErrorUserFriendlyMessages(t *testing.T) {
 }
 
 func TestAuthErrorIsClockError(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing AuthError.IsClockError identifies clock issues")
 
 	clockErr := &AuthError{Code: "dpop.invalid_iat"}
@@ -310,6 +319,7 @@ func TestAuthErrorIsClockError(t *testing.T) {
 }
 
 func TestAuthErrorIsRevoked(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing AuthError.IsRevoked identifies revocation")
 
 	revokedErr := &AuthError{Code: "auth.revoked"}
@@ -326,6 +336,7 @@ func TestAuthErrorIsRevoked(t *testing.T) {
 }
 
 func TestLoadIdentity(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing LoadIdentity loads key and kid from storage")
 
 	tmpDir := t.TempDir()
@@ -359,6 +370,7 @@ func TestLoadIdentity(t *testing.T) {
 }
 
 func TestSaveIdentity(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing SaveIdentity saves key and kid to storage")
 
 	tmpDir := t.TempDir()
@@ -392,6 +404,7 @@ func TestSaveIdentity(t *testing.T) {
 }
 
 func TestIsEnrolled(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing IsEnrolled checks for key and kid existence")
 
 	tmpDir := t.TempDir()
@@ -428,6 +441,7 @@ func TestIsEnrolled(t *testing.T) {
 }
 
 func TestClientDelete(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Client.Delete sends DELETE request with DPoP")
 
 	var receivedMethod string
@@ -459,6 +473,7 @@ func TestClientDelete(t *testing.T) {
 }
 
 func TestClientBaseURLHandling(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Client handles trailing slash in base URL")
 
 	proofGen := &mockProofGenerator{proof: "test"}
@@ -488,6 +503,7 @@ func (m *mockLogger) Warn(msg string) {
 }
 
 func TestNewClientFromConfigLogsWarning(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing NewClientFromConfig logs MVP warning")
 
 	tmpDir := t.TempDir()
@@ -517,6 +533,7 @@ func TestNewClientFromConfigLogsWarning(t *testing.T) {
 }
 
 func TestNewEnrollmentClientLogsWarning(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing NewEnrollmentClient logs MVP warning")
 
 	logger := &mockLogger{}
@@ -556,6 +573,7 @@ func TestNewEnrollmentClientLogsWarning(t *testing.T) {
 }
 
 func TestCompleteEnrollment(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing CompleteEnrollment saves identity to correct paths")
 
 	// Create custom key store for this test
@@ -573,6 +591,7 @@ func TestCompleteEnrollment(t *testing.T) {
 }
 
 func TestMVPWarningConstant(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing MVPWarning constant contains expected text")
 
 	// Verify the warning contains the required text per acceptance criteria
@@ -590,6 +609,7 @@ func TestMVPWarningConstant(t *testing.T) {
 }
 
 func TestNewClientFromConfigNotEnrolled(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing NewClientFromConfig returns nil when not enrolled")
 
 	// Use unknown client type to test error path

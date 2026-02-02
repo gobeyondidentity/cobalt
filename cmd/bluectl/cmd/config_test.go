@@ -10,6 +10,7 @@ import (
 )
 
 func TestConfigPath(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	path := ConfigPath()
 	if path == "" {
 		t.Skip("Could not determine home directory")
@@ -23,6 +24,7 @@ func TestConfigPath(t *testing.T) {
 }
 
 func TestLoadConfigNonExistent(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	// LoadConfig should return empty config for non-existent file
 	// This test relies on the actual config path, which may or may not exist
 	cfg, err := LoadConfig()
@@ -36,6 +38,7 @@ func TestLoadConfigNonExistent(t *testing.T) {
 }
 
 func TestSaveAndLoadConfig(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	// Create temp directory for test config
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, ".config", "bluectl")
@@ -69,6 +72,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 }
 
 func TestGetServerFlagPrecedence(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	// Save original flag value
 	originalFlag := serverFlag
 	defer func() { serverFlag = originalFlag }()
@@ -87,6 +91,7 @@ func TestGetServerFlagPrecedence(t *testing.T) {
 }
 
 func TestGetServerServerURLEnvVar(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing SERVER_URL env var takes precedence over BLUECTL_SERVER and config file")
 
 	// Save original flag value and clear it
@@ -110,6 +115,7 @@ func TestGetServerServerURLEnvVar(t *testing.T) {
 }
 
 func TestGetServerBluectlServerEnvVar(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing BLUECTL_SERVER env var works when SERVER_URL not set (backward compatibility)")
 
 	// Save original flag value and clear it
@@ -130,6 +136,7 @@ func TestGetServerBluectlServerEnvVar(t *testing.T) {
 }
 
 func TestGetServerFlagOverridesEnvVars(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing --server flag takes precedence over all env vars")
 
 	// Save original flag value
@@ -155,6 +162,7 @@ func TestGetServerFlagOverridesEnvVars(t *testing.T) {
 }
 
 func TestGetServerFromConfig(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	// Save original flag value and clear it
 	originalFlag := serverFlag
 	defer func() { serverFlag = originalFlag }()
@@ -167,6 +175,7 @@ func TestGetServerFromConfig(t *testing.T) {
 }
 
 func TestConfigStruct(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	cfg := Config{
 		Server: "http://example.com:18080",
 	}
@@ -177,6 +186,7 @@ func TestConfigStruct(t *testing.T) {
 }
 
 func TestConfigYAMLRoundTrip(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	original := &Config{
 		Server: "http://nexus.example.com:18080",
 	}
@@ -199,6 +209,7 @@ func TestConfigYAMLRoundTrip(t *testing.T) {
 }
 
 func TestEmptyConfigYAML(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	// Empty YAML should produce empty config
 	var cfg Config
 	if err := yaml.Unmarshal([]byte(""), &cfg); err != nil {

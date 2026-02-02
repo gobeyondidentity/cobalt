@@ -6,6 +6,7 @@ import (
 )
 
 func TestErrorCodes(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying all 8 DPoP error codes exist with correct strings")
 
 	codes := map[string]string{
@@ -28,6 +29,7 @@ func TestErrorCodes(t *testing.T) {
 }
 
 func TestDPoPErrorInterface(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing DPoPError implements error interface")
 	var err error = &DPoPError{
 		Code:    ErrCodeMissingProof,
@@ -40,6 +42,7 @@ func TestDPoPErrorInterface(t *testing.T) {
 }
 
 func TestErrorConstructors(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing error constructor functions")
 
 	tests := []struct {
@@ -59,6 +62,7 @@ func TestErrorConstructors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			t.Logf("Testing %s error constructor", tt.name)
 			if tt.err.Code != tt.wantCode {
 				t.Errorf("Code = %q, want %q", tt.err.Code, tt.wantCode)
@@ -72,6 +76,7 @@ func TestErrorConstructors(t *testing.T) {
 }
 
 func TestErrorCodeExtraction(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing error code extraction from DPoP errors")
 
 	dpopErr := ErrInvalidSignature()
@@ -102,6 +107,7 @@ func TestErrorCodeExtraction(t *testing.T) {
 }
 
 func TestIsDPoPError(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing IsDPoPError helper")
 
 	dpopErr := ErrMissingProof()
@@ -125,6 +131,7 @@ func TestIsDPoPError(t *testing.T) {
 }
 
 func TestErrorMessagesDoNotContainSensitiveData(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying error messages do not expose sensitive data patterns")
 
 	// These errors should NOT contain anything that looks like a key

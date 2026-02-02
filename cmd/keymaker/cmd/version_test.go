@@ -9,6 +9,7 @@ import (
 )
 
 func TestVersionCommand_BasicOutput(t *testing.T) {
+	// Cannot run in parallel - modifies shared global rootCmd
 	// Capture output
 	var stdout bytes.Buffer
 	rootCmd.SetOut(&stdout)
@@ -29,6 +30,7 @@ func TestVersionCommand_BasicOutput(t *testing.T) {
 }
 
 func TestVersionCommand_CheckFlag(t *testing.T) {
+	// Cannot run in parallel - modifies shared global rootCmd
 	// Capture output
 	var stdout bytes.Buffer
 	rootCmd.SetOut(&stdout)
@@ -60,6 +62,7 @@ func TestVersionCommand_CheckFlag(t *testing.T) {
 }
 
 func TestVersionCommand_SkipUpdateCheckFlag(t *testing.T) {
+	// Cannot run in parallel - modifies shared global rootCmd
 	// Capture output
 	var stdout bytes.Buffer
 	rootCmd.SetOut(&stdout)

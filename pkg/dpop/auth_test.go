@@ -55,6 +55,7 @@ func newTestMiddleware(
 }
 
 func TestValidProofToProtectedEndpoint(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing valid proof to protected endpoint returns 200 with identity in context")
 
 	validator := &mockValidator{result: ProofValidationResult{
@@ -96,6 +97,7 @@ func TestValidProofToProtectedEndpoint(t *testing.T) {
 }
 
 func TestMissingProofToProtectedEndpoint(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing missing proof to protected endpoint returns 401 dpop.missing_proof")
 
 	validator := &mockValidator{}
@@ -131,6 +133,7 @@ func TestMissingProofToProtectedEndpoint(t *testing.T) {
 }
 
 func TestInvalidProofToProtectedEndpoint(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing invalid proof to protected endpoint returns 401 with appropriate error")
 
 	validator := &mockValidator{result: ProofValidationResult{
@@ -166,6 +169,7 @@ func TestInvalidProofToProtectedEndpoint(t *testing.T) {
 }
 
 func TestReplayedJTI(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing replayed jti returns 401 dpop.replay")
 
 	validator := &mockValidator{result: ProofValidationResult{
@@ -204,6 +208,7 @@ func TestReplayedJTI(t *testing.T) {
 }
 
 func TestIdentitySuspended(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing suspended identity returns 403 auth.suspended")
 
 	validator := &mockValidator{result: ProofValidationResult{
@@ -243,6 +248,7 @@ func TestIdentitySuspended(t *testing.T) {
 }
 
 func TestIdentityRevoked(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing revoked identity returns 401 auth.revoked")
 
 	validator := &mockValidator{result: ProofValidationResult{
@@ -281,6 +287,7 @@ func TestIdentityRevoked(t *testing.T) {
 }
 
 func TestBypassEndpointHealth(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing /health without proof returns 200 (bypassed)")
 
 	validator := &mockValidator{}
@@ -311,6 +318,7 @@ func TestBypassEndpointHealth(t *testing.T) {
 }
 
 func TestBypassEndpointReady(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing /ready without proof returns 200 (bypassed)")
 
 	validator := &mockValidator{}
@@ -340,6 +348,7 @@ func TestBypassEndpointReady(t *testing.T) {
 }
 
 func TestBypassEndpointEnrollInit(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing /api/v1/enroll/init without proof returns 200 (bypassed)")
 
 	validator := &mockValidator{}
@@ -369,6 +378,7 @@ func TestBypassEndpointEnrollInit(t *testing.T) {
 }
 
 func TestBypassEndpointEnrollComplete(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing /api/v1/enroll/complete without proof returns 200 (bypassed)")
 
 	validator := &mockValidator{}
@@ -398,6 +408,7 @@ func TestBypassEndpointEnrollComplete(t *testing.T) {
 }
 
 func TestBypassEndpointBootstrap(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing /api/v1/admin/bootstrap without proof returns 200 (bypassed)")
 
 	validator := &mockValidator{}
@@ -427,6 +438,7 @@ func TestBypassEndpointBootstrap(t *testing.T) {
 }
 
 func TestBypassEndpointEnrollDPUInit(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing /api/v1/enroll/dpu/init without proof returns 200 (bypassed)")
 
 	validator := &mockValidator{}
@@ -456,6 +468,7 @@ func TestBypassEndpointEnrollDPUInit(t *testing.T) {
 }
 
 func TestOldEnrollPathsNotBypassed(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing old /enroll/* paths are NOT bypassed (require auth)")
 
 	validator := &mockValidator{}
@@ -504,6 +517,7 @@ func TestOldEnrollPathsNotBypassed(t *testing.T) {
 }
 
 func TestPathTraversalBlocked(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing path traversal /health/../api/protected requires auth (not bypassed)")
 
 	validator := &mockValidator{}
@@ -534,6 +548,7 @@ func TestPathTraversalBlocked(t *testing.T) {
 }
 
 func TestCaseInsensitiveBypass(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing /HEALTH (uppercase) is bypassed consistently")
 
 	validator := &mockValidator{}
@@ -563,6 +578,7 @@ func TestCaseInsensitiveBypass(t *testing.T) {
 }
 
 func TestURLEncodedBypass(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing URL-encoded /health (%2Fhealth) is handled consistently")
 
 	validator := &mockValidator{}
@@ -593,6 +609,7 @@ func TestURLEncodedBypass(t *testing.T) {
 }
 
 func TestMiddlewarePanicRecovery(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing middleware panic returns 500, does not call handler, and logs stack trace")
 
 	// Create a validator that panics
@@ -650,6 +667,7 @@ func (p *panicValidator) Validate(proof, method, uri string) ProofValidationResu
 }
 
 func TestErrorResponseContainsOnlyErrorCode(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing error responses contain only error code, no sensitive details")
 
 	validator := &mockValidator{result: ProofValidationResult{
@@ -691,6 +709,7 @@ func TestErrorResponseContainsOnlyErrorCode(t *testing.T) {
 }
 
 func TestSanitizeForLog(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing log sanitization prevents injection")
 
 	tests := []struct {
@@ -714,6 +733,7 @@ func TestSanitizeForLog(t *testing.T) {
 }
 
 func TestIdentityContextNotFromHeader(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing identity context cannot be spoofed via headers")
 
 	validator := &mockValidator{result: ProofValidationResult{
@@ -755,6 +775,7 @@ func TestIdentityContextNotFromHeader(t *testing.T) {
 }
 
 func TestDecommissionedDPU(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing decommissioned DPU returns 401 auth.decommissioned")
 
 	validator := &mockValidator{result: ProofValidationResult{
@@ -794,6 +815,7 @@ func TestDecommissionedDPU(t *testing.T) {
 }
 
 func TestUnknownKID(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing unknown kid returns 401 dpop.unknown_key")
 
 	validator := &mockValidator{result: ProofValidationResult{
@@ -829,6 +851,7 @@ func TestUnknownKID(t *testing.T) {
 }
 
 func TestNormalizePath(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing path normalization")
 
 	middleware := &AuthMiddleware{}
@@ -875,6 +898,7 @@ func (c *capturingJTICache) Close() error {
 }
 
 func TestJTICacheReceivesActualJTI(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing JTI cache receives the actual JTI claim, not the full proof string")
 
 	// The expected JTI is a UUID (36 chars), not a full JWT (hundreds of chars)

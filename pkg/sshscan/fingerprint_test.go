@@ -6,6 +6,7 @@ import (
 )
 
 func TestFingerprint(t *testing.T) {
+	t.Parallel()
 	t.Run("ed25519 fingerprint format", func(t *testing.T) {
 		// Parse a key to get its base64 data
 		key, err := ParseLine(testEd25519Key)
@@ -52,6 +53,7 @@ func TestFingerprint(t *testing.T) {
 }
 
 func TestGenerateFingerprint(t *testing.T) {
+	t.Parallel()
 	t.Run("valid base64 produces fingerprint", func(t *testing.T) {
 		// This is the base64 portion of testEd25519Key
 		base64Data := "AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
