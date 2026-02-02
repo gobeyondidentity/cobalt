@@ -95,8 +95,15 @@ func inviteOperatorRemote(ctx context.Context, serverURL, email, tenantName, rol
 		return formatOutput(resp)
 	}
 
-	if resp.Status == "already_exists" {
-		fmt.Printf("Operator '%s' already exists (status: %s)\n", email, resp.Operator.Status)
+	if resp.Status == "additional_device" {
+		fmt.Printf("Invite created for %s (additional device)\n", email)
+		fmt.Printf("Code: %s\n", resp.InviteCode)
+		fmt.Printf("Expires: %s\n", resp.ExpiresAt)
+		fmt.Println()
+		fmt.Println("This operator already has active KeyMakers.")
+		fmt.Println("Share this code to enroll an additional device:")
+		fmt.Println("  1. Run: km init")
+		fmt.Println("  2. Enter the invite code when prompted")
 		return nil
 	}
 

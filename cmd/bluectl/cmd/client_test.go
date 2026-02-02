@@ -990,12 +990,14 @@ func TestNexusClient_InviteOperator(t *testing.T) {
 			wantErr:    false,
 		},
 		{
-			name:       "operator already exists",
+			name:       "additional device for existing operator",
 			email:      "nelson@acme.com",
 			tenantName: "acme",
 			role:       "operator",
 			serverResp: inviteOperatorResponse{
-				Status: "already_exists",
+				Status:     "additional_device",
+				InviteCode: "ACME-ABC123-XYZ789",
+				ExpiresAt:  "2026-02-03T15:04:05Z",
 				Operator: struct {
 					ID     string `json:"id"`
 					Email  string `json:"email"`
@@ -1006,7 +1008,7 @@ func TestNexusClient_InviteOperator(t *testing.T) {
 					Status: "active",
 				},
 			},
-			serverCode: http.StatusOK,
+			serverCode: http.StatusCreated,
 			wantErr:    false,
 		},
 		{

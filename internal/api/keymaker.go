@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 	"github.com/gobeyondidentity/secure-infra/pkg/store"
 	"github.com/google/uuid"
 )
@@ -229,21 +230,21 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get admin identity from auth context for audit logging
+	adminKID := "unknown"
+	if identity := dpop.IdentityFromContext(r.Context()); identity != nil {
+		adminKID = identity.KID
+	}
+
 	// Check if operator exists
 	var operator *store.Operator
+	var isAdditionalDevice bool
 	op, err := s.store.GetOperatorByEmail(req.Email)
 	if err == nil && op != nil {
 		operator = op
-		// Operator exists - idempotent: if not pending_invite, return success
+		// Operator exists - for active/suspended, generate new invite for additional device
 		if op.Status != "pending_invite" {
-			response := InviteOperatorResponse{
-				Status: "already_exists",
-			}
-			response.Operator.ID = op.ID
-			response.Operator.Email = op.Email
-			response.Operator.Status = op.Status
-			writeJSON(w, http.StatusOK, response)
-			return
+			isAdditionalDevice = true
 		}
 	} else {
 		// Create new operator with pending status
@@ -282,7 +283,7 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 		OperatorEmail: req.Email,
 		TenantID:      tenant.ID,
 		Role:          req.Role,
-		CreatedBy:     "admin", // TODO: get from auth context
+		CreatedBy:     adminKID,
 		ExpiresAt:     time.Now().Add(24 * time.Hour),
 		Status:        "pending",
 	}
@@ -292,9 +293,35 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit log the invite generation
+	inviteType := "new"
+	if isAdditionalDevice {
+		inviteType = "additional_device"
+	}
+	auditEntry := &store.AuditEntry{
+		Timestamp: time.Now(),
+		Action:    "operator.invite",
+		Target:    operator.ID,
+		Decision:  "allowed",
+		Details: map[string]string{
+			"admin_id":       adminKID,
+			"operator_email": req.Email,
+			"invite_type":    inviteType,
+			"tenant_id":      tenant.ID,
+		},
+	}
+	if _, err := s.store.InsertAuditEntry(auditEntry); err != nil {
+		log.Printf("failed to insert audit entry for invite: %v", err)
+		// Don't fail the request, audit logging is non-critical
+	}
+
 	// Return response
+	status := "invited"
+	if isAdditionalDevice {
+		status = "additional_device"
+	}
 	response := InviteOperatorResponse{
-		Status:     "invited",
+		Status:     status,
 		InviteCode: code,
 		ExpiresAt:  invite.ExpiresAt.Format(time.RFC3339),
 	}
