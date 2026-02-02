@@ -187,8 +187,8 @@ func (c *DOCAComchClient) Connect(ctx context.Context) error {
 // This is the actual limit negotiated with DOCA hardware, which may be less
 // than the requested MaxMsgSize in the config.
 func (c *DOCAComchClient) MaxMsgSize() uint32 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.maxMsgSize
 }
 
