@@ -98,27 +98,20 @@ func SaveConfig(cfg *Config) error {
 
 // GetServer returns the server URL using the following precedence:
 // 1. --server flag (highest priority)
-// 2. SERVER_URL environment variable (preferred)
-// 3. BLUECTL_SERVER environment variable (deprecated)
-// 4. Config file
+// 2. SERVER_URL environment variable
+// 3. Config file
 func GetServer() string {
 	// 1. Flag takes highest precedence
 	if serverFlag != "" {
 		return serverFlag
 	}
 
-	// 2. Check SERVER_URL env var (preferred)
+	// 2. Check SERVER_URL env var
 	if url := os.Getenv("SERVER_URL"); url != "" {
 		return url
 	}
 
-	// 3. Check deprecated BLUECTL_SERVER env var
-	if url := os.Getenv("BLUECTL_SERVER"); url != "" {
-		fmt.Fprintln(os.Stderr, "WARNING: BLUECTL_SERVER is deprecated, use SERVER_URL instead")
-		return url
-	}
-
-	// 4. Fall back to config file
+	// 3. Fall back to config file
 	cfg, err := LoadConfig()
 	if err != nil {
 		return ""

@@ -30,7 +30,7 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		serverURL := GetServer()
 		if serverURL == "" {
-			return fmt.Errorf("invite remove requires a server connection (--server or BLUECTL_SERVER)")
+			return fmt.Errorf("invite remove requires a server connection (--server or SERVER_URL)")
 		}
 		return removeInviteRemote(cmd.Context(), serverURL, args[0])
 	},
