@@ -317,6 +317,37 @@ func TestBypassEndpointHealth(t *testing.T) {
 	t.Log("/health correctly bypassed authentication")
 }
 
+func TestBypassEndpointAPIHealth(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing /api/health without proof returns 200 (bypassed)")
+
+	validator := &mockValidator{}
+	lookup := &mockIdentityLookup{}
+	cache := &mockJTICache{}
+
+	middleware := newTestMiddleware(validator, lookup, cache)
+
+	handlerCalled := false
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/health", nil)
+	// No DPoP header
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+	if !handlerCalled {
+		t.Error("handler should have been called for bypass endpoint")
+	}
+	t.Log("/api/health correctly bypassed authentication")
+}
+
 func TestBypassEndpointReady(t *testing.T) {
 	t.Parallel()
 	t.Log("Testing /ready without proof returns 200 (bypassed)")
