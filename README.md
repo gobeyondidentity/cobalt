@@ -1,6 +1,6 @@
 # Project Cobalt
 
-**v0.6.11** | [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
+**v0.6.12** | [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 ![Demo](assets/demo-v2.gif)
 
@@ -67,9 +67,9 @@ sudo yum install bluectl km
 ### Docker
 
 ```bash
-docker pull ghcr.io/gobeyondidentity/nexus:0.6.11   # Control plane
-docker pull ghcr.io/gobeyondidentity/sentry:0.6.11  # Host agent
-docker pull ghcr.io/gobeyondidentity/aegis:0.6.11   # DPU agent
+docker pull ghcr.io/gobeyondidentity/nexus:0.6.12   # Control plane
+docker pull ghcr.io/gobeyondidentity/sentry:0.6.12  # Host agent
+docker pull ghcr.io/gobeyondidentity/aegis:0.6.12   # DPU agent
 ```
 
 For local development with Docker Compose, see [Local Dev: Docker](docs/guides/local-dev-docker.md).
