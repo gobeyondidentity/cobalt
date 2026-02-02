@@ -53,7 +53,10 @@ func checkAuthorization(caName, deviceName string) error {
 	}
 
 	// Get DPoP-enabled HTTP client
-	httpClient := getDPoPHTTPClient(config.ControlPlaneURL)
+	httpClient, err := getDPoPHTTPClient(config.ControlPlaneURL)
+	if err != nil {
+		return clierror.InternalError(err)
+	}
 
 	// Look up CA ID by name
 	caReq, err := http.NewRequest("GET", config.ControlPlaneURL+"/api/credentials/ssh-cas/"+url.QueryEscape(caName), nil)
@@ -199,7 +202,10 @@ func getAuthorizations() ([]Authorization, error) {
 	}
 
 	// Get DPoP-enabled HTTP client
-	httpClient := getDPoPHTTPClient(config.ControlPlaneURL)
+	httpClient, err := getDPoPHTTPClient(config.ControlPlaneURL)
+	if err != nil {
+		return nil, clierror.InternalError(err)
+	}
 
 	// Use keymaker_id (KID) instead of operator_id since that's what we have stored
 	kid := config.KID

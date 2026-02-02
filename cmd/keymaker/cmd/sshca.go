@@ -426,7 +426,10 @@ func registerSSHCA(config *KMConfig, name, pubKeyStr, keyType string) (bool, str
 	}
 
 	// Get DPoP-enabled HTTP client
-	httpClient := getDPoPHTTPClient(config.ControlPlaneURL)
+	httpClient, err := getDPoPHTTPClient(config.ControlPlaneURL)
+	if err != nil {
+		return false, err.Error()
+	}
 
 	req, err := http.NewRequest("POST", config.ControlPlaneURL+"/api/v1/ssh-cas", bytes.NewReader(jsonBody))
 	if err != nil {

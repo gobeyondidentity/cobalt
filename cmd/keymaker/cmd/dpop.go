@@ -53,33 +53,30 @@ func initDPoP(serverURL string) (*dpop.Client, error) {
 }
 
 // getDPoPHTTPClient returns an HTTP client that adds DPoP headers to requests.
-// If DPoP is not initialized or enrollment is required, returns the standard HTTP client.
+// Returns an error if DPoP initialization fails or enrollment is required.
 // The serverURL is needed to initialize DPoP if not already done.
-func getDPoPHTTPClient(serverURL string) HTTPClient {
+func getDPoPHTTPClient(serverURL string) (HTTPClient, error) {
 	if dpopClient != nil {
 		return &dpopHTTPClientWrapper{
 			dpopClient: dpopClient,
 			serverURL:  serverURL,
-		}
+		}, nil
 	}
 
 	// Try to initialize
 	client, err := initDPoP(serverURL)
 	if err != nil {
-		// Log error but fall back to standard client
-		fmt.Fprintf(os.Stderr, "Warning: DPoP initialization failed: %v\n", err)
-		return http.DefaultClient
+		return nil, fmt.Errorf("DPoP initialization failed: %w (run 'km init' to re-enroll)", err)
 	}
 
 	if client == nil {
-		// Not enrolled yet, use standard client
-		return http.DefaultClient
+		return nil, fmt.Errorf("not enrolled: run 'km init' to enroll this operator")
 	}
 
 	return &dpopHTTPClientWrapper{
 		dpopClient: client,
 		serverURL:  serverURL,
-	}
+	}, nil
 }
 
 // dpopHTTPClientWrapper wraps a dpop.Client to implement HTTPClient interface.

@@ -340,6 +340,45 @@ func TestGetDPoPHTTPClientNotEnrolled(t *testing.T) {
 	t.Log("Not enrolled check passed")
 }
 
+// TestGetDPoPHTTPClientFailsSecure verifies getDPoPHTTPClient returns error instead of fallback.
+func TestGetDPoPHTTPClientFailsSecure(t *testing.T) {
+	t.Log("Testing getDPoPHTTPClient fails secure when not enrolled")
+
+	// This test verifies the fail-secure behavior when not enrolled.
+	// If the test machine is already enrolled (has ~/.km keys), skip this test.
+	homeDir, _ := os.UserHomeDir()
+	kmDir := filepath.Join(homeDir, ".km")
+	keyPath := filepath.Join(kmDir, "key.pem")
+	if _, err := os.Stat(keyPath); err == nil {
+		t.Skip("Skipping test - machine is enrolled (has ~/.km/key.pem)")
+	}
+
+	// Reset state to ensure clean test
+	resetDPoPClient()
+
+	// Create a mock server URL (not used, but required by getDPoPHTTPClient)
+	serverURL := "http://localhost:9999"
+
+	// getDPoPHTTPClient should return an error when not enrolled, not http.DefaultClient
+	client, err := getDPoPHTTPClient(serverURL)
+
+	if err == nil {
+		t.Fatal("expected error when not enrolled, got nil")
+	}
+
+	if client != nil {
+		t.Fatal("expected nil client when not enrolled, got non-nil")
+	}
+
+	// Verify error message is actionable
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "km init") {
+		t.Errorf("error message should contain 'km init' hint, got: %s", errMsg)
+	}
+
+	t.Log("getDPoPHTTPClient correctly fails secure with actionable error")
+}
+
 // TestAuthErrorUserFriendlyMessages verifies user-friendly error messages for 401 responses.
 func TestAuthErrorUserFriendlyMessages(t *testing.T) {
 	// Cannot run in parallel - uses global DPoP or dpopClient state
