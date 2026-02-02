@@ -40,6 +40,7 @@ func init() {
 
 	// Flags for delete
 	sshCADeleteCmd.Flags().Bool("force", false, "Skip confirmation prompt")
+	sshCADeleteCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt (alias for --force)")
 }
 
 var sshCACmd = &cobra.Command{
@@ -361,15 +362,17 @@ This permanently removes the CA and its private key. Any certificates signed
 by this CA will remain valid until their expiry, but no new certificates can
 be signed.
 
-Use --force to skip the confirmation prompt.
+Use --yes/-y or --force to skip the confirmation prompt.
 
 Examples:
   km ssh-ca delete old-ca
-  km ssh-ca delete old-ca --force`,
+  km ssh-ca delete old-ca --yes
+  km ssh-ca delete old-ca -y`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		force, _ := cmd.Flags().GetBool("force")
+		yes, _ := cmd.Flags().GetBool("yes")
 
 		// Check if CA exists first
 		exists, err := dpuStore.SSHCAExists(name)
@@ -380,8 +383,8 @@ Examples:
 			return clierror.CANotFound(name)
 		}
 
-		// Confirm deletion unless --force is set
-		if !force {
+		// Confirm deletion unless --yes/-y or --force is set
+		if !force && !yes {
 			fmt.Printf("Are you sure you want to delete SSH CA '%s'? [y/N]: ", name)
 			var response string
 			fmt.Scanln(&response)

@@ -30,6 +30,9 @@ func init() {
 	tenantUpdateCmd.Flags().StringP("description", "d", "", "New description")
 	tenantUpdateCmd.Flags().StringP("contact", "c", "", "New contact email")
 	tenantUpdateCmd.Flags().StringSliceP("tags", "t", nil, "New tags (comma-separated)")
+
+	// Flags for tenant remove
+	tenantRemoveCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 }
 
 var tenantCmd = &cobra.Command{
@@ -149,16 +152,33 @@ var tenantRemoveCmd = &cobra.Command{
 	Short:   "Remove a tenant",
 	Long: `Remove a tenant. The tenant must not have any dependencies (DPUs, operators, CAs, or trust relationships).
 
+Use --yes/-y to skip the confirmation prompt.
+
 Examples:
   bluectl tenant remove "Acme Corp"
-  bluectl tenant remove abc12345`,
+  bluectl tenant remove abc12345 --yes`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		nameOrID := args[0]
+		yes, _ := cmd.Flags().GetBool("yes")
+
+		// Confirm deletion unless --yes/-y is set
+		if !yes {
+			fmt.Printf("Are you sure you want to remove tenant '%s'? [y/N]: ", nameOrID)
+			var response string
+			fmt.Scanln(&response)
+			response = strings.ToLower(strings.TrimSpace(response))
+			if response != "y" && response != "yes" {
+				fmt.Println("Removal cancelled.")
+				return nil
+			}
+		}
+
 		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-		return removeTenantRemote(cmd.Context(), serverURL, args[0])
+		return removeTenantRemote(cmd.Context(), serverURL, nameOrID)
 	},
 }
 

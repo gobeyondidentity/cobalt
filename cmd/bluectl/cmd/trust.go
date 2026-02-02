@@ -22,6 +22,9 @@ func init() {
 
 	// Flags for trust list
 	trustListCmd.Flags().String("tenant", "", "Filter by tenant")
+
+	// Flags for trust delete
+	trustDeleteCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 }
 
 var trustCmd = &cobra.Command{
@@ -183,12 +186,27 @@ var trustDeleteCmd = &cobra.Command{
 	Long: `Delete a trust relationship by its ID.
 
 Use 'bluectl trust list' to find the ID of the trust relationship to delete.
+Use --yes/-y to skip the confirmation prompt.
 
 Examples:
-  bluectl trust delete tr_a1b2c3d4`,
+  bluectl trust delete tr_a1b2c3d4
+  bluectl trust delete tr_a1b2c3d4 --yes`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		trustID := args[0]
+		yes, _ := cmd.Flags().GetBool("yes")
+
+		// Confirm deletion unless --yes/-y is set
+		if !yes {
+			fmt.Printf("Are you sure you want to delete trust relationship '%s'? [y/N]: ", trustID)
+			var response string
+			fmt.Scanln(&response)
+			response = strings.ToLower(strings.TrimSpace(response))
+			if response != "y" && response != "yes" {
+				fmt.Println("Deletion cancelled.")
+				return nil
+			}
+		}
 
 		serverURL, err := requireServer()
 		if err != nil {

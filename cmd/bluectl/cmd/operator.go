@@ -32,6 +32,9 @@ func init() {
 	operatorRevokeCmd.Flags().String("ca", "", "CA name to revoke access from (required)")
 	operatorRevokeCmd.MarkFlagRequired("tenant")
 	operatorRevokeCmd.MarkFlagRequired("ca")
+
+	// Flags for operator remove
+	operatorRemoveCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 }
 
 var operatorCmd = &cobra.Command{
@@ -415,15 +418,33 @@ var operatorRemoveCmd = &cobra.Command{
 	Short:   "Remove an operator",
 	Long: `Remove an operator from the server. The operator must not have any keymakers or authorizations.
 
+Use --yes/-y to skip the confirmation prompt.
+
 Examples:
-  bluectl operator remove marcus@acme.com`,
+  bluectl operator remove marcus@acme.com
+  bluectl operator remove marcus@acme.com --yes`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+		yes, _ := cmd.Flags().GetBool("yes")
+
+		// Confirm deletion unless --yes/-y is set
+		if !yes {
+			fmt.Printf("Are you sure you want to remove operator '%s'? [y/N]: ", email)
+			var response string
+			fmt.Scanln(&response)
+			response = strings.ToLower(strings.TrimSpace(response))
+			if response != "y" && response != "yes" {
+				fmt.Println("Removal cancelled.")
+				return nil
+			}
+		}
+
 		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-		return removeOperatorRemote(cmd.Context(), serverURL, args[0])
+		return removeOperatorRemote(cmd.Context(), serverURL, email)
 	},
 }
 

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -20,6 +21,9 @@ func init() {
 
 	// Flags for host health
 	hostHealthCmd.Flags().BoolP("verbose", "v", false, "Show component details")
+
+	// Flags for host delete
+	hostDeleteCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 }
 
 var hostCmd = &cobra.Command{
@@ -170,12 +174,27 @@ var hostDeleteCmd = &cobra.Command{
 	Long: `Delete a host agent by its ID.
 
 Use 'bluectl host list --output json' to find host IDs.
+Use --yes/-y to skip the confirmation prompt.
 
 Examples:
-  bluectl host delete host_a1b2c3d4`,
+  bluectl host delete host_a1b2c3d4
+  bluectl host delete host_a1b2c3d4 --yes`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		hostID := args[0]
+		yes, _ := cmd.Flags().GetBool("yes")
+
+		// Confirm deletion unless --yes/-y is set
+		if !yes {
+			fmt.Printf("Are you sure you want to delete host '%s'? [y/N]: ", hostID)
+			var response string
+			fmt.Scanln(&response)
+			response = strings.ToLower(strings.TrimSpace(response))
+			if response != "y" && response != "yes" {
+				fmt.Println("Deletion cancelled.")
+				return nil
+			}
+		}
 
 		serverURL, err := requireServer()
 		if err != nil {
