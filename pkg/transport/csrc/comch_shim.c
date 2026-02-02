@@ -23,6 +23,9 @@ extern void goOnServerConnectionEvent(uint64_t conn_id, int event);
 
 DOCA_LOG_REGISTER(COMCH_SHIM);
 
+// Maximum iterations for cleanup progress loop to prevent infinite hangs
+#define CLEANUP_MAX_ITERATIONS 1000
+
 // Global state - single client instance per process
 static struct doca_comch_client *g_client = NULL;
 static struct doca_pe *g_pe = NULL;
@@ -31,6 +34,7 @@ static struct doca_comch_connection *g_conn = NULL;
 static doca_notification_handle_t g_notification_handle;
 static shim_state_t g_state = SHIM_STATE_DISCONNECTED;
 static uint32_t g_max_msg_size = 0;
+static volatile int g_client_cleaning_up = 0;
 
 // Forward declarations for callbacks
 static void msg_recv_cb(struct doca_comch_event_msg_recv *event,
@@ -87,6 +91,11 @@ static void msg_recv_cb(struct doca_comch_event_msg_recv *event,
     (void)event;
     (void)conn;
 
+    // Guard: skip callback if cleanup is in progress
+    if (g_client_cleaning_up) {
+        return;
+    }
+
     DOCA_LOG_DBG("Message received: %u bytes", msg_len);
 
     // Call back into Go with the received message
@@ -100,7 +109,10 @@ static void send_complete_cb(struct doca_comch_task_send *task,
     (void)task_user_data;
     (void)ctx_user_data;
 
-    DOCA_LOG_DBG("Send task completed");
+    // Guard: skip logging if cleanup is in progress, but still free task
+    if (!g_client_cleaning_up) {
+        DOCA_LOG_DBG("Send task completed");
+    }
     doca_task_free(doca_comch_task_send_as_task(task));
 }
 
@@ -111,7 +123,10 @@ static void send_error_cb(struct doca_comch_task_send *task,
     (void)task_user_data;
     (void)ctx_user_data;
 
-    DOCA_LOG_ERR("Send task failed");
+    // Guard: skip logging if cleanup is in progress, but still free task
+    if (!g_client_cleaning_up) {
+        DOCA_LOG_ERR("Send task failed");
+    }
     doca_task_free(doca_comch_task_send_as_task(task));
 }
 
@@ -125,6 +140,16 @@ static void state_changed_cb(const union doca_data user_data,
 
     DOCA_LOG_DBG("State changed: %d -> %d", prev_state, next_state);
 
+    // During cleanup, only update state to allow cleanup loop to detect IDLE/STOPPING
+    // Do not attempt to get connection handles or do other operations
+    if (g_client_cleaning_up) {
+        if (next_state == DOCA_CTX_STATE_IDLE || next_state == DOCA_CTX_STATE_STOPPING) {
+            g_state = SHIM_STATE_DISCONNECTED;
+            g_conn = NULL;
+        }
+        return;
+    }
+
     switch (next_state) {
     case DOCA_CTX_STATE_IDLE:
         g_state = SHIM_STATE_DISCONNECTED;
@@ -136,7 +161,9 @@ static void state_changed_cb(const union doca_data user_data,
     case DOCA_CTX_STATE_RUNNING:
         g_state = SHIM_STATE_CONNECTED;
         // Get the connection handle now that we're connected
-        doca_comch_client_get_connection(g_client, &g_conn);
+        if (g_client != NULL) {
+            doca_comch_client_get_connection(g_client, &g_conn);
+        }
         break;
     case DOCA_CTX_STATE_STOPPING:
         g_state = SHIM_STATE_DISCONNECTED;
@@ -156,6 +183,9 @@ int shim_init_client(const char *pci_addr, const char *server_name, uint32_t max
     if (g_client != NULL) {
         return SHIM_ERR_ALREADY_INIT;
     }
+
+    // Reset cleanup flag (in case of re-init after cleanup)
+    g_client_cleaning_up = 0;
 
     // Open device
     result = open_device_by_pci(pci_addr, &g_dev);
@@ -319,13 +349,25 @@ int shim_get_state(void) {
 }
 
 void shim_cleanup(void) {
+    // Set cleanup flag FIRST to protect callbacks
+    g_client_cleaning_up = 1;
+
     if (g_client != NULL) {
         struct doca_ctx *ctx = doca_comch_client_as_ctx(g_client);
         doca_ctx_stop(ctx);
 
-        // Progress until idle
-        while (g_state != SHIM_STATE_DISCONNECTED && g_pe != NULL) {
+        // Progress until idle, with iteration limit to prevent infinite loop
+        // when server is abruptly terminated
+        int iterations = 0;
+        while (g_state != SHIM_STATE_DISCONNECTED && g_pe != NULL &&
+               iterations < CLEANUP_MAX_ITERATIONS) {
             doca_pe_progress(g_pe);
+            iterations++;
+        }
+
+        if (iterations >= CLEANUP_MAX_ITERATIONS) {
+            DOCA_LOG_WARN("Cleanup progress loop reached max iterations (%d), "
+                          "forcing cleanup", CLEANUP_MAX_ITERATIONS);
         }
 
         doca_comch_client_destroy(g_client);
@@ -345,6 +387,7 @@ void shim_cleanup(void) {
     g_conn = NULL;
     g_state = SHIM_STATE_DISCONNECTED;
     g_max_msg_size = 0;
+    g_client_cleaning_up = 0;
 
     DOCA_LOG_INFO("Client cleanup complete");
 }
@@ -375,6 +418,7 @@ static struct doca_dev_rep *g_server_rep = NULL;
 static doca_notification_handle_t g_server_notification_handle;
 static shim_state_t g_server_state = SHIM_STATE_DISCONNECTED;
 static uint32_t g_server_max_msg_size = 0;
+static volatile int g_server_cleaning_up = 0;
 
 // Connection tracking
 static server_conn_entry_t g_server_conns[MAX_SERVER_CONNECTIONS];
@@ -509,6 +553,11 @@ static void server_msg_recv_cb(struct doca_comch_event_msg_recv *event,
                                struct doca_comch_connection *conn) {
     (void)event;
 
+    // Guard: skip callback if cleanup is in progress
+    if (g_server_cleaning_up) {
+        return;
+    }
+
     DOCA_LOG_DBG("Server received message: %u bytes", msg_len);
 
     // Find the connection ID
@@ -529,7 +578,10 @@ static void server_send_complete_cb(struct doca_comch_task_send *task,
     (void)task_user_data;
     (void)ctx_user_data;
 
-    DOCA_LOG_DBG("Server send task completed");
+    // Guard: skip logging if cleanup is in progress, but still free task
+    if (!g_server_cleaning_up) {
+        DOCA_LOG_DBG("Server send task completed");
+    }
     doca_task_free(doca_comch_task_send_as_task(task));
 }
 
@@ -540,7 +592,10 @@ static void server_send_error_cb(struct doca_comch_task_send *task,
     (void)task_user_data;
     (void)ctx_user_data;
 
-    DOCA_LOG_ERR("Server send task failed");
+    // Guard: skip logging if cleanup is in progress, but still free task
+    if (!g_server_cleaning_up) {
+        DOCA_LOG_ERR("Server send task failed");
+    }
     doca_task_free(doca_comch_task_send_as_task(task));
 }
 
@@ -553,6 +608,14 @@ static void server_state_changed_cb(const union doca_data user_data,
     (void)ctx;
 
     DOCA_LOG_DBG("Server state changed: %d -> %d", prev_state, next_state);
+
+    // During cleanup, only update state to allow cleanup loop to detect IDLE/STOPPING
+    if (g_server_cleaning_up) {
+        if (next_state == DOCA_CTX_STATE_IDLE || next_state == DOCA_CTX_STATE_STOPPING) {
+            g_server_state = SHIM_STATE_DISCONNECTED;
+        }
+        return;
+    }
 
     switch (next_state) {
     case DOCA_CTX_STATE_IDLE:
@@ -576,6 +639,11 @@ static void server_state_changed_cb(const union doca_data user_data,
 static void server_connect_cb(struct doca_comch_event_connection_status_changed *event,
                               struct doca_comch_connection *conn) {
     (void)event;
+
+    // Guard: skip callback if cleanup is in progress
+    if (g_server_cleaning_up) {
+        return;
+    }
 
     DOCA_LOG_INFO("New client connected");
 
@@ -602,6 +670,11 @@ static void server_disconnect_cb(struct doca_comch_event_connection_status_chang
                                  struct doca_comch_connection *conn) {
     (void)event;
 
+    // Guard: skip callback if cleanup is in progress
+    if (g_server_cleaning_up) {
+        return;
+    }
+
     DOCA_LOG_INFO("Client disconnected");
 
     server_conn_entry_t *entry = find_conn_by_doca(conn);
@@ -625,6 +698,9 @@ int shim_init_server(const char *pci_addr, const char *rep_pci_addr,
     if (g_server != NULL) {
         return SHIM_ERR_ALREADY_INIT;
     }
+
+    // Reset cleanup flag (in case of re-init after cleanup)
+    g_server_cleaning_up = 0;
 
     // Initialize connection tracking
     memset(g_server_conns, 0, sizeof(g_server_conns));
@@ -839,13 +915,25 @@ int shim_server_close_connection(shim_conn_id_t conn_id) {
 }
 
 void shim_server_cleanup(void) {
+    // Set cleanup flag FIRST to protect callbacks
+    g_server_cleaning_up = 1;
+
     if (g_server != NULL) {
         struct doca_ctx *ctx = doca_comch_server_as_ctx(g_server);
         doca_ctx_stop(ctx);
 
-        // Progress until idle
-        while (g_server_state != SHIM_STATE_DISCONNECTED && g_server_pe != NULL) {
+        // Progress until idle, with iteration limit to prevent infinite loop
+        // when client is abruptly terminated
+        int iterations = 0;
+        while (g_server_state != SHIM_STATE_DISCONNECTED && g_server_pe != NULL &&
+               iterations < CLEANUP_MAX_ITERATIONS) {
             doca_pe_progress(g_server_pe);
+            iterations++;
+        }
+
+        if (iterations >= CLEANUP_MAX_ITERATIONS) {
+            DOCA_LOG_WARN("Server cleanup progress loop reached max iterations (%d), "
+                          "forcing cleanup", CLEANUP_MAX_ITERATIONS);
         }
 
         doca_comch_server_destroy(g_server);
@@ -874,6 +962,7 @@ void shim_server_cleanup(void) {
 
     g_server_state = SHIM_STATE_DISCONNECTED;
     g_server_max_msg_size = 0;
+    g_server_cleaning_up = 0;
 
     DOCA_LOG_INFO("Server cleanup complete");
 }
