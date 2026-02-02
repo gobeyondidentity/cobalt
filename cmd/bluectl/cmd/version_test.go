@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gobeyondidentity/secure-infra/internal/testutil/mockhttp"
 	"github.com/gobeyondidentity/secure-infra/internal/version"
 	"github.com/gobeyondidentity/secure-infra/internal/versioncheck"
 )
@@ -45,16 +46,14 @@ func TestVersionCommand_CheckFlag_UpdateAvailable(t *testing.T) {
 	version.Version = "1.0.0"
 	defer func() { version.Version = originalVersion }()
 
-	// Mock server that returns a newer version
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
+	// Mock server that returns a newer version using mockhttp builder
+	url, close := mockhttp.New().
+		JSON("/repos/gobeyondidentity/secure-infra/releases/latest", map[string]string{
 			"tag_name": "v99.99.99",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v99.99.99"
-		}`))
-	}))
-	defer server.Close()
+			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v99.99.99",
+		}).
+		BuildURL()
+	defer close()
 
 	// Use temp cache to avoid polluting real cache
 	tmpDir := t.TempDir()
@@ -62,7 +61,7 @@ func TestVersionCommand_CheckFlag_UpdateAvailable(t *testing.T) {
 
 	// Create checker with mock server
 	checker := &versioncheck.Checker{
-		GitHubClient: versioncheck.NewGitHubClient(server.URL),
+		GitHubClient: versioncheck.NewGitHubClient(url),
 		CachePath:    cacheFile,
 		CacheTTL:     24 * time.Hour,
 	}
@@ -152,18 +151,18 @@ func TestVersionCommand_CheckFlag_NoUpdate(t *testing.T) {
 
 func TestVersionCommand_CheckFlag_NetworkError(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
-	// Mock server that returns an error
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer server.Close()
+	// Mock server that returns an error using mockhttp builder
+	url, close := mockhttp.New().
+		Status("/repos/gobeyondidentity/secure-infra/releases/latest", http.StatusServiceUnavailable).
+		BuildURL()
+	defer close()
 
 	tmpDir := t.TempDir()
 	cacheFile := filepath.Join(tmpDir, "version-cache.json")
 	// No cache exists, so the check should fail gracefully
 
 	checker := &versioncheck.Checker{
-		GitHubClient: versioncheck.NewGitHubClient(server.URL),
+		GitHubClient: versioncheck.NewGitHubClient(url),
 		CachePath:    cacheFile,
 		CacheTTL:     24 * time.Hour,
 	}

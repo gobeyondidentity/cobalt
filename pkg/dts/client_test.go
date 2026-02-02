@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/gobeyondidentity/secure-infra/internal/testutil/mockhttp"
 )
 
 func TestParsePrometheusText(t *testing.T) {
@@ -69,19 +71,14 @@ func TestExtractLabel(t *testing.T) {
 }
 
 func TestClientPing(t *testing.T) {
-	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/metrics" {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("# OK\n"))
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
+	// Create test server using mockhttp builder
+	url, close := mockhttp.New().
+		Text("/metrics", "# OK\n").
+		BuildURL()
+	defer close()
 
 	// Use withSkipValidation since httptest servers use 127.0.0.1
-	client, err := NewClient(server.URL, withSkipValidation())
+	client, err := NewClient(url, withSkipValidation())
 	if err != nil {
 		t.Fatalf("NewClient failed: %v", err)
 	}
@@ -233,14 +230,14 @@ dts_ovs_misses{bridge="ovs-br0"} 1000
 }
 
 func TestWithTimeout(t *testing.T) {
-	// Create a test server just to get a valid URL
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
+	// Create a test server using mockhttp builder
+	url, close := mockhttp.New().
+		Status("/", http.StatusOK).
+		BuildURL()
+	defer close()
 
 	// Use withSkipValidation since httptest servers use 127.0.0.1
-	client, err := NewClient(server.URL, WithTimeout(5*time.Second), withSkipValidation())
+	client, err := NewClient(url, WithTimeout(5*time.Second), withSkipValidation())
 	if err != nil {
 		t.Fatalf("NewClient failed: %v", err)
 	}

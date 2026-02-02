@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/gobeyondidentity/secure-infra/internal/testutil/mockhttp"
 )
 
 // ----- InstallMethod Detection Tests -----
@@ -254,22 +256,17 @@ func TestParseGitHubRelease(t *testing.T) {
 }
 
 func TestFetchLatestVersion_Success(t *testing.T) {
-	// Mock GitHub API server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/repos/gobeyondidentity/secure-infra/releases/latest" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
+	// Mock GitHub API server using mockhttp builder
+	url, close := mockhttp.New().
+		JSON("/repos/gobeyondidentity/secure-infra/releases/latest", map[string]string{
 			"tag_name": "v0.5.2",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2"
-		}`))
-	}))
-	defer server.Close()
+			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2",
+		}).
+		BuildURL()
+	defer close()
 
 	// Use custom client with mock server
-	client := NewGitHubClient(server.URL)
+	client := NewGitHubClient(url)
 	release, err := client.FetchLatestRelease()
 	if err != nil {
 		t.Fatalf("FetchLatestRelease failed: %v", err)
@@ -296,12 +293,12 @@ func TestFetchLatestVersion_Timeout(t *testing.T) {
 }
 
 func TestFetchLatestVersion_NotFound(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
+	url, close := mockhttp.New().
+		Status("/repos/gobeyondidentity/secure-infra/releases/latest", http.StatusNotFound).
+		BuildURL()
+	defer close()
 
-	client := NewGitHubClient(server.URL)
+	client := NewGitHubClient(url)
 	_, err := client.FetchLatestRelease()
 	if err == nil {
 		t.Error("expected error for 404, got nil")
@@ -311,22 +308,20 @@ func TestFetchLatestVersion_NotFound(t *testing.T) {
 // ----- Integration Tests -----
 
 func TestCheck_WithMockServer(t *testing.T) {
-	// Mock GitHub API server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
+	// Mock GitHub API server using mockhttp builder
+	url, close := mockhttp.New().
+		JSON("/repos/gobeyondidentity/secure-infra/releases/latest", map[string]string{
 			"tag_name": "v0.5.3",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.3"
-		}`))
-	}))
-	defer server.Close()
+			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.3",
+		}).
+		BuildURL()
+	defer close()
 
 	tmpDir := t.TempDir()
 	cacheFile := filepath.Join(tmpDir, "version-cache.json")
 
 	checker := &Checker{
-		GitHubClient: NewGitHubClient(server.URL),
+		GitHubClient: NewGitHubClient(url),
 		CachePath:    cacheFile,
 		CacheTTL:     24 * time.Hour,
 	}
@@ -484,14 +479,14 @@ func TestCheck_FetchFailsNoCacheReturnsError(t *testing.T) {
 	cacheFile := filepath.Join(tmpDir, "version-cache.json")
 	// No cache file exists
 
-	// Server returns error
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer server.Close()
+	// Server returns error using mockhttp builder
+	url, close := mockhttp.New().
+		Status("/repos/gobeyondidentity/secure-infra/releases/latest", http.StatusServiceUnavailable).
+		BuildURL()
+	defer close()
 
 	checker := &Checker{
-		GitHubClient: NewGitHubClient(server.URL),
+		GitHubClient: NewGitHubClient(url),
 		CachePath:    cacheFile,
 		CacheTTL:     24 * time.Hour,
 	}
@@ -507,21 +502,19 @@ func TestCheck_FetchFailsNoCacheReturnsError(t *testing.T) {
 }
 
 func TestCheck_NoUpdateAvailable(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
+	url, close := mockhttp.New().
+		JSON("/repos/gobeyondidentity/secure-infra/releases/latest", map[string]string{
 			"tag_name": "v0.5.2",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2"
-		}`))
-	}))
-	defer server.Close()
+			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2",
+		}).
+		BuildURL()
+	defer close()
 
 	tmpDir := t.TempDir()
 	cacheFile := filepath.Join(tmpDir, "version-cache.json")
 
 	checker := &Checker{
-		GitHubClient: NewGitHubClient(server.URL),
+		GitHubClient: NewGitHubClient(url),
 		CachePath:    cacheFile,
 		CacheTTL:     24 * time.Hour,
 	}
