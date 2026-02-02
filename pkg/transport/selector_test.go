@@ -418,15 +418,33 @@ func TestNewHostTransport_ForceComCh_OverridesFallback(t *testing.T) {
 }
 
 func TestNewDPUTransportListener_SelectionPriority_ComChFirst(t *testing.T) {
-	// On DOCA systems, ComCh should be selected before tmfifo
+	// On DOCA systems with server-capable hardware, ComCh should be selected before tmfifo.
+	// This test requires actual DPU hardware with server capability (runs on DPU, not host).
 	if !DOCAComchAvailable() {
 		t.Skip("DOCA ComCh not available; cannot test ComCh priority")
 	}
 
+	// Check for actual server-capable devices (not just SDK availability)
+	devices, err := DiscoverDOCADevices()
+	if err != nil {
+		t.Skipf("Cannot discover DOCA devices: %v", err)
+	}
+
+	var serverDevice *DeviceInfo
+	for i := range devices {
+		if devices[i].IsComchServer {
+			serverDevice = &devices[i]
+			break
+		}
+	}
+	if serverDevice == nil {
+		t.Skip("No ComCh server-capable devices found; test requires DPU hardware")
+	}
+
 	cfg := &Config{
 		TmfifoSocketPath: "/tmp/tmfifo.sock", // Should not be used
-		DOCAPCIAddr:      "03:00.0",
-		DOCARepPCIAddr:   "01:00.0",
+		DOCAPCIAddr:      serverDevice.PCIAddr,
+		DOCARepPCIAddr:   serverDevice.PCIAddr, // Use same for test; real config needs representor
 		DOCAServerName:   "test-server",
 	}
 

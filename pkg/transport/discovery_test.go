@@ -1,3 +1,5 @@
+//go:build !doca
+
 package transport
 
 import (
