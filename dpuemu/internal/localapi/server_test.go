@@ -463,3 +463,66 @@ func TestRegister_NoRelayWhenControlPlaneEmpty(t *testing.T) {
 		t.Errorf("expected status 201, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestHealth_ReturnsOK(t *testing.T) {
+	t.Log("Testing /health endpoint returns 200 OK with status and version")
+
+	fix := fixture.DefaultFixture()
+	srv := New(fix, "")
+
+	httpReq := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, httpReq)
+
+	t.Log("Verifying response status code is 200")
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	t.Log("Verifying Content-Type is application/json")
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "application/json" {
+		t.Errorf("expected Content-Type 'application/json', got '%s'", contentType)
+	}
+
+	t.Log("Parsing JSON response")
+	var resp map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	t.Log("Verifying response contains status=ok")
+	if resp["status"] != "ok" {
+		t.Errorf("expected status 'ok', got '%s'", resp["status"])
+	}
+
+	t.Log("Verifying response contains version field")
+	if resp["version"] == "" {
+		t.Error("expected non-empty version")
+	}
+}
+
+func TestHealth_NilFixture(t *testing.T) {
+	t.Log("Testing /health endpoint works even with nil fixture")
+
+	srv := New(nil, "")
+
+	httpReq := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, httpReq)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if resp["status"] != "ok" {
+		t.Errorf("expected status 'ok', got '%s'", resp["status"])
+	}
+}

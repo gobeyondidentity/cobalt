@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gobeyondidentity/secure-infra/dpuemu/internal/fixture"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
 )
 
 // Server is the HTTP server for the local API.
@@ -95,12 +96,26 @@ func New(fix *fixture.Fixture, controlPlaneURL string) *Server {
 	s.mux.HandleFunc("/local/v1/posture", s.handlePosture)
 	s.mux.HandleFunc("/local/v1/cert", s.handleCert)
 
+	// Health endpoint (no auth required, consistent with nexus)
+	s.mux.HandleFunc("/health", s.handleHealth)
+
 	return s
 }
 
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
+}
+
+// handleHealth returns 200 OK when the server is running.
+// No auth required, consistent with nexus health endpoint.
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"version": version.Version,
+	})
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
