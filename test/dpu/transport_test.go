@@ -672,13 +672,16 @@ func TestDPU_MultipleMessages(t *testing.T) {
 }
 
 // TestDPU_LargeMessage tests sending messages near the size limit.
+// Note: DOCA ComCh has a hardware-negotiated max message size (typically 2048 bytes).
+// This test uses a payload that fits within that limit while still being "large".
 func TestDPU_LargeMessage(t *testing.T) {
 	skipUnlessWorkbench(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	const maxMsgSize = 8192
+	// Request a large buffer size, but DOCA will negotiate actual limits
+	const requestedMaxMsgSize = 8192
 	_, _, serverName := getTestConfig(t)
 
 	// Setup
@@ -690,7 +693,7 @@ func TestDPU_LargeMessage(t *testing.T) {
 	}
 
 	// Start server on DPU
-	cleanup, err := startEchoServerOnDPU(ctx, t, serverName, maxMsgSize, 1)
+	cleanup, err := startEchoServerOnDPU(ctx, t, serverName, requestedMaxMsgSize, 1)
 	if err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
@@ -702,7 +705,7 @@ func TestDPU_LargeMessage(t *testing.T) {
 	clientCfg := transport.DOCAComchClientConfig{
 		PCIAddr:    defaultHostPCIAddr,
 		ServerName: serverName,
-		MaxMsgSize: maxMsgSize,
+		MaxMsgSize: requestedMaxMsgSize,
 	}
 
 	client, err := transport.NewDOCAComchClient(clientCfg)
@@ -721,8 +724,23 @@ func TestDPU_LargeMessage(t *testing.T) {
 		t.Fatalf("Client connect failed: %v", err)
 	}
 
-	// Create a large payload (6KB of data to leave room for envelope)
-	largeData := make([]byte, 6000)
+	// Get the actual negotiated max message size from the client
+	// DOCA ComCh negotiates limits with hardware, typically ~2048 bytes
+	actualMaxSize := client.MaxMsgSize()
+	t.Logf("Negotiated max message size: %d bytes", actualMaxSize)
+
+	if actualMaxSize < 500 {
+		t.Skipf("Max message size too small for meaningful large message test: %d bytes", actualMaxSize)
+	}
+
+	// Create a payload that uses ~80% of the available space
+	// Leave room for JSON envelope and message framing
+	payloadSize := int(actualMaxSize * 80 / 100)
+	if payloadSize > 1500 {
+		payloadSize = 1500 // Cap to reasonable size for test
+	}
+
+	largeData := make([]byte, payloadSize)
 	for i := range largeData {
 		largeData[i] = byte('A' + (i % 26))
 	}

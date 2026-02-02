@@ -96,11 +96,11 @@ func TestDOCAComchClient_StubState(t *testing.T) {
 	}
 }
 
-func TestDOCAComchClient_StubMaxMessageSize(t *testing.T) {
-	t.Log("Testing DOCAComchClient.MaxMessageSize() returns 0 for stub")
+func TestDOCAComchClient_StubMaxMsgSize(t *testing.T) {
+	t.Log("Testing DOCAComchClient.MaxMsgSize() returns 0 for stub")
 	var client DOCAComchClient
-	if client.MaxMessageSize() != 0 {
-		t.Errorf("MaxMessageSize: got %d, want 0", client.MaxMessageSize())
+	if client.MaxMsgSize() != 0 {
+		t.Errorf("MaxMsgSize: got %d, want 0", client.MaxMsgSize())
 	}
 }
 

@@ -183,6 +183,15 @@ func (c *DOCAComchClient) Connect(ctx context.Context) error {
 	return nil
 }
 
+// MaxMsgSize returns the negotiated maximum message size.
+// This is the actual limit negotiated with DOCA hardware, which may be less
+// than the requested MaxMsgSize in the config.
+func (c *DOCAComchClient) MaxMsgSize() uint32 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.maxMsgSize
+}
+
 // eventLoop runs the epoll-based event processing loop.
 // It blocks on epoll_wait and processes DOCA events when they arrive.
 func (c *DOCAComchClient) eventLoop() {

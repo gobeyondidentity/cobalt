@@ -71,8 +71,8 @@ func (c *DOCAComchClient) State() string {
 	return "unavailable"
 }
 
-// MaxMessageSize returns 0 on systems without DOCA SDK.
-func (c *DOCAComchClient) MaxMessageSize() uint32 {
+// MaxMsgSize returns 0 on systems without DOCA SDK.
+func (c *DOCAComchClient) MaxMsgSize() uint32 {
 	return 0
 }
 
