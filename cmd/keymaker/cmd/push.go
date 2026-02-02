@@ -62,7 +62,7 @@ Examples:
 		// Load operator context from config
 		config, err := loadConfig()
 		if err != nil {
-			return clierror.TokenExpired()
+			return clierror.ConfigMissing()
 		}
 
 		// Use DPoP-enabled HTTP client for push requests

@@ -23,7 +23,8 @@ const (
 	CodeAttestationFailed      = "ATTESTATION_FAILED"
 	CodeAttestationUnavailable = "ATTESTATION_UNAVAILABLE"
 	CodeNotAuthorized          = "NOT_AUTHORIZED"
-	CodeTokenExpired           = "TOKEN_EXPIRED"
+	CodeConfigMissing          = "CONFIG_MISSING"
+	CodeAuthFailed             = "AUTH_FAILED"
 	CodeDeviceNotFound         = "DEVICE_NOT_FOUND"
 	CodeCANotFound             = "CA_NOT_FOUND"
 	CodeOperatorNotFound       = "OPERATOR_NOT_FOUND"
@@ -91,12 +92,25 @@ func NotAuthorized(resource string) *CLIError {
 	}
 }
 
-// TokenExpired creates an error for expired authentication tokens.
-func TokenExpired() *CLIError {
+// ConfigMissing creates an error when the operator config file is not found.
+// This means the operator has never enrolled or the config was deleted.
+func ConfigMissing() *CLIError {
 	return &CLIError{
-		Code:      CodeTokenExpired,
-		Message:   "authentication token has expired",
-		Hint:      "Re-authenticate with 'km init' or 'bluectl login'",
+		Code:      CodeConfigMissing,
+		Message:   "not enrolled on this machine",
+		Hint:      "Run 'km init' with an invite code, or contact your admin for a new invite",
+		Retryable: false,
+		ExitCode:  ExitAuth,
+	}
+}
+
+// AuthFailed creates an error for authentication failures where the specific cause is unknown.
+// Used when the server returns 401 but we cannot determine the exact reason.
+func AuthFailed() *CLIError {
+	return &CLIError{
+		Code:      CodeAuthFailed,
+		Message:   "authentication failed",
+		Hint:      "Check system clock is synchronized, or contact your admin if the issue persists",
 		Retryable: true,
 		ExitCode:  ExitAuth,
 	}

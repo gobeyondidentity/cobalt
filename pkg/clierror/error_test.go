@@ -43,7 +43,8 @@ func TestErrorCodes(t *testing.T) {
 		{"CodeAttestationFailed", CodeAttestationFailed, "ATTESTATION_FAILED"},
 		{"CodeAttestationUnavailable", CodeAttestationUnavailable, "ATTESTATION_UNAVAILABLE"},
 		{"CodeNotAuthorized", CodeNotAuthorized, "NOT_AUTHORIZED"},
-		{"CodeTokenExpired", CodeTokenExpired, "TOKEN_EXPIRED"},
+		{"CodeConfigMissing", CodeConfigMissing, "CONFIG_MISSING"},
+		{"CodeAuthFailed", CodeAuthFailed, "AUTH_FAILED"},
 		{"CodeDeviceNotFound", CodeDeviceNotFound, "DEVICE_NOT_FOUND"},
 		{"CodeCANotFound", CodeCANotFound, "CA_NOT_FOUND"},
 		{"CodeOperatorNotFound", CodeOperatorNotFound, "OPERATOR_NOT_FOUND"},
@@ -149,21 +150,45 @@ func TestNotAuthorized(t *testing.T) {
 	}
 }
 
-func TestTokenExpired(t *testing.T) {
+func TestConfigMissing(t *testing.T) {
 	t.Parallel()
-	err := TokenExpired()
+	err := ConfigMissing()
 
-	if err.Code != CodeTokenExpired {
-		t.Errorf("Code = %q, want %q", err.Code, CodeTokenExpired)
+	if err.Code != CodeConfigMissing {
+		t.Errorf("Code = %q, want %q", err.Code, CodeConfigMissing)
 	}
 	if err.ExitCode != ExitAuth {
 		t.Errorf("ExitCode = %d, want %d", err.ExitCode, ExitAuth)
 	}
-	if err.Hint == "" {
-		t.Error("Hint should not be empty")
+	if !strings.Contains(err.Message, "not enrolled") {
+		t.Errorf("Message should indicate not enrolled, got %q", err.Message)
+	}
+	if !strings.Contains(err.Hint, "km init") {
+		t.Errorf("Hint should mention km init, got %q", err.Hint)
+	}
+	if err.Retryable {
+		t.Error("Retryable should be false for config missing")
+	}
+}
+
+func TestAuthFailed(t *testing.T) {
+	t.Parallel()
+	err := AuthFailed()
+
+	if err.Code != CodeAuthFailed {
+		t.Errorf("Code = %q, want %q", err.Code, CodeAuthFailed)
+	}
+	if err.ExitCode != ExitAuth {
+		t.Errorf("ExitCode = %d, want %d", err.ExitCode, ExitAuth)
+	}
+	if !strings.Contains(err.Message, "authentication failed") {
+		t.Errorf("Message should indicate auth failed, got %q", err.Message)
+	}
+	if !strings.Contains(err.Hint, "clock") {
+		t.Errorf("Hint should mention clock sync, got %q", err.Hint)
 	}
 	if !err.Retryable {
-		t.Error("Retryable should be true for expired token")
+		t.Error("Retryable should be true for auth failed")
 	}
 }
 
@@ -423,7 +448,7 @@ func TestFormatError_Table(t *testing.T) {
 
 func TestFormatError_TableWithHint(t *testing.T) {
 	t.Parallel()
-	err := TokenExpired()
+	err := AuthFailed()
 
 	output := FormatError(err, "table")
 

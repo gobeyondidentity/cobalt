@@ -175,18 +175,33 @@ func TestConnectionFailedError(t *testing.T) {
 	}
 }
 
-func TestTokenExpiredError(t *testing.T) {
+func TestConfigMissingError(t *testing.T) {
 	t.Parallel()
-	err := clierror.TokenExpired()
+	err := clierror.ConfigMissing()
 
-	if err.Code != clierror.CodeTokenExpired {
-		t.Errorf("Expected code %s, got %s", clierror.CodeTokenExpired, err.Code)
+	if err.Code != clierror.CodeConfigMissing {
+		t.Errorf("Expected code %s, got %s", clierror.CodeConfigMissing, err.Code)
+	}
+	if err.ExitCode != clierror.ExitAuth {
+		t.Errorf("Expected exit code %d, got %d", clierror.ExitAuth, err.ExitCode)
+	}
+	if err.Retryable {
+		t.Error("Expected retryable to be false for config missing")
+	}
+}
+
+func TestAuthFailedError(t *testing.T) {
+	t.Parallel()
+	err := clierror.AuthFailed()
+
+	if err.Code != clierror.CodeAuthFailed {
+		t.Errorf("Expected code %s, got %s", clierror.CodeAuthFailed, err.Code)
 	}
 	if err.ExitCode != clierror.ExitAuth {
 		t.Errorf("Expected exit code %d, got %d", clierror.ExitAuth, err.ExitCode)
 	}
 	if !err.Retryable {
-		t.Error("Expected retryable to be true for expired token")
+		t.Error("Expected retryable to be true for auth failed")
 	}
 }
 

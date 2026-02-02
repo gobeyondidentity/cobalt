@@ -49,7 +49,7 @@ type Authorization struct {
 func checkAuthorization(caName, deviceName string) error {
 	config, err := loadConfig()
 	if err != nil {
-		return clierror.TokenExpired()
+		return clierror.ConfigMissing()
 	}
 
 	// Get DPoP-enabled HTTP client
@@ -198,7 +198,7 @@ func checkAuthorization(caName, deviceName string) error {
 func getAuthorizations() ([]Authorization, error) {
 	config, err := loadConfig()
 	if err != nil {
-		return nil, clierror.TokenExpired()
+		return nil, clierror.ConfigMissing()
 	}
 
 	// Get DPoP-enabled HTTP client
@@ -287,7 +287,7 @@ func handleAuthError(resp *http.Response) error {
 	if err != nil {
 		// Can't read body, return generic error
 		if resp.StatusCode == http.StatusUnauthorized {
-			return clierror.TokenExpired()
+			return clierror.AuthFailed()
 		}
 		return clierror.NotAuthorized("this operation")
 	}
@@ -307,7 +307,7 @@ func handleAuthError(resp *http.Response) error {
 
 	// Generic auth error
 	if resp.StatusCode == http.StatusUnauthorized {
-		return clierror.TokenExpired()
+		return clierror.AuthFailed()
 	}
 	return clierror.NotAuthorized("this operation")
 }
