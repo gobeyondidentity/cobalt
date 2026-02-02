@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 	"github.com/google/uuid"
 )
 
@@ -52,13 +53,24 @@ func (s *Server) handleCreateSSHCA(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "key_type is required")
 		return
 	}
-	if req.OperatorID == "" {
+
+	// Get operator ID from authenticated identity (DPoP auth middleware sets this)
+	identity := dpop.IdentityFromContext(r.Context())
+	operatorID := ""
+	if identity != nil && identity.OperatorID != "" {
+		operatorID = identity.OperatorID
+	} else if req.OperatorID != "" {
+		// Fallback to request body for backward compatibility
+		operatorID = req.OperatorID
+	}
+
+	if operatorID == "" {
 		writeError(w, r, http.StatusBadRequest, "operator_id is required")
 		return
 	}
 
 	// Validate operator exists
-	_, err := s.store.GetOperator(req.OperatorID)
+	_, err := s.store.GetOperator(operatorID)
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, "operator not found")
 		return

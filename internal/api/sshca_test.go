@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 	"github.com/google/uuid"
 )
 
@@ -394,5 +395,63 @@ func TestCreateSSHCA_InvalidJSON(t *testing.T) {
 	t.Log("Verifying response status is 400 Bad Request")
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestCreateSSHCA_OperatorIDFromContext tests SSH CA creation uses operator_id from
+// authenticated DPoP identity when not provided in request body.
+// This verifies the fix for si-d2y.15: km ssh-ca create fails server registration.
+func TestCreateSSHCA_OperatorIDFromContext(t *testing.T) {
+	t.Log("Setting up test server")
+	server, _ := setupTestServer(t)
+
+	t.Log("Creating an operator")
+	operatorID := uuid.New().String()[:8]
+	if err := server.store.CreateOperator(operatorID, "operator@acme.com", "Test Operator"); err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+
+	t.Log("Creating SSH CA without operator_id in request body, but with identity in context")
+	body := createSSHCARequest{
+		Name:      "context-test-ca",
+		PublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJqmDPBzSGdN6RSHNr2x3vy2X4KV9VEjOYwL0Y2qAP/H test@example.com",
+		KeyType:   "ed25519",
+		// OperatorID intentionally omitted - should come from context
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/api/v1/ssh-cas", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Inject DPoP identity into context (simulating auth middleware)
+	identity := &dpop.Identity{
+		KID:        "km_test123",
+		CallerType: dpop.CallerTypeKeyMaker,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: operatorID,
+	}
+	ctx := dpop.ContextWithIdentity(req.Context(), identity)
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	server.handleCreateSSHCA(w, req)
+
+	t.Log("Verifying response status is 201 Created")
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	t.Log("Decoding response body")
+	var result createSSHCAResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	t.Log("Verifying CA was created")
+	if result.ID == "" {
+		t.Error("expected non-empty CA ID")
+	}
+	if result.Name != "context-test-ca" {
+		t.Errorf("expected name 'context-test-ca', got '%s'", result.Name)
 	}
 }

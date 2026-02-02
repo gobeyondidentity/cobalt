@@ -80,6 +80,12 @@ func IdentityFromContext(ctx context.Context) *Identity {
 	return id
 }
 
+// ContextWithIdentity returns a new context with the given identity.
+// This is primarily used for testing handlers that expect an authenticated identity.
+func ContextWithIdentity(ctx context.Context, identity *Identity) context.Context {
+	return context.WithValue(ctx, identityKey, identity)
+}
+
 // AuthMiddleware provides DPoP authentication middleware for HTTP handlers.
 type AuthMiddleware struct {
 	validator      ProofValidator
