@@ -209,15 +209,27 @@ func startEchoServerOnDPU(ctx context.Context, t *testing.T, serverName string, 
 	// when exec.Command passes the command string through SSH.
 	cmd := fmt.Sprintf("bash -c %q", innerCmd)
 
-	_, err := runCmd(ctx, t, "ssh",
+	// Use exec.Command directly instead of runCmd for ssh -f.
+	// runCmd uses cmd.Run() which waits for stdout/stderr pipes to close.
+	// With ssh -f, the forked SSH process may hold pipes open, causing Run() to block.
+	// Instead, we Start() the command with no pipes and let it run detached.
+	t.Logf("$ ssh -f ... %s", cmd)
+	sshCmd := exec.CommandContext(ctx, "ssh",
 		"-f",
+		"-n", // Don't read from stdin (ssh -f implies this, but explicit is clearer)
 		"-o", "ConnectTimeout=10",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "BatchMode=yes",
 		fmt.Sprintf("%s@%s", dpuUser, dpuTmfifoIP),
 		cmd)
-	if err != nil {
-		return nil, fmt.Errorf("start server: %w", err)
+	// Don't capture stdout/stderr - let SSH run fully detached
+	if err := sshCmd.Start(); err != nil {
+		return nil, fmt.Errorf("start SSH: %w", err)
+	}
+	// Wait briefly for SSH to complete authentication and fork
+	// ssh -f exits after forking, so this should return quickly
+	if err := sshCmd.Wait(); err != nil {
+		return nil, fmt.Errorf("SSH failed: %w", err)
 	}
 
 	// Wait for server to be ready
