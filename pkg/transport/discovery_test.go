@@ -167,6 +167,7 @@ func (m *MockDiscovery) selectByPCIAddr(pciAddr string) (*DeviceInfo, error) {
 // ============================================================================
 
 func TestDiscovery_SingleComchCapableDevice(t *testing.T) {
+	t.Log("Testing device selection with single ComCh-capable device")
 	mock := NewMockDiscovery()
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
@@ -192,8 +193,8 @@ func TestDiscovery_SingleComchCapableDevice(t *testing.T) {
 }
 
 func TestDiscovery_NoDevicesFound(t *testing.T) {
+	t.Log("Testing device selection returns error when no devices found")
 	mock := NewMockDiscovery()
-	// No devices added
 
 	cfg := DeviceSelectionConfig{}
 	dev, err := mock.SelectDevice(cfg)
@@ -210,8 +211,8 @@ func TestDiscovery_NoDevicesFound(t *testing.T) {
 }
 
 func TestDiscovery_DeviceFoundButNotComchCapable(t *testing.T) {
+	t.Log("Testing device selection returns error when device is not ComCh capable")
 	mock := NewMockDiscovery()
-	// Add a device that is PF but not ComCh capable
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
 		IbdevName:     "mlx5_0",
@@ -236,8 +237,8 @@ func TestDiscovery_DeviceFoundButNotComchCapable(t *testing.T) {
 }
 
 func TestDiscovery_VirtualFunctionSkipped(t *testing.T) {
+	t.Log("Testing device selection skips Virtual Function (VF) devices")
 	mock := NewMockDiscovery()
-	// Add only a VF device (should be skipped)
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.2",
 		IbdevName:     "mlx5_2",
@@ -262,8 +263,8 @@ func TestDiscovery_VirtualFunctionSkipped(t *testing.T) {
 }
 
 func TestDiscovery_SubFunctionSkipped(t *testing.T) {
+	t.Log("Testing device selection skips Sub-Function (SF) devices")
 	mock := NewMockDiscovery()
-	// Add only an SF device (should be skipped)
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.3",
 		IbdevName:     "mlx5_3",
@@ -292,6 +293,7 @@ func TestDiscovery_SubFunctionSkipped(t *testing.T) {
 // ============================================================================
 
 func TestDiscovery_MultipleComchCapableDevices_SelectFirst(t *testing.T) {
+	t.Log("Testing device selection prefers port 0 with multiple devices")
 	mock := NewMockDiscovery()
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
@@ -323,6 +325,7 @@ func TestDiscovery_MultipleComchCapableDevices_SelectFirst(t *testing.T) {
 }
 
 func TestDiscovery_MultipleComchCapableDevices_PreferPort1(t *testing.T) {
+	t.Log("Testing device selection with PreferPort=1 selects port 1")
 	mock := NewMockDiscovery()
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
@@ -353,8 +356,8 @@ func TestDiscovery_MultipleComchCapableDevices_PreferPort1(t *testing.T) {
 }
 
 func TestDiscovery_MixedCapableAndNonCapableDevices(t *testing.T) {
+	t.Log("Testing device selection filters to ComCh-capable devices only")
 	mock := NewMockDiscovery()
-	// Add a non-ComCh capable PF
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
 		IbdevName:     "mlx5_0",
@@ -394,6 +397,7 @@ func TestDiscovery_MixedCapableAndNonCapableDevices(t *testing.T) {
 }
 
 func TestDiscovery_SelectionByPCIAddress(t *testing.T) {
+	t.Log("Testing device selection by PCI address override")
 	mock := NewMockDiscovery()
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
@@ -428,6 +432,7 @@ func TestDiscovery_SelectionByPCIAddress(t *testing.T) {
 }
 
 func TestDiscovery_SelectionByPCIAddress_NotFound(t *testing.T) {
+	t.Log("Testing device selection returns error when PCI address not found")
 	mock := NewMockDiscovery()
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
@@ -457,8 +462,8 @@ func TestDiscovery_SelectionByPCIAddress_NotFound(t *testing.T) {
 // ============================================================================
 
 func TestDiscovery_RequireClientCapability(t *testing.T) {
+	t.Log("Testing device selection with RequireClient=true filters to client-capable devices")
 	mock := NewMockDiscovery()
-	// Server-only device
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
 		IbdevName:     "mlx5_0",
@@ -492,8 +497,8 @@ func TestDiscovery_RequireClientCapability(t *testing.T) {
 }
 
 func TestDiscovery_RequireServerCapability(t *testing.T) {
+	t.Log("Testing device selection with RequireServer=true filters to server-capable devices")
 	mock := NewMockDiscovery()
-	// Client-only device
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
 		IbdevName:     "mlx5_0",
@@ -527,8 +532,8 @@ func TestDiscovery_RequireServerCapability(t *testing.T) {
 }
 
 func TestDiscovery_RequireBothCapabilities(t *testing.T) {
+	t.Log("Testing device selection with both RequireClient and RequireServer")
 	mock := NewMockDiscovery()
-	// Client-only device
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
 		IbdevName:     "mlx5_0",
@@ -571,8 +576,8 @@ func TestDiscovery_RequireBothCapabilities(t *testing.T) {
 }
 
 func TestDiscovery_NoBothCapabilitiesAvailable(t *testing.T) {
+	t.Log("Testing device selection returns error when no device has both capabilities")
 	mock := NewMockDiscovery()
-	// Client-only device
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
 		IbdevName:     "mlx5_0",
@@ -610,8 +615,8 @@ func TestDiscovery_NoBothCapabilitiesAvailable(t *testing.T) {
 // ============================================================================
 
 func TestDiscovery_FilterByFunctionType(t *testing.T) {
+	t.Log("Testing device selection prefers PF over VF and SF")
 	mock := NewMockDiscovery()
-	// Add mix of PF, VF, SF
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
 		IbdevName:     "mlx5_0",
@@ -653,8 +658,8 @@ func TestDiscovery_FilterByFunctionType(t *testing.T) {
 }
 
 func TestDiscovery_MultiplePFsNoPortMatch(t *testing.T) {
+	t.Log("Testing device selection returns error when multiple PFs but no port match")
 	mock := NewMockDiscovery()
-	// Two PFs but neither ends in preferred port
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.2",
 		IbdevName:     "mlx5_0",
@@ -693,6 +698,7 @@ func TestDiscovery_MultiplePFsNoPortMatch(t *testing.T) {
 // ============================================================================
 
 func TestDiscovery_DiscoverError(t *testing.T) {
+	t.Log("Testing device selection propagates discovery errors")
 	mock := NewMockDiscovery()
 	mock.DiscoverErr = errors.New("discovery failed: driver not loaded")
 
@@ -711,6 +717,7 @@ func TestDiscovery_DiscoverError(t *testing.T) {
 }
 
 func TestDiscovery_CapabilityCheckError(t *testing.T) {
+	t.Log("Testing capability check error propagation")
 	mock := NewMockDiscovery()
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
@@ -737,7 +744,7 @@ func TestDiscovery_CapabilityCheckError(t *testing.T) {
 // ============================================================================
 
 func TestDiscovery_TwoDPUConfiguration(t *testing.T) {
-	// Simulate a system with two BlueField DPUs (dual-port configuration)
+	t.Log("Testing device selection in multi-DPU configuration")
 	mock := NewMockDiscovery()
 
 	// DPU 1: Two PF devices
@@ -800,7 +807,7 @@ func TestDiscovery_TwoDPUConfiguration(t *testing.T) {
 }
 
 func TestDiscovery_HostWithMultipleMellanoxNICs(t *testing.T) {
-	// Simulate a host with both a ConnectX NIC (not ComCh capable) and BlueField DPU
+	t.Log("Testing device selection filters out non-DPU Mellanox NICs")
 	mock := NewMockDiscovery()
 
 	// ConnectX-6 NIC (not ComCh capable)
@@ -851,6 +858,7 @@ func TestDiscovery_HostWithMultipleMellanoxNICs(t *testing.T) {
 // ============================================================================
 
 func TestDiscovery_EmptyPCIAddrOverride(t *testing.T) {
+	t.Log("Testing device selection with empty PCI override uses normal selection")
 	mock := NewMockDiscovery()
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
@@ -874,7 +882,7 @@ func TestDiscovery_EmptyPCIAddrOverride(t *testing.T) {
 }
 
 func TestDiscovery_DeviceInfoJSONSerialization(t *testing.T) {
-	// Verify DeviceInfo struct has proper JSON tags
+	t.Log("Testing DeviceInfo struct field access")
 	dev := DeviceInfo{
 		PCIAddr:       "01:00.0",
 		IbdevName:     "mlx5_0",
@@ -897,6 +905,7 @@ func TestDiscovery_DeviceInfoJSONSerialization(t *testing.T) {
 }
 
 func TestDiscovery_DefaultConfigValues(t *testing.T) {
+	t.Log("Testing DefaultDeviceSelectionConfig returns expected defaults")
 	cfg := DefaultDeviceSelectionConfig()
 
 	if cfg.PCIAddrOverride != "" {
@@ -914,6 +923,7 @@ func TestDiscovery_DefaultConfigValues(t *testing.T) {
 }
 
 func TestDiscovery_PCIFuncTypeString(t *testing.T) {
+	t.Log("Testing PCIFuncType.String() returns human-readable names")
 	tests := []struct {
 		funcType PCIFuncType
 		expected string
@@ -938,6 +948,7 @@ func TestDiscovery_PCIFuncTypeString(t *testing.T) {
 // ============================================================================
 
 func TestDiscovery_EnumerateAllDevices(t *testing.T) {
+	t.Log("Testing DiscoverDevices returns all configured devices")
 	mock := NewMockDiscovery()
 	mock.AddDevice(DeviceInfo{
 		PCIAddr:       "01:00.0",
@@ -974,8 +985,8 @@ func TestDiscovery_EnumerateAllDevices(t *testing.T) {
 }
 
 func TestDiscovery_SortDevicesByPCI(t *testing.T) {
+	t.Log("Testing devices can be sorted by PCI address")
 	mock := NewMockDiscovery()
-	// Add devices in non-sorted order
 	mock.AddDevice(DeviceInfo{PCIAddr: "83:00.0", FuncType: PCIFuncTypePF, IsComchClient: true})
 	mock.AddDevice(DeviceInfo{PCIAddr: "03:00.0", FuncType: PCIFuncTypePF, IsComchClient: true})
 	mock.AddDevice(DeviceInfo{PCIAddr: "41:00.0", FuncType: PCIFuncTypePF, IsComchClient: true})
@@ -1003,7 +1014,7 @@ func TestDiscovery_SortDevicesByPCI(t *testing.T) {
 // ============================================================================
 
 func TestDiscoveryErrors_AreDistinct(t *testing.T) {
-	// Verify error constants are unique and can be distinguished
+	t.Log("Testing discovery error constants are unique and distinguishable")
 	errs := []error{
 		ErrNoDevicesFound,
 		ErrNoComchCapableDevices,
@@ -1020,6 +1031,7 @@ func TestDiscoveryErrors_AreDistinct(t *testing.T) {
 }
 
 func TestDiscoveryErrors_ContainHelpfulMessages(t *testing.T) {
+	t.Log("Testing discovery error messages contain helpful context")
 	tests := []struct {
 		err      error
 		contains string

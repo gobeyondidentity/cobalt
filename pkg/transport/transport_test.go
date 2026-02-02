@@ -7,6 +7,7 @@ import (
 )
 
 func TestMessage_Serialization(t *testing.T) {
+	t.Log("Testing Message serialization for various message types")
 	tests := []struct {
 		name    string
 		message *Message
@@ -55,6 +56,7 @@ func TestMessage_Serialization(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("Verifying %s message serializes and deserializes correctly", tt.name)
 			// Serialize
 			data, err := json.Marshal(tt.message)
 			if err != nil {
@@ -84,6 +86,7 @@ func TestMessage_Serialization(t *testing.T) {
 }
 
 func TestMessage_JSONFields(t *testing.T) {
+	t.Log("Testing Message JSON field names match expected wire format")
 	msg := &Message{
 		Version: ProtocolVersion,
 		Type:    MessageEnrollRequest,
@@ -116,6 +119,7 @@ func TestMessage_JSONFields(t *testing.T) {
 }
 
 func TestTransportType_Values(t *testing.T) {
+	t.Log("Testing TransportType constant values")
 	tests := []struct {
 		transportType TransportType
 		expected      string
@@ -128,6 +132,7 @@ func TestTransportType_Values(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
+			t.Logf("Verifying TransportType %s has correct string value", tt.expected)
 			if string(tt.transportType) != tt.expected {
 				t.Errorf("got %s, want %s", tt.transportType, tt.expected)
 			}
@@ -136,6 +141,7 @@ func TestTransportType_Values(t *testing.T) {
 }
 
 func TestMessageType_Values(t *testing.T) {
+	t.Log("Testing MessageType constant values")
 	tests := []struct {
 		messageType MessageType
 		expected    string
@@ -152,6 +158,7 @@ func TestMessageType_Values(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
+			t.Logf("Verifying MessageType %s has correct string value", tt.expected)
 			if string(tt.messageType) != tt.expected {
 				t.Errorf("got %s, want %s", tt.messageType, tt.expected)
 			}
@@ -160,6 +167,7 @@ func TestMessageType_Values(t *testing.T) {
 }
 
 func TestMessage_PayloadExtraction(t *testing.T) {
+	t.Log("Testing extracting structured data from Message payload")
 	// Test extracting structured data from payload
 	type enrollPayload struct {
 		Hostname string `json:"hostname"`
@@ -205,7 +213,7 @@ func TestMessage_PayloadExtraction(t *testing.T) {
 }
 
 func TestMessage_RoundTrip(t *testing.T) {
-	// Test full round-trip through MockTransport
+	t.Log("Testing full Message round-trip through MockTransport")
 	mt := NewMockTransport()
 	if err := mt.Connect(context.Background()); err != nil {
 		t.Fatalf("connect failed: %v", err)

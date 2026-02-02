@@ -8,7 +8,10 @@ import (
 
 // TestProtocolMessageEnvelope tests Message serialization/deserialization.
 func TestProtocolMessageEnvelope(t *testing.T) {
+	t.Log("Testing Message envelope serialization and deserialization")
+
 	t.Run("round-trip all fields", func(t *testing.T) {
+		t.Log("Verifying all Message fields survive JSON round-trip")
 		original := &Message{
 			Version: ProtocolVersion,
 			Type:    MessageAuthChallenge,
@@ -45,6 +48,7 @@ func TestProtocolMessageEnvelope(t *testing.T) {
 	})
 
 	t.Run("empty payload", func(t *testing.T) {
+		t.Log("Verifying empty payload {} is preserved")
 		original := &Message{
 			Version: ProtocolVersion,
 			Type:    MessageAuthOK,
@@ -69,6 +73,7 @@ func TestProtocolMessageEnvelope(t *testing.T) {
 	})
 
 	t.Run("null payload", func(t *testing.T) {
+		t.Log("Verifying null payload is preserved")
 		original := &Message{
 			Version: ProtocolVersion,
 			Type:    MessagePostureAck,
@@ -93,6 +98,7 @@ func TestProtocolMessageEnvelope(t *testing.T) {
 	})
 
 	t.Run("large payload near 4KB limit", func(t *testing.T) {
+		t.Log("Verifying large payload (~3.8KB) is preserved")
 		// Generate payload just under 4KB
 		largeData := strings.Repeat("x", 3800)
 		payloadJSON, _ := json.Marshal(map[string]string{"data": largeData})
@@ -121,6 +127,7 @@ func TestProtocolMessageEnvelope(t *testing.T) {
 	})
 
 	t.Run("wire format field names", func(t *testing.T) {
+		t.Log("Verifying JSON field names match wire format: v, type, id, ts, payload")
 		msg := &Message{
 			Version: ProtocolVersion,
 			Type:    MessageEnrollRequest,
@@ -158,7 +165,10 @@ func TestProtocolMessageEnvelope(t *testing.T) {
 
 // TestProtocolAuthPayloads tests authentication message payload serialization.
 func TestProtocolAuthPayloads(t *testing.T) {
+	t.Log("Testing authentication message payload serialization")
+
 	t.Run("AUTH_CHALLENGE payload", func(t *testing.T) {
+		t.Log("Verifying AUTH_CHALLENGE nonce field round-trips correctly")
 		original := AuthChallengePayload{
 			Nonce: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
 		}
@@ -186,6 +196,7 @@ func TestProtocolAuthPayloads(t *testing.T) {
 	})
 
 	t.Run("AUTH_RESPONSE payload", func(t *testing.T) {
+		t.Log("Verifying AUTH_RESPONSE with nonce, signature, and public_key fields")
 		original := AuthResponsePayload{
 			Nonce:     "a1b2c3d4e5f6",
 			Signature: "c2lnbmF0dXJlZGF0YWhlcmU=", // base64
@@ -223,6 +234,7 @@ func TestProtocolAuthPayloads(t *testing.T) {
 	})
 
 	t.Run("AUTH_RESPONSE with empty public_key (reconnect)", func(t *testing.T) {
+		t.Log("Verifying AUTH_RESPONSE allows empty public_key for reconnect case")
 		// On reconnect, public_key can be empty
 		original := AuthResponsePayload{
 			Nonce:     "abc123",
@@ -246,6 +258,7 @@ func TestProtocolAuthPayloads(t *testing.T) {
 	})
 
 	t.Run("AUTH_OK payload (empty)", func(t *testing.T) {
+		t.Log("Verifying AUTH_OK serializes to empty object {}")
 		original := AuthOKPayload{}
 
 		data, err := json.Marshal(original)
@@ -265,6 +278,7 @@ func TestProtocolAuthPayloads(t *testing.T) {
 	})
 
 	t.Run("AUTH_FAIL payload", func(t *testing.T) {
+		t.Log("Verifying AUTH_FAIL reason field for all failure codes")
 		reasons := []string{
 			"invalid_signature",
 			"unknown_key",
@@ -293,6 +307,7 @@ func TestProtocolAuthPayloads(t *testing.T) {
 
 // TestProtocolEnrollPayloads tests enrollment message payload serialization.
 func TestProtocolEnrollPayloads(t *testing.T) {
+	t.Log("Testing enrollment message payload serialization")
 	// Define inline payload types matching expected wire format
 	type EnrollRequestPayload struct {
 		Hostname string `json:"hostname"`
@@ -306,6 +321,7 @@ func TestProtocolEnrollPayloads(t *testing.T) {
 	}
 
 	t.Run("ENROLL_REQUEST payload", func(t *testing.T) {
+		t.Log("Verifying ENROLL_REQUEST with hostname, os, and arch fields")
 		original := EnrollRequestPayload{
 			Hostname: "worker-node-01",
 			OS:       "linux",
@@ -334,6 +350,7 @@ func TestProtocolEnrollPayloads(t *testing.T) {
 	})
 
 	t.Run("ENROLL_RESPONSE payload", func(t *testing.T) {
+		t.Log("Verifying ENROLL_RESPONSE with host_id and status fields")
 		original := EnrollResponsePayload{
 			HostID: "host-550e8400-e29b-41d4",
 			Status: "enrolled",
@@ -358,6 +375,7 @@ func TestProtocolEnrollPayloads(t *testing.T) {
 	})
 
 	t.Run("full message with ENROLL_REQUEST", func(t *testing.T) {
+		t.Log("Verifying full Message envelope with embedded ENROLL_REQUEST payload")
 		payload := EnrollRequestPayload{
 			Hostname: "test-host",
 			OS:       "linux",
@@ -395,6 +413,7 @@ func TestProtocolEnrollPayloads(t *testing.T) {
 
 // TestProtocolPosturePayloads tests posture message payload serialization.
 func TestProtocolPosturePayloads(t *testing.T) {
+	t.Log("Testing posture message payload serialization")
 	type PostureCheck struct {
 		Name   string `json:"name"`
 		Status string `json:"status"`
@@ -414,6 +433,7 @@ func TestProtocolPosturePayloads(t *testing.T) {
 	}
 
 	t.Run("POSTURE_REPORT payload", func(t *testing.T) {
+		t.Log("Verifying POSTURE_REPORT with score, timestamp, and checks array")
 		original := PostureReportPayload{
 			Score:     85,
 			Timestamp: "2026-01-17T12:00:00Z",
@@ -443,6 +463,7 @@ func TestProtocolPosturePayloads(t *testing.T) {
 	})
 
 	t.Run("POSTURE_ACK payload", func(t *testing.T) {
+		t.Log("Verifying POSTURE_ACK with received, next_poll_seconds, and message fields")
 		original := PostureAckPayload{
 			Received: true,
 			NextPoll: 300,
@@ -470,6 +491,7 @@ func TestProtocolPosturePayloads(t *testing.T) {
 
 // TestProtocolCredentialPayloads tests credential message payload serialization.
 func TestProtocolCredentialPayloads(t *testing.T) {
+	t.Log("Testing credential message payload serialization")
 	type CredentialPushPayload struct {
 		CredentialID   string `json:"credential_id"`
 		CredentialType string `json:"credential_type"`
@@ -484,6 +506,7 @@ func TestProtocolCredentialPayloads(t *testing.T) {
 	}
 
 	t.Run("CREDENTIAL_PUSH payload", func(t *testing.T) {
+		t.Log("Verifying CREDENTIAL_PUSH with credential_id, type, data, and expires_at")
 		original := CredentialPushPayload{
 			CredentialID:   "cred-123456",
 			CredentialType: "x509_cert",
@@ -510,6 +533,7 @@ func TestProtocolCredentialPayloads(t *testing.T) {
 	})
 
 	t.Run("CREDENTIAL_ACK payload", func(t *testing.T) {
+		t.Log("Verifying CREDENTIAL_ACK with credential_id and status fields")
 		original := CredentialAckPayload{
 			CredentialID: "cred-123456",
 			Status:       "accepted",
@@ -534,6 +558,7 @@ func TestProtocolCredentialPayloads(t *testing.T) {
 	})
 
 	t.Run("CREDENTIAL_ACK with error", func(t *testing.T) {
+		t.Log("Verifying CREDENTIAL_ACK error field for rejection case")
 		original := CredentialAckPayload{
 			CredentialID: "cred-789",
 			Status:       "error",
@@ -558,6 +583,7 @@ func TestProtocolCredentialPayloads(t *testing.T) {
 
 // TestProtocolCertPayloads tests certificate request/response payload serialization.
 func TestProtocolCertPayloads(t *testing.T) {
+	t.Log("Testing certificate request/response payload serialization")
 	type CertRequestPayload struct {
 		CSR          string `json:"csr"`           // PEM-encoded CSR
 		KeyType      string `json:"key_type"`      // "rsa", "ecdsa", "ed25519"
@@ -571,6 +597,7 @@ func TestProtocolCertPayloads(t *testing.T) {
 	}
 
 	t.Run("CERT_REQUEST payload", func(t *testing.T) {
+		t.Log("Verifying CERT_REQUEST with CSR, key_type, and validity_days")
 		original := CertRequestPayload{
 			CSR:          "-----BEGIN CERTIFICATE REQUEST-----\nMIIC...\n-----END CERTIFICATE REQUEST-----",
 			KeyType:      "ed25519",
@@ -596,6 +623,7 @@ func TestProtocolCertPayloads(t *testing.T) {
 	})
 
 	t.Run("CERT_RESPONSE payload", func(t *testing.T) {
+		t.Log("Verifying CERT_RESPONSE with certificate, chain, and expires_at")
 		original := CertResponsePayload{
 			Certificate: "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
 			Chain:       "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----",
@@ -623,7 +651,10 @@ func TestProtocolCertPayloads(t *testing.T) {
 
 // TestProtocolEdgeCases tests edge cases and error handling.
 func TestProtocolEdgeCases(t *testing.T) {
+	t.Log("Testing protocol edge cases and error handling")
+
 	t.Run("malformed JSON in payload", func(t *testing.T) {
+		t.Log("Verifying malformed JSON payload causes unmarshal error")
 		// Create message with invalid JSON payload
 		msgJSON := `{"v":1,"type":"AUTH_CHALLENGE","id":"test","ts":123,"payload":{invalid}}`
 
@@ -635,6 +666,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 	})
 
 	t.Run("missing required envelope fields", func(t *testing.T) {
+		t.Log("Verifying missing envelope fields result in zero values, not errors")
 		// Missing fields should result in zero values, not errors
 		// JSON unmarshal doesn't enforce required fields
 		msgJSON := `{"type":"AUTH_CHALLENGE"}`
@@ -656,6 +688,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 	})
 
 	t.Run("extra unknown fields ignored", func(t *testing.T) {
+		t.Log("Verifying extra unknown fields are silently ignored")
 		// Extra fields should be silently ignored
 		msgJSON := `{
 			"v": 1,
@@ -678,6 +711,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 	})
 
 	t.Run("extra fields in payload ignored", func(t *testing.T) {
+		t.Log("Verifying extra fields in payload are silently ignored")
 		payloadJSON := `{
 			"nonce": "abc123",
 			"extra_field": "ignored",
@@ -695,6 +729,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 	})
 
 	t.Run("unicode in string fields", func(t *testing.T) {
+		t.Log("Verifying unicode characters in string fields are preserved")
 		type TestPayload struct {
 			Name    string `json:"name"`
 			Message string `json:"message"`
@@ -724,6 +759,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 	})
 
 	t.Run("special characters in nonce", func(t *testing.T) {
+		t.Log("Verifying hex nonce with mixed case is preserved")
 		// Nonce is hex, but test that encoding handles any string
 		payload := AuthChallengePayload{
 			Nonce: "abcdef0123456789ABCDEF",
@@ -745,6 +781,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 	})
 
 	t.Run("zero timestamp", func(t *testing.T) {
+		t.Log("Verifying zero timestamp value is preserved")
 		msg := &Message{
 			Version: ProtocolVersion,
 			Type:    MessageAuthChallenge,
@@ -769,7 +806,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 	})
 
 	t.Run("negative timestamp", func(t *testing.T) {
-		// Negative timestamps (pre-epoch) should serialize correctly
+		t.Log("Verifying negative timestamp (pre-epoch) serializes correctly")
 		msg := &Message{
 			Version: ProtocolVersion,
 			Type:    MessageAuthChallenge,
@@ -794,6 +831,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 	})
 
 	t.Run("empty string ID", func(t *testing.T) {
+		t.Log("Verifying empty string ID is preserved")
 		msg := &Message{
 			Version: ProtocolVersion,
 			Type:    MessageAuthChallenge,
@@ -818,6 +856,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 	})
 
 	t.Run("max int64 timestamp", func(t *testing.T) {
+		t.Log("Verifying max int64 timestamp serializes without overflow")
 		msg := &Message{
 			Version: ProtocolVersion,
 			Type:    MessageAuthChallenge,
@@ -844,6 +883,7 @@ func TestProtocolEdgeCases(t *testing.T) {
 
 // TestProtocolAllMessageTypes verifies all defined message types serialize correctly.
 func TestProtocolAllMessageTypes(t *testing.T) {
+	t.Log("Testing that all defined message types serialize correctly")
 	messageTypes := []MessageType{
 		MessageAuthChallenge,
 		MessageAuthResponse,
@@ -861,6 +901,7 @@ func TestProtocolAllMessageTypes(t *testing.T) {
 
 	for _, msgType := range messageTypes {
 		t.Run(string(msgType), func(t *testing.T) {
+			t.Logf("Verifying %s message type round-trips correctly", msgType)
 			msg := &Message{
 				Version: ProtocolVersion,
 				Type:    msgType,
@@ -888,6 +929,7 @@ func TestProtocolAllMessageTypes(t *testing.T) {
 
 // TestProtocolNewAuthMessageIntegration tests NewAuthMessage creates valid serializable messages.
 func TestProtocolNewAuthMessageIntegration(t *testing.T) {
+	t.Log("Testing NewAuthMessage creates valid serializable messages")
 	testCases := []struct {
 		name     string
 		msgType  MessageType
@@ -954,6 +996,7 @@ func TestProtocolNewAuthMessageIntegration(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Logf("Verifying NewAuthMessage creates valid %s with correct envelope and payload", tc.name)
 			msg, err := NewAuthMessage(tc.msgType, tc.payload)
 			if err != nil {
 				t.Fatalf("NewAuthMessage failed: %v", err)
@@ -992,7 +1035,10 @@ func TestProtocolNewAuthMessageIntegration(t *testing.T) {
 
 // TestProtocolParseAuthPayloadIntegration tests ParseAuthPayload with various inputs.
 func TestProtocolParseAuthPayloadIntegration(t *testing.T) {
+	t.Log("Testing ParseAuthPayload with various inputs")
+
 	t.Run("parses all auth payload types", func(t *testing.T) {
+		t.Log("Verifying ParseAuthPayload correctly extracts all auth payload types")
 		// AUTH_CHALLENGE
 		challengeMsg, _ := NewAuthMessage(MessageAuthChallenge, AuthChallengePayload{Nonce: "test123"})
 		challenge, err := ParseAuthPayload[AuthChallengePayload](challengeMsg)
@@ -1036,6 +1082,7 @@ func TestProtocolParseAuthPayloadIntegration(t *testing.T) {
 	})
 
 	t.Run("returns error for nil message", func(t *testing.T) {
+		t.Log("Verifying ParseAuthPayload returns error for nil message")
 		_, err := ParseAuthPayload[AuthChallengePayload](nil)
 		if err == nil {
 			t.Error("expected error for nil message")
@@ -1043,6 +1090,7 @@ func TestProtocolParseAuthPayloadIntegration(t *testing.T) {
 	})
 
 	t.Run("returns error for invalid payload JSON", func(t *testing.T) {
+		t.Log("Verifying ParseAuthPayload returns error for invalid JSON payload")
 		msg := &Message{
 			Version: ProtocolVersion,
 			Type:    MessageAuthChallenge,
@@ -1058,6 +1106,7 @@ func TestProtocolParseAuthPayloadIntegration(t *testing.T) {
 	})
 
 	t.Run("handles type mismatch gracefully", func(t *testing.T) {
+		t.Log("Verifying ParseAuthPayload handles type mismatch gracefully (lenient JSON)")
 		// Create AUTH_FAIL message but try to parse as AUTH_CHALLENGE
 		// This should work since JSON unmarshaling is lenient
 		failMsg, _ := NewAuthMessage(MessageAuthFail, AuthFailPayload{Reason: "test"})
@@ -1076,13 +1125,17 @@ func TestProtocolParseAuthPayloadIntegration(t *testing.T) {
 
 // TestProtocolVersionValidation tests protocol version handling.
 func TestProtocolVersionValidation(t *testing.T) {
+	t.Log("Testing protocol version handling")
+
 	t.Run("current protocol version is 1", func(t *testing.T) {
+		t.Log("Verifying current ProtocolVersion constant is 1")
 		if ProtocolVersion != 1 {
 			t.Errorf("ProtocolVersion: got %d, want 1", ProtocolVersion)
 		}
 	})
 
 	t.Run("version 0 serializes correctly", func(t *testing.T) {
+		t.Log("Verifying version 0 serializes correctly")
 		msg := &Message{
 			Version: 0,
 			Type:    MessageAuthChallenge,
@@ -1101,6 +1154,7 @@ func TestProtocolVersionValidation(t *testing.T) {
 	})
 
 	t.Run("version 255 (max uint8) serializes correctly", func(t *testing.T) {
+		t.Log("Verifying version 255 (max uint8) serializes correctly")
 		msg := &Message{
 			Version: 255,
 			Type:    MessageAuthChallenge,

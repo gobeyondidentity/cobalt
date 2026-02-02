@@ -12,6 +12,7 @@ import (
 )
 
 func TestNewKeyStore(t *testing.T) {
+	t.Log("Testing NewKeyStore creates a valid keystore instance")
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "keystore.json")
 
@@ -28,10 +29,11 @@ func TestNewKeyStore(t *testing.T) {
 }
 
 func TestNewKeyStore_LoadsExisting(t *testing.T) {
+	t.Log("Testing NewKeyStore loads existing keys from file")
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "keystore.json")
 
-	// Create a keystore file with existing keys
+	t.Log("Creating keystore file with pre-existing key")
 	pub, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("GenerateKey() error = %v", err)
@@ -57,6 +59,7 @@ func TestNewKeyStore_LoadsExisting(t *testing.T) {
 }
 
 func TestKeyStore_Register(t *testing.T) {
+	t.Log("Testing KeyStore.Register adds key and persists to file")
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "keystore.json")
 
@@ -98,6 +101,7 @@ func TestKeyStore_Register(t *testing.T) {
 }
 
 func TestKeyStore_IsKnown(t *testing.T) {
+	t.Log("Testing KeyStore.IsKnown correctly identifies registered vs unregistered keys")
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "keystore.json")
 
@@ -132,6 +136,7 @@ func TestKeyStore_IsKnown(t *testing.T) {
 }
 
 func TestKeyStore_Verify(t *testing.T) {
+	t.Log("Testing KeyStore.Verify returns correct status for registered and unregistered keys")
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "keystore.json")
 
@@ -160,11 +165,12 @@ func TestKeyStore_Verify(t *testing.T) {
 }
 
 func TestFingerprint(t *testing.T) {
+	t.Log("Testing Fingerprint produces consistent SHA256 hex hashes of public keys")
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
 
 	fp := Fingerprint(pub)
 
-	// Fingerprint should be consistent
+	t.Log("Verifying fingerprint is consistent for same key")
 	if fp != Fingerprint(pub) {
 		t.Error("Fingerprint() should return consistent results")
 	}
@@ -182,6 +188,7 @@ func TestFingerprint(t *testing.T) {
 }
 
 func TestKeyStore_ConcurrentAccess(t *testing.T) {
+	t.Log("Testing KeyStore is safe for concurrent registration and verification")
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "keystore.json")
 
@@ -219,6 +226,7 @@ func TestKeyStore_ConcurrentAccess(t *testing.T) {
 }
 
 func TestKeyStore_DirectoryCreation(t *testing.T) {
+	t.Log("Testing KeyStore creates nested directories for keystore path")
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "subdir", "deep", "keystore.json")
 
@@ -244,6 +252,7 @@ func TestKeyStore_DirectoryCreation(t *testing.T) {
 }
 
 func TestKeyStore_FilePermissions(t *testing.T) {
+	t.Log("Testing KeyStore file is created with 0600 permissions (Unix only)")
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "keystore.json")
 
@@ -269,6 +278,7 @@ func TestKeyStore_FilePermissions(t *testing.T) {
 }
 
 func TestKeyStore_RegisterDuplicate(t *testing.T) {
+	t.Log("Testing KeyStore.Register is idempotent for duplicate key registration")
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "keystore.json")
 

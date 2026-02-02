@@ -11,7 +11,7 @@ import (
 // These test the stub behavior and type compatibility.
 
 func TestDOCAComchServerConfig_Fields(t *testing.T) {
-	// Test that the config struct has all expected fields
+	t.Log("Testing DOCAComchServerConfig struct has all expected fields")
 	cfg := DOCAComchServerConfig{
 		PCIAddr:        "03:00.0",
 		RepPCIAddr:     "01:00.0",
@@ -42,7 +42,7 @@ func TestDOCAComchServerConfig_Fields(t *testing.T) {
 }
 
 func TestNewDOCAComchServer_Stub(t *testing.T) {
-	// Without DOCA SDK, NewDOCAComchServer should return an error
+	t.Log("Testing NewDOCAComchServer returns ErrDOCANotAvailable without DOCA SDK")
 	cfg := DOCAComchServerConfig{
 		PCIAddr:    "03:00.0",
 		RepPCIAddr: "01:00.0",
@@ -62,6 +62,7 @@ func TestNewDOCAComchServer_Stub(t *testing.T) {
 }
 
 func TestDOCAComchServer_ConfigValidation(t *testing.T) {
+	t.Log("Testing DOCAComchServer config validation for required fields")
 	tests := []struct {
 		name    string
 		cfg     DOCAComchServerConfig
@@ -114,7 +115,7 @@ func TestDOCAComchServer_ConfigValidation(t *testing.T) {
 }
 
 func TestDOCAComchServer_StubMethods(t *testing.T) {
-	// Test that stub methods return expected errors
+	t.Log("Testing DOCAComchServer stub methods return ErrDOCANotAvailable")
 	var server DOCAComchServer
 
 	_, err := server.Accept()
@@ -129,6 +130,7 @@ func TestDOCAComchServer_StubMethods(t *testing.T) {
 }
 
 func TestDOCAComchServer_StubType(t *testing.T) {
+	t.Log("Testing DOCAComchServer.Type() returns TransportDOCAComch")
 	var server DOCAComchServer
 	if server.Type() != TransportDOCAComch {
 		t.Errorf("Type: got %v, want %v", server.Type(), TransportDOCAComch)
@@ -136,16 +138,15 @@ func TestDOCAComchServer_StubType(t *testing.T) {
 }
 
 func TestDOCAComchServer_TransportListenerInterface(t *testing.T) {
-	// Verify that DOCAComchServer implements TransportListener interface
+	t.Log("Testing DOCAComchServer implements TransportListener interface")
 	var _ TransportListener = (*DOCAComchServer)(nil)
 }
 
 // Tests for DOCAComchServerConn
 
 func TestDOCAComchServerConn_StubMethods(t *testing.T) {
+	t.Log("Testing DOCAComchServerConn stub methods return ErrDOCANotAvailable")
 	var conn DOCAComchServerConn
-
-	// All methods should return ErrDOCANotAvailable
 	if err := conn.Connect(nil); err != ErrDOCANotAvailable {
 		t.Errorf("Connect: expected ErrDOCANotAvailable, got %v", err)
 	}
@@ -167,6 +168,7 @@ func TestDOCAComchServerConn_StubMethods(t *testing.T) {
 }
 
 func TestDOCAComchServerConn_StubType(t *testing.T) {
+	t.Log("Testing DOCAComchServerConn.Type() returns TransportDOCAComch")
 	var conn DOCAComchServerConn
 	if conn.Type() != TransportDOCAComch {
 		t.Errorf("Type: got %v, want %v", conn.Type(), TransportDOCAComch)
@@ -174,14 +176,14 @@ func TestDOCAComchServerConn_StubType(t *testing.T) {
 }
 
 func TestDOCAComchServerConn_TransportInterface(t *testing.T) {
-	// Verify that DOCAComchServerConn implements Transport interface
+	t.Log("Testing DOCAComchServerConn implements Transport interface")
 	var _ Transport = (*DOCAComchServerConn)(nil)
 }
 
 // Test message handling patterns that would be used by server
 
 func TestDOCAComchServer_MessageSerialization(t *testing.T) {
-	// Test server-side message types
+	t.Log("Testing server-side message serialization round-trip")
 	tests := []struct {
 		name string
 		msg  *Message
@@ -241,16 +243,16 @@ func TestDOCAComchServer_MessageSerialization(t *testing.T) {
 }
 
 func TestDOCAComchServerConn_State(t *testing.T) {
+	t.Log("Testing DOCAComchServerConn.State() returns 'unavailable' for stub")
 	var conn DOCAComchServerConn
-	// Stub should return "unavailable"
 	if conn.State() != "unavailable" {
 		t.Errorf("State: got %s, want unavailable", conn.State())
 	}
 }
 
 func TestDOCAComchServerConn_MaxMessageSize(t *testing.T) {
+	t.Log("Testing DOCAComchServerConn.MaxMessageSize() returns 0 for stub")
 	var conn DOCAComchServerConn
-	// Stub should return 0
 	if conn.MaxMessageSize() != 0 {
 		t.Errorf("MaxMessageSize: got %d, want 0", conn.MaxMessageSize())
 	}

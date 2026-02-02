@@ -14,7 +14,7 @@ import (
 // These test the stub behavior and type compatibility.
 
 func TestDOCAComchClientConfig_Fields(t *testing.T) {
-	// Test that the config struct has all expected fields
+	t.Log("Testing DOCAComchClientConfig struct has all expected fields")
 	cfg := DOCAComchClientConfig{
 		PCIAddr:        "01:00.0",
 		ServerName:     "secureinfra",
@@ -37,7 +37,7 @@ func TestDOCAComchClientConfig_Fields(t *testing.T) {
 }
 
 func TestNewDOCAComchClient_Stub(t *testing.T) {
-	// Without DOCA SDK, NewDOCAComchClient should return an error
+	t.Log("Testing NewDOCAComchClient returns ErrDOCANotAvailable without DOCA SDK")
 	cfg := DOCAComchClientConfig{
 		PCIAddr:    "01:00.0",
 		ServerName: "test",
@@ -56,7 +56,7 @@ func TestNewDOCAComchClient_Stub(t *testing.T) {
 }
 
 func TestDOCAComchClient_StubMethods(t *testing.T) {
-	// Test that stub methods return expected errors
+	t.Log("Testing DOCAComchClient stub methods return ErrDOCANotAvailable")
 	var client DOCAComchClient
 
 	ctx := context.Background()
@@ -81,6 +81,7 @@ func TestDOCAComchClient_StubMethods(t *testing.T) {
 }
 
 func TestDOCAComchClient_StubType(t *testing.T) {
+	t.Log("Testing DOCAComchClient.Type() returns TransportDOCAComch")
 	var client DOCAComchClient
 	if client.Type() != TransportDOCAComch {
 		t.Errorf("Type: got %v, want %v", client.Type(), TransportDOCAComch)
@@ -88,6 +89,7 @@ func TestDOCAComchClient_StubType(t *testing.T) {
 }
 
 func TestDOCAComchClient_StubState(t *testing.T) {
+	t.Log("Testing DOCAComchClient.State() returns 'unavailable' for stub")
 	var client DOCAComchClient
 	if client.State() != "unavailable" {
 		t.Errorf("State: got %s, want unavailable", client.State())
@@ -95,6 +97,7 @@ func TestDOCAComchClient_StubState(t *testing.T) {
 }
 
 func TestDOCAComchClient_StubMaxMessageSize(t *testing.T) {
+	t.Log("Testing DOCAComchClient.MaxMessageSize() returns 0 for stub")
 	var client DOCAComchClient
 	if client.MaxMessageSize() != 0 {
 		t.Errorf("MaxMessageSize: got %d, want 0", client.MaxMessageSize())
@@ -102,20 +105,21 @@ func TestDOCAComchClient_StubMaxMessageSize(t *testing.T) {
 }
 
 func TestDocaComchAvailable_Stub(t *testing.T) {
+	t.Log("Testing docaComchAvailable() returns false without DOCA SDK")
 	if docaComchAvailable() {
 		t.Error("docaComchAvailable should return false without DOCA SDK")
 	}
 }
 
 func TestDOCAComchClient_TransportInterface(t *testing.T) {
-	// Verify that DOCAComchClient implements Transport interface
+	t.Log("Testing DOCAComchClient implements Transport interface")
 	var _ Transport = (*DOCAComchClient)(nil)
 }
 
 // Tests for message serialization that would be used by DOCAComchClient
 
 func TestDOCAComchClient_MessageSerialization(t *testing.T) {
-	// Test that messages serialize correctly for transport
+	t.Log("Testing client-side message serialization round-trip")
 	tests := []struct {
 		name string
 		msg  *Message
@@ -175,7 +179,7 @@ func TestDOCAComchClient_MessageSerialization(t *testing.T) {
 }
 
 func TestDOCAComchClient_MessageSizeValidation(t *testing.T) {
-	// Test message size limits that would apply in production
+	t.Log("Testing message size validation against 4KB limit")
 	maxSize := uint32(4096)
 
 	// Message under limit
@@ -211,9 +215,7 @@ func TestDOCAComchClient_MessageSizeValidation(t *testing.T) {
 }
 
 func TestDOCAComchClient_ContextCancellation(t *testing.T) {
-	// Test that context cancellation is handled correctly
-	// This tests the expected behavior pattern
-
+	t.Log("Testing client handles context cancellation correctly")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
@@ -261,7 +263,7 @@ func BenchmarkMessageUnmarshal(b *testing.B) {
 // ============================================================================
 
 func TestNewDOCAComchTransport_Stub(t *testing.T) {
-	// Without DOCA SDK, NewDOCAComchTransport should return ErrDOCANotAvailable
+	t.Log("Testing NewDOCAComchTransport returns ErrDOCANotAvailable without DOCA SDK")
 	transport, err := NewDOCAComchTransport()
 	if transport != nil {
 		t.Error("expected nil transport without DOCA SDK")
@@ -272,7 +274,7 @@ func TestNewDOCAComchTransport_Stub(t *testing.T) {
 }
 
 func TestCheckComchClientCapability_Stub(t *testing.T) {
-	// Without DOCA SDK, CheckComchClientCapability should return error
+	t.Log("Testing CheckComchClientCapability returns ErrDOCANotAvailable without DOCA SDK")
 	capable, err := CheckComchClientCapability("01:00.0")
 	if capable {
 		t.Error("expected false capability without DOCA SDK")
@@ -283,7 +285,7 @@ func TestCheckComchClientCapability_Stub(t *testing.T) {
 }
 
 func TestCheckComchServerCapability_Stub(t *testing.T) {
-	// Without DOCA SDK, CheckComchServerCapability should return error
+	t.Log("Testing CheckComchServerCapability returns ErrDOCANotAvailable without DOCA SDK")
 	capable, err := CheckComchServerCapability("03:00.0")
 	if capable {
 		t.Error("expected false capability without DOCA SDK")

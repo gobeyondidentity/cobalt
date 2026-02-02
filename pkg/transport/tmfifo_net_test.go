@@ -24,6 +24,7 @@ func testSocketPath(suffix string) string {
 // ============================================================================
 
 func TestNewTmfifoNetTransport_DefaultAddr(t *testing.T) {
+	t.Log("Testing NewTmfifoNetTransport uses default DPU address when empty string provided")
 	transport, err := NewTmfifoNetTransport("")
 	if err != nil {
 		t.Fatalf("NewTmfifoNetTransport failed: %v", err)
@@ -40,6 +41,7 @@ func TestNewTmfifoNetTransport_DefaultAddr(t *testing.T) {
 }
 
 func TestNewTmfifoNetTransport_CustomAddr(t *testing.T) {
+	t.Log("Testing NewTmfifoNetTransport uses custom address when provided")
 	customAddr := "10.0.0.1:8080"
 	transport, err := NewTmfifoNetTransport(customAddr)
 	if err != nil {
@@ -53,6 +55,7 @@ func TestNewTmfifoNetTransport_CustomAddr(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_Type(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport.Type() returns TransportTmfifoNet")
 	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444"}
 	if transport.Type() != TransportTmfifoNet {
 		t.Errorf("Type() = %s, want %s", transport.Type(), TransportTmfifoNet)
@@ -60,7 +63,7 @@ func TestTmfifoNetTransport_Type(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_ConnectWithUnixSocket(t *testing.T) {
-	// Use /tmp to avoid path length limits
+	t.Log("Testing TmfifoNetTransport connects via Unix socket")
 	socketPath := testSocketPath("conn")
 	t.Cleanup(func() { os.Remove(socketPath) })
 
@@ -113,7 +116,7 @@ func TestTmfifoNetTransport_ConnectWithUnixSocket(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_ConnectWithTCP(t *testing.T) {
-	// Use TCP instead of Unix socket
+	t.Log("Testing TmfifoNetTransport connects via TCP")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create TCP listener: %v", err)
@@ -164,6 +167,7 @@ func TestTmfifoNetTransport_ConnectWithTCP(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_ConnectAlreadyConnected(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport Connect is idempotent when already connected")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
@@ -198,6 +202,7 @@ func TestTmfifoNetTransport_ConnectAlreadyConnected(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_ConnectAfterClose(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport can reconnect after Close")
 	transport, _ := NewTmfifoNetTransport("192.168.100.2:9444")
 	tt := transport.(*TmfifoNetTransport)
 
@@ -214,6 +219,7 @@ func TestTmfifoNetTransport_ConnectAfterClose(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_ResetAndReconnect(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport Reset clears closed state and allows reconnection")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
@@ -280,9 +286,8 @@ func TestTmfifoNetTransport_ResetAndReconnect(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_ResetImplementsResettable(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport implements Resettable interface")
 	transport, _ := NewTmfifoNetTransport("")
-
-	// Verify Transport implements Resettable
 	_, ok := transport.(Resettable)
 	if !ok {
 		t.Fatal("TmfifoNetTransport does not implement Resettable interface")
@@ -290,6 +295,7 @@ func TestTmfifoNetTransport_ResetImplementsResettable(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_SendNotConnected(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport Send returns error when not connected")
 	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444"}
 
 	msg := &Message{Type: MessageEnrollRequest}
@@ -303,6 +309,7 @@ func TestTmfifoNetTransport_SendNotConnected(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_SendAfterClose(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport Send returns error when closed")
 	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444", connected: true, closed: true}
 
 	msg := &Message{Type: MessageEnrollRequest}
@@ -316,6 +323,7 @@ func TestTmfifoNetTransport_SendAfterClose(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_RecvNotConnected(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport Recv returns error when not connected")
 	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444"}
 
 	_, err := transport.Recv()
@@ -328,6 +336,7 @@ func TestTmfifoNetTransport_RecvNotConnected(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_RecvAfterClose(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport Recv returns EOF when closed")
 	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444", connected: true, closed: true}
 
 	_, err := transport.Recv()
@@ -337,7 +346,7 @@ func TestTmfifoNetTransport_RecvAfterClose(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_SendAndRecvWithTCP(t *testing.T) {
-	// Use TCP for reliable testing
+	t.Log("Testing TmfifoNetTransport Send and Recv with TCP connection")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
@@ -393,6 +402,7 @@ func TestTmfifoNetTransport_SendAndRecvWithTCP(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_DoubleClose(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport Close is safe to call twice")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
@@ -425,6 +435,7 @@ func TestTmfifoNetTransport_DoubleClose(t *testing.T) {
 }
 
 func TestTmfifoNetTransport_CloseWithoutConnection(t *testing.T) {
+	t.Log("Testing TmfifoNetTransport Close succeeds without prior connection")
 	transport := &TmfifoNetTransport{dpuAddr: "192.168.100.2:9444"}
 
 	err := transport.Close()
@@ -438,6 +449,7 @@ func TestTmfifoNetTransport_CloseWithoutConnection(t *testing.T) {
 // ============================================================================
 
 func TestNewTmfifoNetListener_DefaultAddr(t *testing.T) {
+	t.Log("Testing NewTmfifoNetListener uses default address :9444 when empty string provided")
 	listener, err := NewTmfifoNetListener("")
 	if err != nil {
 		// Skip if port is already in use (e.g., on self-hosted runners with aegis)
@@ -454,7 +466,7 @@ func TestNewTmfifoNetListener_DefaultAddr(t *testing.T) {
 }
 
 func TestTmfifoNetListener_CustomAddr(t *testing.T) {
-	// Use a random high port to avoid conflicts
+	t.Log("Testing NewTmfifoNetListener uses custom address when provided")
 	listener, err := NewTmfifoNetListener("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("NewTmfifoNetListener failed: %v", err)
@@ -467,6 +479,7 @@ func TestTmfifoNetListener_CustomAddr(t *testing.T) {
 }
 
 func TestTmfifoNetListener_Type(t *testing.T) {
+	t.Log("Testing TmfifoNetListener.Type() returns TransportTmfifoNet")
 	listener := &TmfifoNetListener{listenAddr: ":9444"}
 	if listener.Type() != TransportTmfifoNet {
 		t.Errorf("Type() = %s, want %s", listener.Type(), TransportTmfifoNet)
@@ -474,6 +487,7 @@ func TestTmfifoNetListener_Type(t *testing.T) {
 }
 
 func TestTmfifoNetListener_AcceptAndClose(t *testing.T) {
+	t.Log("Testing TmfifoNetListener Accept and Close cycle")
 	listener, err := NewTmfifoNetListener("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("NewTmfifoNetListener failed: %v", err)
@@ -519,9 +533,8 @@ func TestTmfifoNetListener_AcceptAndClose(t *testing.T) {
 }
 
 func TestTmfifoNetListener_DoubleClose(t *testing.T) {
+	t.Log("Testing TmfifoNetListener Close is safe to call twice")
 	listener, _ := NewTmfifoNetListener("127.0.0.1:0")
-
-	// First close
 	err := listener.Close()
 	if err != nil {
 		t.Fatalf("first Close failed: %v", err)
@@ -535,9 +548,8 @@ func TestTmfifoNetListener_DoubleClose(t *testing.T) {
 }
 
 func TestTmfifoNetListener_AcceptAfterClose(t *testing.T) {
+	t.Log("Testing TmfifoNetListener Accept returns error after Close")
 	listener, _ := NewTmfifoNetListener("127.0.0.1:0")
-
-	// Close the listener
 	listener.Close()
 
 	// Accept after close should fail
@@ -548,6 +560,7 @@ func TestTmfifoNetListener_AcceptAfterClose(t *testing.T) {
 }
 
 func TestTmfifoNetListener_UnixSocket(t *testing.T) {
+	t.Log("Testing TmfifoNetListener with Unix socket")
 	socketPath := testSocketPath("list")
 	t.Cleanup(func() { os.Remove(socketPath) })
 
@@ -589,7 +602,7 @@ func TestTmfifoNetListener_UnixSocket(t *testing.T) {
 }
 
 func TestNewTmfifoNetTransportFromConn(t *testing.T) {
-	// Create a socket pair
+	t.Log("Testing newTmfifoNetTransportFromConn creates transport from existing connection")
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -614,7 +627,7 @@ func TestNewTmfifoNetTransportFromConn(t *testing.T) {
 // ============================================================================
 
 func TestIsUnixSocket(t *testing.T) {
-	// Use short path in /tmp
+	t.Log("Testing isUnixSocket correctly identifies socket files vs regular files")
 	socketPath := testSocketPath("issock")
 	t.Cleanup(func() { os.Remove(socketPath) })
 
@@ -646,14 +659,13 @@ func TestIsUnixSocket(t *testing.T) {
 }
 
 func TestHasTmfifoInterface(t *testing.T) {
-	// This test just verifies the function doesn't panic
-	// On most systems, tmfifo_net0 won't exist
+	t.Log("Testing hasTmfifoInterface doesn't panic (tmfifo_net0 usually absent)")
 	result := hasTmfifoInterface()
 	t.Logf("hasTmfifoInterface() = %v", result)
 }
 
 func TestHasTmfifoInterface_Exported(t *testing.T) {
-	// Test the exported version
+	t.Log("Testing exported HasTmfifoInterface function")
 	result := HasTmfifoInterface()
 	t.Logf("HasTmfifoInterface() = %v", result)
 }
@@ -663,7 +675,7 @@ func TestHasTmfifoInterface_Exported(t *testing.T) {
 // ============================================================================
 
 func TestTmfifoRoundTrip(t *testing.T) {
-	// Use TCP for reliable integration test
+	t.Log("Testing full round-trip message exchange over tmfifo transport")
 	serverListener, err := NewTmfifoNetListener("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create server listener: %v", err)
