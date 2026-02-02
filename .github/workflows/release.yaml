@@ -60,7 +60,7 @@ jobs:
 
   # Push Linux packages to Cloudsmith (parallel by component)
   cloudsmith-push:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, fast]
     needs: [goreleaser]
     strategy:
       matrix:
@@ -322,7 +322,7 @@ jobs:
 
   # Create multi-arch manifests from native images
   docker-manifest:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, fast]
     needs: [docker-amd64, docker-arm64]
     strategy:
       matrix:
