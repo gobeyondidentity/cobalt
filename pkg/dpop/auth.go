@@ -118,9 +118,8 @@ func NewAuthMiddleware(
 		jtiCache:       jtiCache,
 		logger:         slog.Default(),
 		bypassPaths: map[string]bool{
-			"/health":     true,
-			"/api/health": true,
-			"/ready":      true,
+			"/health": true,
+			"/ready":  true,
 		},
 		bypassPrefixes: []string{
 			"/api/v1/enroll/",

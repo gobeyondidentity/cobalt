@@ -92,9 +92,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Distribution routes
 	mux.HandleFunc("GET /api/distribution/history", s.handleDistributionHistory)
 
-	// Health routes
-	mux.HandleFunc("GET /health", s.handleAPIHealth)
-	mux.HandleFunc("GET /api/health", s.handleAPIHealth)
+	// Health routes (no auth required - bypassed in middleware)
+	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /ready", s.handleReady)
 
 	// KeyMaker routes
 	mux.HandleFunc("POST /api/v1/keymakers/bind", s.handleBindKeyMaker)
@@ -683,24 +683,53 @@ func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleAPIHealth(w http.ResponseWriter, r *http.Request) {
-	response := map[string]interface{}{
+// handleHealth is the liveness probe endpoint.
+// Returns 200 if the process is alive. Used by k8s liveness probes.
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status":  "ok",
 		"version": version.Version,
+	})
+}
+
+// handleReady is the readiness probe endpoint.
+// Returns 200 if ready to serve traffic, 503 if not ready.
+// Used by k8s readiness probes and load balancer health checks.
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	checks := map[string]string{}
+	allOK := true
+
+	// Check DB connectivity
+	if err := s.store.DB().PingContext(r.Context()); err != nil {
+		checks["database"] = "failed"
+		allOK = false
+	} else {
+		checks["database"] = "ok"
 	}
 
-	// Add bootstrap status
+	// Check bootstrap status
 	bootstrapStatus, err := s.getBootstrapStatus()
-	if err == nil && bootstrapStatus != nil {
-		response["bootstrap_status"] = bootstrapStatus.Status
-		if bootstrapStatus.ExpiresAt != nil {
-			response["bootstrap_expires_at"] = bootstrapStatus.ExpiresAt.Format(time.RFC3339)
-		}
-		if bootstrapStatus.AdminID != "" {
-			response["bootstrap_admin_id"] = bootstrapStatus.AdminID
-		}
+	if err != nil {
+		checks["bootstrap"] = "error"
+		allOK = false
+	} else if bootstrapStatus != nil && bootstrapStatus.Status == "enrolled" {
+		checks["bootstrap"] = "ok"
+	} else {
+		checks["bootstrap"] = "pending"
+		// Not ready until bootstrap is complete
+		allOK = false
 	}
 
+	response := map[string]interface{}{
+		"status": "ready",
+		"checks": checks,
+	}
+
+	if !allOK {
+		response["status"] = "not_ready"
+		writeJSON(w, http.StatusServiceUnavailable, response)
+		return
+	}
 	writeJSON(w, http.StatusOK, response)
 }
 
