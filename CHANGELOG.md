@@ -44,14 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI Flags**:
   - `km init --control-plane` migrated to `--server` (si-dct.2)
   - `aegis --control-plane` renamed to `--server`
-  - `aegis --local-api` removed (simplified CLI)
-  - `BLUECTL_SERVER` env var removed (use `--server` flag)
   - `SERVER_URL` env var standardized across all CLIs (si-dct.3)
 - **Operator Management**: Operator invite now idempotent with audit logging (si-d2y.2.12)
 - **Module Path**: Changed from `nmelo` to `gobeyondidentity`
 - **Test Refactoring**: Monolithic integration test split into focused modules (si-61z.5)
-- **Makefile Cleanup**: Removed deprecated demo-*, hw-*, qa-*, and release targets
 - **Error Messages**: Clearer bluectl init errors for local vs server state
+
+### Removed
+- **`aegis --local-api` flag**: Local API mode removed; aegis now always runs in server mode
+- **`BLUECTL_SERVER` env var**: Use `--server` flag or `SERVER_URL` instead
+- **Makefile targets**: Deprecated `demo-*`, `hw-*`, `qa-*`, and `release` targets removed
 
 ### Fixed
 - **km push**: Extract operator_id from DPoP context correctly (si-d2y.2.15)
