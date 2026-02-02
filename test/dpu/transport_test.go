@@ -192,8 +192,9 @@ func startEchoServerOnDPU(ctx context.Context, t *testing.T, serverName string, 
 
 	// Start server in background using ssh -f (forks SSH to background properly)
 	// Note: nohup ... & hangs because SSH waits for child file descriptors
+	// Note: Use "sudo env VAR=val" not "sudo VAR=val" - sudo strips env vars
 	cmd := fmt.Sprintf(
-		"cd %s && sudo DPU_SERVER_MODE=echo DOCA_PCI_ADDR=%s DOCA_REP_PCI_ADDR=%s DOCA_SERVER_NAME=%s "+
+		"cd %s && sudo env DPU_SERVER_MODE=echo DOCA_PCI_ADDR=%s DOCA_REP_PCI_ADDR=%s DOCA_SERVER_NAME=%s "+
 			"ECHO_COUNT=%d MAX_MSG_SIZE=%d /tmp/dpu_server_test -test.run=TestDPU_ServerHelper -test.timeout=120s "+
 			"> /tmp/dpu_server.log 2>&1",
 		dpuRepoPath, defaultDPUPCIAddr, defaultDPURepPCIAddr, serverName, echoCount, maxMsgSize)
