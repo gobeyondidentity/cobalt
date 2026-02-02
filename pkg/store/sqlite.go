@@ -12,6 +12,17 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// cliName is the name of the CLI using the store, used for state directory paths.
+// Default is "bluectl" for backwards compatibility.
+var cliName = "bluectl"
+
+// SetCLIName sets the CLI name used for state directory paths.
+// Call this at CLI startup to isolate state between different CLI tools.
+// Example: km calls SetCLIName("km") to use ~/.local/share/km/ instead of ~/.local/share/bluectl/
+func SetCLIName(name string) {
+	cliName = name
+}
+
 // DPU represents a registered DPU in the store.
 type DPU struct {
 	ID                  string
@@ -145,13 +156,14 @@ type Store struct {
 }
 
 // DefaultPath returns the default database path following XDG spec.
+// Uses the CLI name set via SetCLIName (defaults to "bluectl").
 func DefaultPath() string {
 	dataHome := os.Getenv("XDG_DATA_HOME")
 	if dataHome == "" {
 		home, _ := os.UserHomeDir()
 		dataHome = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(dataHome, "bluectl", "dpus.db")
+	return filepath.Join(dataHome, cliName, "dpus.db")
 }
 
 // Open opens or creates a SQLite database at the given path.

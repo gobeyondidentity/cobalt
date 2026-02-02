@@ -44,13 +44,14 @@ func InsecureModeAllowed() bool {
 
 // DefaultKeyPath returns the default path for the auto-generated encryption key file,
 // following XDG Base Directory spec.
+// Uses the CLI name set via SetCLIName (defaults to "bluectl").
 func DefaultKeyPath() string {
 	dataHome := os.Getenv("XDG_DATA_HOME")
 	if dataHome == "" {
 		home, _ := os.UserHomeDir()
 		dataHome = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(dataHome, "bluectl", "key")
+	return filepath.Join(dataHome, cliName, "key")
 }
 
 // LoadOrGenerateKey loads the encryption key from file or generates a new one.

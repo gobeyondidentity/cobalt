@@ -103,7 +103,7 @@ Getting started:
 		}
 		// Note: With auto-generation, IsEncryptionEnabled() is always true
 		// unless there's a file system error. The encryption key auto-generates
-		// at ~/.local/share/bluectl/key on first run.
+		// at ~/.local/share/km/key on first run.
 		return nil
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
@@ -114,13 +114,16 @@ Getting started:
 }
 
 func init() {
+	// Set CLI name for state directory isolation (uses ~/.local/share/km/ instead of ~/.local/share/bluectl/)
+	store.SetCLIName("km")
+
 	// Add cyan template function for colorizing subcommand names
 	cyan := color.New(color.FgCyan).SprintFunc()
 	cobra.AddTemplateFunc("cyan", cyan)
 
 	rootCmd.SetUsageTemplate(colorizedUsageTemplate)
 	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "Output format: table, json, yaml")
-	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.local/share/bluectl/dpus.db)")
+	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.local/share/km/dpus.db)")
 	rootCmd.PersistentFlags().BoolVar(&insecure, "insecure", false, "Allow plaintext key storage (INSECURE: use only for development)")
 }
 
