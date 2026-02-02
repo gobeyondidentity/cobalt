@@ -12,6 +12,7 @@ import (
 )
 
 func TestGenerateProof_ValidJWT(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	pub, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -44,6 +45,7 @@ func TestGenerateProof_ValidJWT(t *testing.T) {
 }
 
 func TestGenerateProof_HeaderClaims(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	_, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -91,6 +93,7 @@ func TestGenerateProof_HeaderClaims(t *testing.T) {
 }
 
 func TestGenerateProof_PayloadClaims(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	_, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -144,6 +147,7 @@ func TestGenerateProof_PayloadClaims(t *testing.T) {
 }
 
 func TestGenerateProof_UniqueJTI(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	_, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -174,6 +178,7 @@ func TestGenerateProof_UniqueJTI(t *testing.T) {
 }
 
 func TestGenerateProof_JTIRandomness(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	_, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -197,6 +202,7 @@ func TestGenerateProof_JTIRandomness(t *testing.T) {
 }
 
 func TestGenerateProof_URLNormalization(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	_, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -272,6 +278,7 @@ func TestGenerateProof_URLNormalization(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			t.Logf("Testing URL normalization: %s -> %s", tt.inputURL, tt.expectedHTU)
 			proof, err := GenerateProof(priv, "GET", tt.inputURL, "kid")
 			if err != nil {
@@ -287,6 +294,7 @@ func TestGenerateProof_URLNormalization(t *testing.T) {
 }
 
 func TestGenerateProof_SignatureVerifies(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	pub, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -315,6 +323,7 @@ func TestGenerateProof_SignatureVerifies(t *testing.T) {
 }
 
 func TestGenerateProof_SignatureFailsWithWrongKey(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing proof signature fails with wrong public key")
 
 	_, privKey, _ := GenerateKey()
@@ -331,6 +340,7 @@ func TestGenerateProof_SignatureFailsWithWrongKey(t *testing.T) {
 }
 
 func TestGenerateProof_WithJWK(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	pub, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -381,6 +391,7 @@ func TestGenerateProof_WithJWK(t *testing.T) {
 }
 
 func TestSignRequest(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	pub, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -423,6 +434,7 @@ func TestSignRequest(t *testing.T) {
 }
 
 func TestSignRequest_HostHeaderIgnored(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	_, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -453,6 +465,7 @@ func TestSignRequest_HostHeaderIgnored(t *testing.T) {
 }
 
 func TestGenerateProof_MethodCaseSensitivity(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating Ed25519 key pair for test")
 	_, priv, err := GenerateKeyPair()
 	if err != nil {
@@ -476,6 +489,7 @@ func TestGenerateProof_MethodCaseSensitivity(t *testing.T) {
 // Tests for Ed25519Generator (struct-based API)
 
 func TestEd25519Generator_Generate(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Ed25519Generator.Generate produces valid JWT")
 
 	_, privKey, _ := GenerateKey()
@@ -495,6 +509,7 @@ func TestEd25519Generator_Generate(t *testing.T) {
 }
 
 func TestEd25519Generator_SignRequest(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Ed25519Generator.SignRequest adds DPoP header")
 
 	_, privKey, _ := GenerateKey()
@@ -521,6 +536,7 @@ func TestEd25519Generator_SignRequest(t *testing.T) {
 }
 
 func TestEd25519Generator_SignRequest_HostHeaderIgnored(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Ed25519Generator.SignRequest uses URL, not Host header")
 
 	pubKey, privKey, _ := GenerateKey()
@@ -551,6 +567,7 @@ func TestEd25519Generator_SignRequest_HostHeaderIgnored(t *testing.T) {
 }
 
 func TestEd25519Generator_FreshProofEachCall(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Ed25519Generator generates fresh proof each call")
 
 	_, privKey, _ := GenerateKey()
@@ -580,6 +597,7 @@ func TestEd25519Generator_FreshProofEachCall(t *testing.T) {
 }
 
 func TestParseProof_Invalid(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing ParseProof handles invalid input")
 
 	tests := []struct {
@@ -595,6 +613,7 @@ func TestParseProof_Invalid(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, _, _, err := ParseProof(tc.proof)
 			if err == nil {
 				t.Error("expected error for invalid proof")
@@ -606,6 +625,7 @@ func TestParseProof_Invalid(t *testing.T) {
 }
 
 func TestVerifyProof_Invalid(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing VerifyProof handles invalid input")
 
 	pubKey, _, _ := GenerateKey()
@@ -626,6 +646,7 @@ func TestVerifyProof_Invalid(t *testing.T) {
 }
 
 func TestNormalizeURI_Invalid(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing NormalizeURI handles invalid URIs")
 
 	_, err := NormalizeURI("://invalid")
@@ -637,6 +658,7 @@ func TestNormalizeURI_Invalid(t *testing.T) {
 }
 
 func TestGeneratorImplementsInterface(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing Ed25519Generator implements ProofGenerator interface")
 
 	_, privKey, _ := GenerateKey()
@@ -646,6 +668,7 @@ func TestGeneratorImplementsInterface(t *testing.T) {
 }
 
 func TestIntegrationWithClient(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing generator integrates with DPoP client")
 
 	pubKey, privKey, _ := GenerateKey()

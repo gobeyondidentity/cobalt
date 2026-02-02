@@ -6,6 +6,7 @@ import (
 )
 
 func TestGenerateInviteCode(t *testing.T) {
+	t.Parallel()
 	t.Log("Generating single invite code")
 	code, err := GenerateInviteCode()
 	if err != nil {
@@ -25,6 +26,7 @@ func TestGenerateInviteCode(t *testing.T) {
 }
 
 func TestGenerateInviteCodeUniqueness(t *testing.T) {
+	t.Parallel()
 	const iterations = 10000
 	t.Logf("Generating %d invite codes to verify uniqueness", iterations)
 
@@ -46,6 +48,7 @@ func TestGenerateInviteCodeUniqueness(t *testing.T) {
 }
 
 func TestHashCode(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing HashCode produces consistent results")
 	code := "test-invite-code-123"
 
@@ -63,6 +66,7 @@ func TestHashCode(t *testing.T) {
 }
 
 func TestHashCodeDifferentInputs(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing HashCode produces different results for different inputs")
 	code1 := "invite-code-1"
 	code2 := "invite-code-2"
@@ -76,6 +80,7 @@ func TestHashCodeDifferentInputs(t *testing.T) {
 }
 
 func TestValidateCodeHash(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing ValidateCodeHash with valid code/hash pair")
 	code := "test-validation-code"
 	hash := HashCode(code)
@@ -86,6 +91,7 @@ func TestValidateCodeHash(t *testing.T) {
 }
 
 func TestValidateCodeHashInvalid(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing ValidateCodeHash with mismatched code/hash")
 	code := "original-code"
 	wrongHash := HashCode("different-code")
@@ -96,6 +102,7 @@ func TestValidateCodeHashInvalid(t *testing.T) {
 }
 
 func TestValidateCodeHashConstantTime(t *testing.T) {
+	t.Parallel()
 	// This test verifies the function works correctly with various inputs.
 	// Actual timing analysis would require statistical measurements.
 	t.Log("Testing ValidateCodeHash with edge cases")
@@ -124,6 +131,7 @@ func TestValidateCodeHashConstantTime(t *testing.T) {
 }
 
 func TestInviteCodeNoStandardPadding(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying invite codes use base64url without padding")
 	for i := 0; i < 100; i++ {
 		code, err := GenerateInviteCode()

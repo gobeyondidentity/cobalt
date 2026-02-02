@@ -14,6 +14,7 @@ import (
 )
 
 func TestVersionCommand_BasicOutput(t *testing.T) {
+	// Cannot run in parallel - uses shared cobra command state
 	// Test that version command shows current version
 	cmd := newVersionCmd()
 
@@ -38,6 +39,7 @@ func TestVersionCommand_BasicOutput(t *testing.T) {
 }
 
 func TestVersionCommand_CheckFlag_UpdateAvailable(t *testing.T) {
+	// Cannot run in parallel - uses shared cobra command state
 	// Save and restore original version (may be "dev" in dev builds)
 	originalVersion := version.Version
 	version.Version = "1.0.0"
@@ -101,6 +103,7 @@ func TestVersionCommand_CheckFlag_UpdateAvailable(t *testing.T) {
 }
 
 func TestVersionCommand_CheckFlag_NoUpdate(t *testing.T) {
+	// Cannot run in parallel - uses shared cobra command state
 	// Mock server that returns current version
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -148,6 +151,7 @@ func TestVersionCommand_CheckFlag_NoUpdate(t *testing.T) {
 }
 
 func TestVersionCommand_CheckFlag_NetworkError(t *testing.T) {
+	// Cannot run in parallel - uses shared cobra command state
 	// Mock server that returns an error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -190,6 +194,7 @@ func TestVersionCommand_CheckFlag_NetworkError(t *testing.T) {
 }
 
 func TestVersionCommand_SkipUpdateCheck(t *testing.T) {
+	// Cannot run in parallel - uses shared cobra command state
 	// Server should NOT be called when --skip-update-check is set
 	serverCalled := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -237,6 +242,7 @@ func TestVersionCommand_SkipUpdateCheck(t *testing.T) {
 }
 
 func TestVersionCommand_NoFlags_ShowsOnlyVersion(t *testing.T) {
+	// Cannot run in parallel - uses shared cobra command state
 	// Without flags, should only show version (no network call)
 	serverCalled := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -278,6 +284,7 @@ func TestVersionCommand_NoFlags_ShowsOnlyVersion(t *testing.T) {
 }
 
 func TestVersionCommand_OutputFormat(t *testing.T) {
+	// Cannot run in parallel - uses shared cobra command state
 	// Verify exact output format matches spec
 	cmd := newVersionCmd()
 
@@ -301,6 +308,7 @@ func TestVersionCommand_OutputFormat(t *testing.T) {
 
 // TestVersionCommandRegistered verifies version command is added to root
 func TestVersionCommandRegistered(t *testing.T) {
+	// Cannot run in parallel - uses shared cobra command state
 	// Find version command in rootCmd
 	found := false
 	for _, cmd := range rootCmd.Commands() {
@@ -317,6 +325,7 @@ func TestVersionCommandRegistered(t *testing.T) {
 
 // TestRootCmdVersionFieldRemoved verifies we removed the built-in Version field
 func TestRootCmdVersionFieldRemoved(t *testing.T) {
+	// Cannot run in parallel - uses shared cobra command state
 	// rootCmd.Version should be empty since we use a subcommand instead
 	if rootCmd.Version != "" {
 		t.Errorf("rootCmd.Version should be empty (we use version subcommand), got %q", rootCmd.Version)

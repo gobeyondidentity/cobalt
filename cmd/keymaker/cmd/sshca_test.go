@@ -8,6 +8,7 @@ import (
 )
 
 func TestRegisterSSHCA_Success(t *testing.T) {
+	// Cannot run in parallel - registerSSHCA uses global DPoP state
 	t.Log("Testing SSH CA registration succeeds on 201 Created")
 
 	// Mock server that returns success
@@ -74,6 +75,7 @@ func TestRegisterSSHCA_Success(t *testing.T) {
 }
 
 func TestRegisterSSHCA_Conflict(t *testing.T) {
+	// Cannot run in parallel - registerSSHCA uses global DPoP state
 	t.Log("Testing SSH CA registration handles 409 Conflict silently")
 
 	// Mock server that returns conflict
@@ -104,6 +106,7 @@ func TestRegisterSSHCA_Conflict(t *testing.T) {
 }
 
 func TestRegisterSSHCA_ServerError(t *testing.T) {
+	// Cannot run in parallel - registerSSHCA uses global DPoP state
 	t.Log("Testing SSH CA registration returns warning on server error")
 
 	// Mock server that returns error
@@ -134,6 +137,7 @@ func TestRegisterSSHCA_ServerError(t *testing.T) {
 }
 
 func TestRegisterSSHCA_ConnectionFailed(t *testing.T) {
+	// Cannot run in parallel - registerSSHCA uses global DPoP state
 	t.Log("Testing SSH CA registration returns warning when connection fails")
 
 	config := &KMConfig{
@@ -157,6 +161,7 @@ func TestRegisterSSHCA_ConnectionFailed(t *testing.T) {
 }
 
 func TestRegisterSSHCA_BadRequest(t *testing.T) {
+	// Cannot run in parallel - registerSSHCA uses global DPoP state
 	t.Log("Testing SSH CA registration handles 400 Bad Request")
 
 	// Mock server that returns bad request
@@ -187,6 +192,7 @@ func TestRegisterSSHCA_BadRequest(t *testing.T) {
 }
 
 func TestRegisterSSHCA_RequestBody(t *testing.T) {
+	// Cannot run in parallel - registerSSHCA uses global DPoP state
 	t.Log("Testing SSH CA registration sends correct request body")
 
 	expectedName := "my-test-ca"

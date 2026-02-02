@@ -6,6 +6,7 @@ import (
 )
 
 func TestGenerateCA(t *testing.T) {
+	t.Parallel()
 	t.Run("ed25519 produces valid keypair", func(t *testing.T) {
 		ca, err := GenerateCA("ed25519")
 		if err != nil {
@@ -44,6 +45,7 @@ func TestGenerateCA(t *testing.T) {
 }
 
 func TestPublicKeyString(t *testing.T) {
+	t.Parallel()
 	ca, err := GenerateCA("ed25519")
 	if err != nil {
 		t.Fatalf("GenerateCA failed: %v", err)
@@ -72,6 +74,7 @@ func TestPublicKeyString(t *testing.T) {
 }
 
 func TestPublicKeyStringEmptyKey(t *testing.T) {
+	t.Parallel()
 	ca := &CA{}
 	_, err := ca.PublicKeyString()
 	if err == nil {
@@ -80,6 +83,7 @@ func TestPublicKeyStringEmptyKey(t *testing.T) {
 }
 
 func TestMarshalUnmarshalPrivateKey(t *testing.T) {
+	t.Parallel()
 	ca, err := GenerateCA("ed25519")
 	if err != nil {
 		t.Fatalf("GenerateCA failed: %v", err)
@@ -119,6 +123,7 @@ func TestMarshalUnmarshalPrivateKey(t *testing.T) {
 }
 
 func TestMarshalPrivateKeyEmpty(t *testing.T) {
+	t.Parallel()
 	ca := &CA{}
 	_, err := ca.MarshalPrivateKey()
 	if err == nil {
@@ -127,6 +132,7 @@ func TestMarshalPrivateKeyEmpty(t *testing.T) {
 }
 
 func TestUnmarshalPrivateKeyInvalid(t *testing.T) {
+	t.Parallel()
 	_, err := UnmarshalPrivateKey([]byte("not a valid key"))
 	if err == nil {
 		t.Error("UnmarshalPrivateKey should fail for invalid data")
@@ -134,6 +140,7 @@ func TestUnmarshalPrivateKeyInvalid(t *testing.T) {
 }
 
 func TestSigner(t *testing.T) {
+	t.Parallel()
 	ca, err := GenerateCA("ed25519")
 	if err != nil {
 		t.Fatalf("GenerateCA failed: %v", err)
@@ -156,6 +163,7 @@ func TestSigner(t *testing.T) {
 }
 
 func TestSignerEmptyKey(t *testing.T) {
+	t.Parallel()
 	ca := &CA{}
 	_, err := ca.Signer()
 	if err == nil {

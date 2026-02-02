@@ -16,6 +16,7 @@ var (
 )
 
 func TestRetryConfigDefaults(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultRetryConfig()
 
 	if cfg.InitialDelay != time.Second {
@@ -36,6 +37,7 @@ func TestRetryConfigDefaults(t *testing.T) {
 }
 
 func TestIsRetryable(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		err       error
@@ -64,6 +66,7 @@ func TestIsRetryable(t *testing.T) {
 }
 
 func TestRetrySuccessFirstAttempt(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		InitialDelay: 10 * time.Millisecond,
 		MaxDelay:     100 * time.Millisecond,
@@ -87,6 +90,7 @@ func TestRetrySuccessFirstAttempt(t *testing.T) {
 }
 
 func TestRetrySuccessAfterFailures(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		InitialDelay: 1 * time.Millisecond,
 		MaxDelay:     10 * time.Millisecond,
@@ -113,6 +117,7 @@ func TestRetrySuccessAfterFailures(t *testing.T) {
 }
 
 func TestRetryNonRetryableError(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		InitialDelay: 1 * time.Millisecond,
 		MaxDelay:     10 * time.Millisecond,
@@ -136,6 +141,7 @@ func TestRetryNonRetryableError(t *testing.T) {
 }
 
 func TestRetryMaxAttempts(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		InitialDelay: 1 * time.Millisecond,
 		MaxDelay:     10 * time.Millisecond,
@@ -159,6 +165,7 @@ func TestRetryMaxAttempts(t *testing.T) {
 }
 
 func TestRetryContextCancellation(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		InitialDelay: 100 * time.Millisecond,
 		MaxDelay:     1 * time.Second,
@@ -186,6 +193,7 @@ func TestRetryContextCancellation(t *testing.T) {
 }
 
 func TestRetryExponentialBackoff(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		InitialDelay: 10 * time.Millisecond,
 		MaxDelay:     100 * time.Millisecond,
@@ -217,6 +225,7 @@ func TestRetryExponentialBackoff(t *testing.T) {
 }
 
 func TestRetryMaxDelayRespected(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		InitialDelay: 50 * time.Millisecond,
 		MaxDelay:     50 * time.Millisecond, // Same as initial = constant delay
@@ -241,6 +250,7 @@ func TestRetryMaxDelayRespected(t *testing.T) {
 // Circuit Breaker Tests
 
 func TestCircuitBreakerDefaults(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultCircuitBreakerConfig()
 
 	if cfg.FailureThreshold != 5 {
@@ -252,6 +262,7 @@ func TestCircuitBreakerDefaults(t *testing.T) {
 }
 
 func TestCircuitBreakerInitialState(t *testing.T) {
+	t.Parallel()
 	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	if cb.State() != CircuitClosed {
 		t.Errorf("Initial state = %v, want %v", cb.State(), CircuitClosed)
@@ -259,6 +270,7 @@ func TestCircuitBreakerInitialState(t *testing.T) {
 }
 
 func TestCircuitBreakerOpensAfterThreshold(t *testing.T) {
+	t.Parallel()
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 3,
 		ResetTimeout:     100 * time.Millisecond,
@@ -278,6 +290,7 @@ func TestCircuitBreakerOpensAfterThreshold(t *testing.T) {
 }
 
 func TestCircuitBreakerRejectsWhenOpen(t *testing.T) {
+	t.Parallel()
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
 		ResetTimeout:     1 * time.Second,
@@ -307,6 +320,7 @@ func TestCircuitBreakerRejectsWhenOpen(t *testing.T) {
 }
 
 func TestCircuitBreakerHalfOpenAfterTimeout(t *testing.T) {
+	t.Parallel()
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
 		ResetTimeout:     50 * time.Millisecond,
@@ -329,6 +343,7 @@ func TestCircuitBreakerHalfOpenAfterTimeout(t *testing.T) {
 }
 
 func TestCircuitBreakerClosesOnSuccessInHalfOpen(t *testing.T) {
+	t.Parallel()
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
 		ResetTimeout:     50 * time.Millisecond,
@@ -359,6 +374,7 @@ func TestCircuitBreakerClosesOnSuccessInHalfOpen(t *testing.T) {
 }
 
 func TestCircuitBreakerReopensOnFailureInHalfOpen(t *testing.T) {
+	t.Parallel()
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
 		ResetTimeout:     50 * time.Millisecond,
@@ -386,6 +402,7 @@ func TestCircuitBreakerReopensOnFailureInHalfOpen(t *testing.T) {
 }
 
 func TestCircuitBreakerReset(t *testing.T) {
+	t.Parallel()
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 2,
 		ResetTimeout:     1 * time.Second,
@@ -411,6 +428,7 @@ func TestCircuitBreakerReset(t *testing.T) {
 }
 
 func TestCircuitBreakerSuccessResetsFailureCount(t *testing.T) {
+	t.Parallel()
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 3,
 		ResetTimeout:     1 * time.Second,
@@ -442,6 +460,7 @@ func TestCircuitBreakerSuccessResetsFailureCount(t *testing.T) {
 }
 
 func TestCircuitBreakerConcurrency(t *testing.T) {
+	t.Parallel()
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 100,
 		ResetTimeout:     1 * time.Second,
@@ -474,6 +493,7 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 // ============================================================================
 
 func TestCircuitStateString(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		state    CircuitState
 		expected string
@@ -499,6 +519,7 @@ func TestCircuitStateString(t *testing.T) {
 // ============================================================================
 
 func TestNewCircuitBreaker_ZeroConfig(t *testing.T) {
+	t.Parallel()
 	// Zero config should get defaults applied
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: 0,
@@ -516,6 +537,7 @@ func TestNewCircuitBreaker_ZeroConfig(t *testing.T) {
 }
 
 func TestNewCircuitBreaker_NegativeValues(t *testing.T) {
+	t.Parallel()
 	// Negative values should get defaults
 	cfg := CircuitBreakerConfig{
 		FailureThreshold: -5,
@@ -536,6 +558,7 @@ func TestNewCircuitBreaker_NegativeValues(t *testing.T) {
 // ============================================================================
 
 func TestRetry_ZeroMaxAttempts(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		MaxAttempts: 0, // Should be treated as 1
 	}
@@ -552,6 +575,7 @@ func TestRetry_ZeroMaxAttempts(t *testing.T) {
 }
 
 func TestRetry_NegativeMaxAttempts(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		MaxAttempts: -5, // Should be treated as 1
 	}
@@ -568,6 +592,7 @@ func TestRetry_NegativeMaxAttempts(t *testing.T) {
 }
 
 func TestRetry_ContextCancelledBeforeFirstAttempt(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		InitialDelay: time.Second,
 		MaxAttempts:  3,
@@ -591,6 +616,7 @@ func TestRetry_ContextCancelledBeforeFirstAttempt(t *testing.T) {
 }
 
 func TestRetry_WithJitter(t *testing.T) {
+	t.Parallel()
 	cfg := RetryConfig{
 		InitialDelay: 10 * time.Millisecond,
 		MaxDelay:     100 * time.Millisecond,

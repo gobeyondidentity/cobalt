@@ -32,6 +32,7 @@ func setupTestStore(t *testing.T) (*store.Store, func()) {
 }
 
 func TestLogger_LogGateDecision(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -79,6 +80,7 @@ func TestLogger_LogGateDecision(t *testing.T) {
 }
 
 func TestLogger_LogWithAttestationSnapshot(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -130,6 +132,7 @@ func TestLogger_LogWithAttestationSnapshot(t *testing.T) {
 }
 
 func TestLogger_QueryByAction(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -167,6 +170,7 @@ func TestLogger_QueryByAction(t *testing.T) {
 }
 
 func TestLogger_QueryByTarget(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -203,6 +207,7 @@ func TestLogger_QueryByTarget(t *testing.T) {
 }
 
 func TestLogger_QueryWithLimit(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 
@@ -233,6 +238,7 @@ func TestLogger_QueryWithLimit(t *testing.T) {
 }
 
 func TestLogger_QueryWithCombinedFilters(t *testing.T) {
+	t.Parallel()
 	s, cleanup := setupTestStore(t)
 	defer cleanup()
 

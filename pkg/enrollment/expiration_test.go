@@ -6,6 +6,7 @@ import (
 )
 
 func TestDefaultTTLs(t *testing.T) {
+	t.Parallel()
 	t.Log("Verifying default TTL constants")
 
 	if DefaultChallengeTTL != 5*time.Minute {
@@ -18,6 +19,7 @@ func TestDefaultTTLs(t *testing.T) {
 }
 
 func TestIsChallengeExpired(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		created time.Time
@@ -68,6 +70,7 @@ func TestIsChallengeExpired(t *testing.T) {
 }
 
 func TestIsInviteCodeExpired(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		created time.Time
@@ -118,6 +121,7 @@ func TestIsInviteCodeExpired(t *testing.T) {
 }
 
 func TestExpirationBoundaryPrecision(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing nanosecond precision at boundaries")
 
 	base := time.Date(2026, 1, 30, 10, 0, 0, 0, time.UTC)

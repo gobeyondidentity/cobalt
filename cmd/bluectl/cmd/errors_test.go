@@ -11,6 +11,7 @@ import (
 )
 
 func TestHandleError_NilError(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	// HandleError with nil should not panic or do anything
 	cmd := &cobra.Command{}
 	cmd.Flags().String("output", "table", "")
@@ -24,6 +25,7 @@ func TestHandleError_NilError(t *testing.T) {
 }
 
 func TestCLIError_DeviceNotFound(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.DeviceNotFound("bf3-test")
 
 	if err.Code != clierror.CodeDeviceNotFound {
@@ -38,6 +40,7 @@ func TestCLIError_DeviceNotFound(t *testing.T) {
 }
 
 func TestCLIError_OperatorNotFound(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.OperatorNotFound("test@example.com")
 
 	if err.Code != clierror.CodeOperatorNotFound {
@@ -52,6 +55,7 @@ func TestCLIError_OperatorNotFound(t *testing.T) {
 }
 
 func TestCLIError_AlreadyExists(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.AlreadyExists("DPU", "192.168.1.204:50051")
 
 	if err.Code != clierror.CodeAlreadyExists {
@@ -69,6 +73,7 @@ func TestCLIError_AlreadyExists(t *testing.T) {
 }
 
 func TestCLIError_ConnectionFailed(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.ConnectionFailed("192.168.1.204:50051")
 
 	if err.Code != clierror.CodeConnectionFailed {
@@ -83,6 +88,7 @@ func TestCLIError_ConnectionFailed(t *testing.T) {
 }
 
 func TestCLIError_AttestationFailed(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.AttestationFailed("signature verification failed")
 
 	if err.Code != clierror.CodeAttestationFailed {
@@ -100,6 +106,7 @@ func TestCLIError_AttestationFailed(t *testing.T) {
 }
 
 func TestCLIError_InternalError(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	originalErr := os.ErrNotExist
 	err := clierror.InternalError(originalErr)
 
@@ -115,6 +122,7 @@ func TestCLIError_InternalError(t *testing.T) {
 }
 
 func TestCLIError_InternalError_Nil(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.InternalError(nil)
 
 	if err.Code != clierror.CodeInternalError {
@@ -126,6 +134,7 @@ func TestCLIError_InternalError_Nil(t *testing.T) {
 }
 
 func TestFormatError_Table(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.DeviceNotFound("bf3-test")
 	output := clierror.FormatError(err, "table")
 
@@ -141,6 +150,7 @@ func TestFormatError_Table(t *testing.T) {
 }
 
 func TestFormatError_JSON(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.DeviceNotFound("bf3-test")
 	output := clierror.FormatError(err, "json")
 
@@ -159,6 +169,7 @@ func TestFormatError_JSON(t *testing.T) {
 }
 
 func TestPrintError_Stderr(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.DeviceNotFound("bf3-test")
 
 	// Capture stderr
@@ -181,6 +192,7 @@ func TestPrintError_Stderr(t *testing.T) {
 }
 
 func TestCLIError_ImplementsError(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	err := clierror.DeviceNotFound("bf3-test")
 
 	// Verify it implements error interface
@@ -196,6 +208,7 @@ func TestCLIError_ImplementsError(t *testing.T) {
 }
 
 func TestCLIError_TypeAssertion(t *testing.T) {
+	// Cannot run in parallel - some tests modify os.Stderr
 	var err error = clierror.DeviceNotFound("bf3-test")
 
 	cliErr, ok := err.(*clierror.CLIError)

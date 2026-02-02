@@ -11,6 +11,7 @@ import (
 )
 
 func TestGetServerURL_EnvVar(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing KM_SERVER env var takes precedence over flags (but triggers deprecation)")
 
 	// Create a new init command for testing
@@ -42,6 +43,7 @@ func TestGetServerURL_EnvVar(t *testing.T) {
 }
 
 func TestGetServerURL_ServerURLEnvVar(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing SERVER_URL env var takes precedence over KM_SERVER")
 
 	// Create a new init command for testing
@@ -73,6 +75,7 @@ func TestGetServerURL_ServerURLEnvVar(t *testing.T) {
 }
 
 func TestGetServerURL_KMServerDeprecationWarning(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing KM_SERVER triggers deprecation warning when SERVER_URL not set")
 
 	// Create a new init command for testing
@@ -98,6 +101,7 @@ func TestGetServerURL_KMServerDeprecationWarning(t *testing.T) {
 }
 
 func TestGetServerURL_ServerFlag(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing --server flag works without deprecation warning")
 
 	// Create a new init command for testing
@@ -125,6 +129,7 @@ func TestGetServerURL_ServerFlag(t *testing.T) {
 }
 
 func TestGetServerURL_ControlPlaneFlag(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing --control-plane flag returns deprecation warning")
 
 	// Create a new init command for testing
@@ -152,6 +157,7 @@ func TestGetServerURL_ControlPlaneFlag(t *testing.T) {
 }
 
 func TestGetServerURL_Default(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing default value when no env var or flags set")
 
 	// Create a new init command for testing
@@ -177,6 +183,7 @@ func TestGetServerURL_Default(t *testing.T) {
 }
 
 func TestGetServerURL_ServerOverridesControlPlane(t *testing.T) {
+	// Cannot run in parallel - modifies environment variables
 	t.Log("Testing --server flag takes precedence over --control-plane")
 
 	// Create a new init command for testing
@@ -205,6 +212,7 @@ func TestGetServerURL_ServerOverridesControlPlane(t *testing.T) {
 }
 
 func TestInitCmd_HasServerFlag(t *testing.T) {
+	// Cannot run in parallel - accesses shared global initCmd
 	t.Log("Verifying init command has --server flag defined")
 
 	flag := initCmd.Flags().Lookup("server")
@@ -219,6 +227,7 @@ func TestInitCmd_HasServerFlag(t *testing.T) {
 }
 
 func TestInitCmd_HasControlPlaneFlag(t *testing.T) {
+	// Cannot run in parallel - accesses shared global initCmd
 	t.Log("Verifying init command has --control-plane flag (deprecated alias)")
 
 	flag := initCmd.Flags().Lookup("control-plane")
@@ -233,6 +242,7 @@ func TestInitCmd_HasControlPlaneFlag(t *testing.T) {
 }
 
 func TestInitCmd_HelpShowsServer(t *testing.T) {
+	// Cannot run in parallel - accesses shared global initCmd
 	t.Log("Verifying help output shows --server flag")
 
 	var stdout bytes.Buffer
@@ -248,6 +258,7 @@ func TestInitCmd_HelpShowsServer(t *testing.T) {
 }
 
 func TestInitCmd_LongDescriptionMentionsEnvVar(t *testing.T) {
+	// Cannot run in parallel - accesses shared global initCmd
 	t.Log("Verifying Long description mentions SERVER_URL env var as primary")
 
 	if !strings.Contains(initCmd.Long, "SERVER_URL") {
@@ -257,6 +268,7 @@ func TestInitCmd_LongDescriptionMentionsEnvVar(t *testing.T) {
 }
 
 func TestInitCmd_LongDescriptionMentionsKMServer(t *testing.T) {
+	// Cannot run in parallel - accesses shared global initCmd
 	t.Log("Verifying Long description mentions KM_SERVER env var as deprecated")
 
 	if !strings.Contains(initCmd.Long, "KM_SERVER") {
@@ -266,6 +278,7 @@ func TestInitCmd_LongDescriptionMentionsKMServer(t *testing.T) {
 }
 
 func TestInitCmd_ExampleUsesServer(t *testing.T) {
+	// Cannot run in parallel - accesses shared global initCmd
 	t.Log("Verifying command example uses --server instead of --control-plane")
 
 	// Check the Long description contains the example with --server
@@ -280,6 +293,7 @@ func TestInitCmd_ExampleUsesServer(t *testing.T) {
 
 // Test enrollment error handling
 func TestEnrollmentErrorMessage_InvalidCode(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing user-friendly error message for invalid invite code")
 
 	msg := enrollmentErrorMessage("enroll.invalid_code")
@@ -291,6 +305,7 @@ func TestEnrollmentErrorMessage_InvalidCode(t *testing.T) {
 }
 
 func TestEnrollmentErrorMessage_ExpiredCode(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing user-friendly error message for expired invite code")
 
 	msg := enrollmentErrorMessage("enroll.expired_code")
@@ -302,6 +317,7 @@ func TestEnrollmentErrorMessage_ExpiredCode(t *testing.T) {
 }
 
 func TestEnrollmentErrorMessage_ConsumedCode(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing user-friendly error message for already-used invite code")
 
 	msg := enrollmentErrorMessage("enroll.code_consumed")
@@ -313,6 +329,7 @@ func TestEnrollmentErrorMessage_ConsumedCode(t *testing.T) {
 }
 
 func TestEnrollmentErrorMessage_ChallengeExpired(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing user-friendly error message for expired enrollment session")
 
 	msg := enrollmentErrorMessage("enroll.challenge_expired")
@@ -324,6 +341,7 @@ func TestEnrollmentErrorMessage_ChallengeExpired(t *testing.T) {
 }
 
 func TestEnrollmentErrorMessage_InvalidSignature(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing user-friendly error message for signature verification failure")
 
 	msg := enrollmentErrorMessage("enroll.invalid_signature")
@@ -335,6 +353,7 @@ func TestEnrollmentErrorMessage_InvalidSignature(t *testing.T) {
 }
 
 func TestEnrollmentErrorMessage_KeyExists(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing user-friendly error message for duplicate key enrollment")
 
 	msg := enrollmentErrorMessage("enroll.key_exists")
@@ -346,6 +365,7 @@ func TestEnrollmentErrorMessage_KeyExists(t *testing.T) {
 }
 
 func TestEnrollmentErrorMessage_Unknown(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing fallback for unknown error codes")
 
 	msg := enrollmentErrorMessage("some.unknown.error")
@@ -358,6 +378,7 @@ func TestEnrollmentErrorMessage_Unknown(t *testing.T) {
 
 // Test the two-phase enrollment flow with a mock server
 func TestTwoPhaseEnrollment_HappyPath(t *testing.T) {
+	// Cannot run in parallel - modifies global getConfigDirFunc
 	t.Log("Testing two-phase enrollment flow with mock server")
 
 	// Create temp directory for config
@@ -473,6 +494,7 @@ func TestTwoPhaseEnrollment_HappyPath(t *testing.T) {
 }
 
 func TestTwoPhaseEnrollment_InvalidCode(t *testing.T) {
+	// Cannot run in parallel - modifies global getConfigDirFunc
 	t.Log("Testing enrollment with invalid invite code")
 
 	// Create temp directory for config
@@ -508,6 +530,7 @@ func TestTwoPhaseEnrollment_InvalidCode(t *testing.T) {
 }
 
 func TestTwoPhaseEnrollment_ExpiredCode(t *testing.T) {
+	// Cannot run in parallel - modifies global getConfigDirFunc
 	t.Log("Testing enrollment with expired invite code")
 
 	// Create temp directory for config
@@ -543,6 +566,7 @@ func TestTwoPhaseEnrollment_ExpiredCode(t *testing.T) {
 }
 
 func TestTwoPhaseEnrollment_CodeConsumed(t *testing.T) {
+	// Cannot run in parallel - modifies global getConfigDirFunc
 	t.Log("Testing enrollment with already-used invite code")
 
 	// Create temp directory for config
@@ -578,6 +602,7 @@ func TestTwoPhaseEnrollment_CodeConsumed(t *testing.T) {
 }
 
 func TestTwoPhaseEnrollment_ChallengeExpired(t *testing.T) {
+	// Cannot run in parallel - modifies global getConfigDirFunc
 	t.Log("Testing enrollment with expired challenge (session timeout)")
 
 	// Create temp directory for config
@@ -620,6 +645,7 @@ func TestTwoPhaseEnrollment_ChallengeExpired(t *testing.T) {
 }
 
 func TestTwoPhaseEnrollment_KeyExists(t *testing.T) {
+	// Cannot run in parallel - modifies global getConfigDirFunc
 	t.Log("Testing enrollment with already-enrolled key")
 
 	// Create temp directory for config
@@ -662,6 +688,7 @@ func TestTwoPhaseEnrollment_KeyExists(t *testing.T) {
 }
 
 func TestTwoPhaseEnrollment_ServerUnavailable(t *testing.T) {
+	// Cannot run in parallel - modifies global getConfigDirFunc
 	t.Log("Testing enrollment when server is unavailable")
 
 	// Create temp directory for config
@@ -686,6 +713,7 @@ func TestTwoPhaseEnrollment_ServerUnavailable(t *testing.T) {
 
 // Test that keys are saved with correct permissions
 func TestEnrollment_KeyPermissions(t *testing.T) {
+	// Cannot run in parallel - modifies global getConfigDirFunc
 	t.Log("Testing that key files are saved with 0600 permissions")
 
 	// Create temp directory for config
@@ -731,6 +759,7 @@ func TestEnrollment_KeyPermissions(t *testing.T) {
 
 // Test config file structure
 func TestEnrollment_ConfigStructure(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that KMConfig structure has correct JSON tags")
 
 	// Test that KMConfig marshals correctly
@@ -774,7 +803,14 @@ func TestEnrollment_ConfigStructure(t *testing.T) {
 
 // Test doEnrollment returns the correct kid
 func TestEnrollment_ReturnsKid(t *testing.T) {
+	// Cannot run in parallel - calls doEnrollment which uses global getConfigDirFunc
 	t.Log("Testing that doEnrollment returns the kid from server response")
+
+	// Create temp directory for config
+	tempDir := t.TempDir()
+	originalGetConfigDir := getConfigDirFunc
+	getConfigDirFunc = func() string { return tempDir }
+	defer func() { getConfigDirFunc = originalGetConfigDir }()
 
 	// Create mock server for successful enrollment
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

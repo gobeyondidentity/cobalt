@@ -14,6 +14,7 @@ import (
 )
 
 func TestNexusClient_AddDPU(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		dpuName    string
@@ -109,6 +110,7 @@ func TestNexusClient_AddDPU(t *testing.T) {
 }
 
 func TestNexusClient_ListDPUs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		serverResp []dpuResponse
@@ -175,6 +177,7 @@ func TestNexusClient_ListDPUs(t *testing.T) {
 }
 
 func TestNexusClient_RemoveDPU(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		dpuID      string
@@ -227,6 +230,7 @@ func TestNexusClient_RemoveDPU(t *testing.T) {
 }
 
 func TestNewNexusClient(t *testing.T) {
+	t.Parallel()
 	// Test that trailing slash is removed
 	client := NewNexusClient("http://localhost:8080/")
 	if client.baseURL != "http://localhost:8080" {
@@ -243,6 +247,7 @@ func TestNewNexusClient(t *testing.T) {
 // ----- Tenant Client Tests -----
 
 func TestNexusClient_ListTenants(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		serverResp []tenantResponse
@@ -309,6 +314,7 @@ func TestNexusClient_ListTenants(t *testing.T) {
 }
 
 func TestNexusClient_CreateTenant(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		tenantName  string
@@ -411,6 +417,7 @@ func TestNexusClient_CreateTenant(t *testing.T) {
 }
 
 func TestNexusClient_GetTenant(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		tenantID   string
@@ -487,6 +494,7 @@ func TestNexusClient_GetTenant(t *testing.T) {
 }
 
 func TestNexusClient_UpdateTenant(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		tenantID    string
@@ -588,6 +596,7 @@ func TestNexusClient_UpdateTenant(t *testing.T) {
 }
 
 func TestNexusClient_DeleteTenant(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		tenantID   string
@@ -646,6 +655,7 @@ func TestNexusClient_DeleteTenant(t *testing.T) {
 }
 
 func TestNexusClient_AssignDPUToTenant(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		tenantID   string
@@ -721,6 +731,7 @@ func TestNexusClient_AssignDPUToTenant(t *testing.T) {
 }
 
 func TestAssignDPURemote_ResolvesNames(t *testing.T) {
+	t.Parallel()
 	// Test data: API returns IDs, but we pass names to assignDPURemote
 	tenantID := "tnt_abc123"
 	tenantName := "Production"
@@ -873,6 +884,7 @@ func TestAssignDPURemote_ResolvesNames(t *testing.T) {
 
 
 func TestNexusClient_UnassignDPUFromTenant(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		tenantID   string
@@ -945,6 +957,7 @@ func TestNexusClient_UnassignDPUFromTenant(t *testing.T) {
 // ----- Operator Client Tests -----
 
 func TestNexusClient_InviteOperator(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		email      string
@@ -1069,6 +1082,7 @@ func TestNexusClient_InviteOperator(t *testing.T) {
 // ----- Agent Host Client Tests -----
 
 func TestNexusClient_ListAgentHosts(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		tenant     string
@@ -1179,6 +1193,7 @@ func TestNexusClient_ListAgentHosts(t *testing.T) {
 }
 
 func TestNexusClient_ListAgentHosts_RejectsUnwrappedResponse(t *testing.T) {
+	t.Parallel()
 	// This test ensures the client properly handles the wrapped format and rejects
 	// a server returning a raw array instead of {"hosts": [...]}
 	t.Log("Testing that client expects wrapped response format")
@@ -1213,6 +1228,7 @@ func TestNexusClient_ListAgentHosts_RejectsUnwrappedResponse(t *testing.T) {
 // ----- DPoP Integration Tests -----
 
 func TestNexusClient_DPoP_HeaderPresent(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that DPoP header is present when DPoP is enabled")
 
 	// Generate test keypair
@@ -1297,6 +1313,7 @@ func TestNexusClient_DPoP_HeaderPresent(t *testing.T) {
 }
 
 func TestNexusClient_DPoP_HeaderNotPresentWhenDisabled(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that DPoP header is not present when DPoP is disabled")
 
 	var receivedDPoPHeader string
@@ -1330,6 +1347,7 @@ func TestNexusClient_DPoP_HeaderNotPresentWhenDisabled(t *testing.T) {
 }
 
 func TestNexusClient_DPoP_AllHTTPMethods(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that DPoP header is present for all HTTP methods (GET, POST, PUT, DELETE)")
 
 	_, privKey, err := ed25519.GenerateKey(nil)
@@ -1429,6 +1447,7 @@ func TestNexusClient_DPoP_AllHTTPMethods(t *testing.T) {
 }
 
 func TestNexusClient_DPoP_AuthErrorHandling(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that 401 responses return user-friendly error messages")
 
 	_, privKey, err := ed25519.GenerateKey(nil)
@@ -1511,6 +1530,7 @@ func TestNexusClient_DPoP_AuthErrorHandling(t *testing.T) {
 }
 
 func TestNexusClient_DPoP_FreshProofPerRequest(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that each request gets a fresh DPoP proof (different jti)")
 
 	_, privKey, err := ed25519.GenerateKey(nil)
@@ -1563,6 +1583,7 @@ func TestNexusClient_DPoP_FreshProofPerRequest(t *testing.T) {
 // ----- NewNexusClientWithDPoP Tests -----
 
 func TestNewNexusClientWithDPoPFromPaths_LoadsFromFiles(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that newNexusClientWithDPoPFromPaths loads keys from files")
 
 	// Create temp directory
@@ -1635,6 +1656,7 @@ func TestNewNexusClientWithDPoPFromPaths_LoadsFromFiles(t *testing.T) {
 }
 
 func TestNewNexusClientWithDPoPFromPaths_NoFilesReturnsUnauthenticated(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that missing key files returns unauthenticated client")
 
 	tmpDir := t.TempDir()
@@ -1653,6 +1675,7 @@ func TestNewNexusClientWithDPoPFromPaths_NoFilesReturnsUnauthenticated(t *testin
 }
 
 func TestNewNexusClientWithDPoPFromPaths_MismatchedFilesReturnsError(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that mismatched key/kid files returns error")
 
 	tmpDir := t.TempDir()

@@ -61,6 +61,7 @@ func validClaims() Claims {
 
 // TestValidatorValidProof tests that a valid proof is accepted and returns the kid.
 func TestValidatorValidProof(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing valid DPoP proof acceptance")
 
 	pub, priv := testKeyPair(t)
@@ -90,6 +91,7 @@ func TestValidatorValidProof(t *testing.T) {
 
 // TestValidatorMissingProof tests that empty proof returns dpop.missing_proof.
 func TestValidatorMissingProof(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing missing DPoP proof rejection")
 
 	v := NewValidator(DefaultValidatorConfig())
@@ -106,6 +108,7 @@ func TestValidatorMissingProof(t *testing.T) {
 
 // TestValidatorJWTPartCount tests that proofs with wrong number of parts are rejected.
 func TestValidatorJWTPartCount(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing JWT part count validation")
 
 	v := NewValidator(DefaultValidatorConfig())
@@ -122,6 +125,7 @@ func TestValidatorJWTPartCount(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			t.Logf("Testing proof with %s", tc.name)
 			_, err := v.ValidateProof(tc.proof, "POST", "https://example.com/api", keyLookup)
 			if err == nil {
@@ -136,6 +140,7 @@ func TestValidatorJWTPartCount(t *testing.T) {
 
 // TestValidatorEmptyParts tests that proofs with empty parts are rejected.
 func TestValidatorEmptyParts(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing JWT with empty parts validation")
 
 	v := NewValidator(DefaultValidatorConfig())
@@ -153,6 +158,7 @@ func TestValidatorEmptyParts(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			t.Logf("Testing proof with %s", tc.name)
 			_, err := v.ValidateProof(tc.proof, "POST", "https://example.com/api", keyLookup)
 			if err == nil {
@@ -167,6 +173,7 @@ func TestValidatorEmptyParts(t *testing.T) {
 
 // TestValidatorInvalidBase64 tests that invalid base64url encoding is rejected.
 func TestValidatorInvalidBase64(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing invalid base64url encoding rejection")
 
 	v := NewValidator(DefaultValidatorConfig())
@@ -185,6 +192,7 @@ func TestValidatorInvalidBase64(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			t.Logf("Testing proof with %s", tc.name)
 			_, err := v.ValidateProof(tc.proof, "POST", "https://example.com/api", keyLookup)
 			if err == nil {
@@ -199,6 +207,7 @@ func TestValidatorInvalidBase64(t *testing.T) {
 
 // TestValidatorTypCheck tests that typ must be exactly "dpop+jwt".
 func TestValidatorTypCheck(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing typ header validation")
 
 	pub, priv := testKeyPair(t)
@@ -224,6 +233,7 @@ func TestValidatorTypCheck(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			t.Logf("Testing proof with %s", tc.name)
 			header := Header{
 				Typ: tc.typ,
@@ -246,6 +256,7 @@ func TestValidatorTypCheck(t *testing.T) {
 
 // TestValidatorTypMissing tests that missing typ is rejected.
 func TestValidatorTypMissing(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing missing typ header rejection")
 
 	pub, priv := testKeyPair(t)
@@ -288,6 +299,7 @@ func TestValidatorTypMissing(t *testing.T) {
 
 // TestValidatorAlgCheck tests algorithm validation.
 func TestValidatorAlgCheck(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing alg header validation (algorithm confusion prevention)")
 
 	pub, priv := testKeyPair(t)
@@ -315,6 +327,7 @@ func TestValidatorAlgCheck(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			t.Logf("Testing proof with %s", tc.name)
 			header := Header{
 				Typ: TypeDPoP,
@@ -337,6 +350,7 @@ func TestValidatorAlgCheck(t *testing.T) {
 
 // TestValidatorAlgMissing tests that missing alg is rejected.
 func TestValidatorAlgMissing(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing missing alg header rejection")
 
 	pub, priv := testKeyPair(t)
@@ -379,6 +393,7 @@ func TestValidatorAlgMissing(t *testing.T) {
 
 // TestValidatorHTMMissing tests that missing htm claim is rejected.
 func TestValidatorHTMMissing(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing missing htm claim rejection")
 
 	pub, priv := testKeyPair(t)
@@ -422,6 +437,7 @@ func TestValidatorHTMMissing(t *testing.T) {
 
 // TestValidatorSizeLimit tests that oversized proofs are rejected.
 func TestValidatorSizeLimit(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing proof size limit (8KB)")
 
 	v := NewValidator(DefaultValidatorConfig())
@@ -443,6 +459,7 @@ func TestValidatorSizeLimit(t *testing.T) {
 
 // TestValidatorUnknownKey tests that unknown kid returns ErrUnknownKey.
 func TestValidatorUnknownKey(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing unknown kid rejection")
 
 	_, priv := testKeyPair(t)
@@ -467,6 +484,7 @@ func TestValidatorUnknownKey(t *testing.T) {
 
 // TestValidatorKidMissing tests that missing kid is rejected.
 func TestValidatorKidMissing(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing missing kid rejection")
 
 	_, priv := testKeyPair(t)
@@ -492,6 +510,7 @@ func TestValidatorKidMissing(t *testing.T) {
 
 // TestValidatorSignatureCorrupted tests that corrupted signatures are rejected.
 func TestValidatorSignatureCorrupted(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing corrupted signature rejection")
 
 	pub, priv := testKeyPair(t)
@@ -526,6 +545,7 @@ func TestValidatorSignatureCorrupted(t *testing.T) {
 
 // TestValidatorSignatureWrongKey tests that signatures from different key are rejected.
 func TestValidatorSignatureWrongKey(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing signature from different key rejection")
 
 	pub1, _ := testKeyPair(t)       // Key we expect
@@ -554,6 +574,7 @@ func TestValidatorSignatureWrongKey(t *testing.T) {
 
 // TestValidatorSignatureEmpty tests that empty signatures are rejected.
 func TestValidatorSignatureEmpty(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing empty signature rejection")
 
 	pub, priv := testKeyPair(t)
@@ -589,6 +610,7 @@ func TestValidatorSignatureEmpty(t *testing.T) {
 
 // TestValidatorIATTooOld tests that old iat values are rejected.
 func TestValidatorIATTooOld(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing iat too old rejection (120s in past with 60s tolerance)")
 
 	pub, priv := testKeyPair(t)
@@ -617,6 +639,7 @@ func TestValidatorIATTooOld(t *testing.T) {
 
 // TestValidatorIATFuture tests that future iat values are rejected.
 func TestValidatorIATFuture(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing iat in future rejection (120s in future)")
 
 	pub, priv := testKeyPair(t)
@@ -645,6 +668,7 @@ func TestValidatorIATFuture(t *testing.T) {
 
 // TestValidatorIATZero tests that zero iat is rejected with a clear error message.
 func TestValidatorIATZero(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing iat=0 rejection with clear error message")
 
 	pub, priv := testKeyPair(t)
@@ -677,6 +701,7 @@ func TestValidatorIATZero(t *testing.T) {
 
 // TestValidatorIATNegative tests that negative iat is rejected with a clear error message.
 func TestValidatorIATNegative(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing negative iat rejection with clear error message")
 
 	pub, priv := testKeyPair(t)
@@ -709,6 +734,7 @@ func TestValidatorIATNegative(t *testing.T) {
 
 // TestValidatorIATFarFuture tests that far future iat (year 2200) is rejected.
 func TestValidatorIATFarFuture(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing far future iat rejection (year 2200)")
 
 	pub, priv := testKeyPair(t)
@@ -738,6 +764,7 @@ func TestValidatorIATFarFuture(t *testing.T) {
 
 // TestValidatorIATWithinTolerance tests that iat within tolerance is accepted.
 func TestValidatorIATWithinTolerance(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing iat within tolerance acceptance (30s in past with 60s tolerance)")
 
 	pub, priv := testKeyPair(t)
@@ -766,6 +793,7 @@ func TestValidatorIATWithinTolerance(t *testing.T) {
 
 // TestValidatorMethodMismatch tests that htm must match request method.
 func TestValidatorMethodMismatch(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing HTTP method mismatch rejection")
 
 	pub, priv := testKeyPair(t)
@@ -795,6 +823,7 @@ func TestValidatorMethodMismatch(t *testing.T) {
 
 // TestValidatorURISchemeMismatch tests that htu scheme must match.
 func TestValidatorURISchemeMismatch(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing URI scheme mismatch rejection")
 
 	pub, priv := testKeyPair(t)
@@ -824,6 +853,7 @@ func TestValidatorURISchemeMismatch(t *testing.T) {
 
 // TestValidatorURIHostMismatch tests that htu host must match.
 func TestValidatorURIHostMismatch(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing URI host mismatch rejection")
 
 	pub, priv := testKeyPair(t)
@@ -852,6 +882,7 @@ func TestValidatorURIHostMismatch(t *testing.T) {
 
 // TestValidatorURIPathMismatch tests that htu path must match.
 func TestValidatorURIPathMismatch(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing URI path mismatch rejection")
 
 	pub, priv := testKeyPair(t)
@@ -880,6 +911,7 @@ func TestValidatorURIPathMismatch(t *testing.T) {
 
 // TestValidatorURINormalization tests URL normalization for htu comparison.
 func TestValidatorURINormalization(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing URL normalization for htu comparison")
 
 	pub, priv := testKeyPair(t)
@@ -950,6 +982,7 @@ func TestValidatorURINormalization(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			t.Logf("Testing: proof htu=%q, request uri=%q", tc.proofHTU, tc.requestURI)
 			header := validHeader(kid)
 			claims := validClaims()
@@ -972,6 +1005,7 @@ func TestValidatorURINormalization(t *testing.T) {
 
 // TestNormalizeURI tests the URI normalization function directly.
 func TestNormalizeURI(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing URI normalization function")
 
 	tests := []struct {
@@ -1039,6 +1073,7 @@ func TestNormalizeURI(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			t.Logf("Normalizing: %q", tc.input)
 			result, err := NormalizeURI(tc.input)
 			if tc.wantErr {
@@ -1060,6 +1095,7 @@ func TestNormalizeURI(t *testing.T) {
 
 // TestValidatorCustomConfig tests that custom validator config works.
 func TestValidatorCustomConfig(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing custom validator configuration")
 
 	pub, priv := testKeyPair(t)
@@ -1110,6 +1146,7 @@ func TestValidatorCustomConfig(t *testing.T) {
 
 // TestDefaultValidatorConfig tests that default config has sensible values.
 func TestDefaultValidatorConfig(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing default validator configuration values")
 
 	config := DefaultValidatorConfig()

@@ -14,6 +14,7 @@ import (
 )
 
 func TestDPoPHeaderPresentOnRequests(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that DPoP header is present on all nexus API requests")
 
 	// Create a test server that captures the DPoP header
@@ -102,6 +103,7 @@ func TestDPoPHeaderPresentOnRequests(t *testing.T) {
 }
 
 func TestDPoP401ErrorHandling(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing that 401 responses are handled with appropriate error logging")
 
 	// Create a test server that returns 401 with DPoP error code
@@ -159,6 +161,7 @@ func TestDPoP401ErrorHandling(t *testing.T) {
 }
 
 func TestIsEnrolledCheck(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing IsEnrolled check for aegis identity")
 
 	// Test with non-existent paths
@@ -203,6 +206,7 @@ func TestIsEnrolledCheck(t *testing.T) {
 }
 
 func TestInitDPoPClientNotEnrolled(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing initDPoPClient returns clear error when not enrolled")
 
 	// This test verifies the error message when aegis is not enrolled
@@ -237,6 +241,7 @@ func TestInitDPoPClientNotEnrolled(t *testing.T) {
 }
 
 func TestDPoPProofGeneration(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing DPoP proof generation contains required claims")
 
 	_, privKey, _ := dpop.GenerateKey()

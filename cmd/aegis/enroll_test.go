@@ -20,6 +20,7 @@ import (
 
 // TestRunEnrollment_Success tests the full enrollment flow with a mock server.
 func TestRunEnrollment_Success(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing full DPU enrollment flow with mock server")
 
 	// Create temp directory for key storage
@@ -189,6 +190,7 @@ func TestRunEnrollment_Success(t *testing.T) {
 
 // TestRunEnrollment_UnknownSerial tests enrollment with unregistered serial.
 func TestRunEnrollment_UnknownSerial(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing enrollment with unknown serial returns proper error")
 
 	// Create mock server that returns 404
@@ -233,6 +235,7 @@ func TestRunEnrollment_UnknownSerial(t *testing.T) {
 
 // TestRunEnrollment_AlreadyEnrolled tests enrollment when DPU is already enrolled.
 func TestRunEnrollment_AlreadyEnrolled(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing enrollment with already-enrolled DPU returns 409")
 
 	// Create mock server that returns 409
@@ -272,6 +275,7 @@ func TestRunEnrollment_AlreadyEnrolled(t *testing.T) {
 
 // TestRunEnrollment_ExpiredRegistration tests enrollment with expired window.
 func TestRunEnrollment_ExpiredRegistration(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing enrollment with expired registration window returns proper error")
 
 	// Create mock server that returns 401 with expired_code
@@ -312,6 +316,7 @@ func TestRunEnrollment_ExpiredRegistration(t *testing.T) {
 
 // TestRunEnrollment_MissingSerial tests enrollment without serial.
 func TestRunEnrollment_MissingSerial(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing enrollment without serial returns validation error")
 
 	ctx := context.Background()
@@ -334,6 +339,7 @@ func TestRunEnrollment_MissingSerial(t *testing.T) {
 
 // TestRunEnrollment_MissingServerURL tests enrollment without server URL.
 func TestRunEnrollment_MissingServerURL(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing enrollment without server URL returns validation error")
 
 	ctx := context.Background()
@@ -356,6 +362,7 @@ func TestRunEnrollment_MissingServerURL(t *testing.T) {
 
 // TestRunEnrollment_AttestationRequired tests that attestation is required without skip flag.
 func TestRunEnrollment_AttestationRequired(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing enrollment without --skip-attestation requires SPDM (not yet implemented)")
 
 	// Create mock server
@@ -397,6 +404,7 @@ func TestRunEnrollment_AttestationRequired(t *testing.T) {
 
 // TestParseEnrollmentError_ErrorCodes tests parsing of various error codes.
 func TestParseEnrollmentError_ErrorCodes(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing parseEnrollmentError maps error codes to user-friendly messages")
 
 	testCases := []struct {
@@ -457,6 +465,7 @@ func TestParseEnrollmentError_ErrorCodes(t *testing.T) {
 
 // TestParseEnrollmentError_HTTPStatus tests error handling by HTTP status code.
 func TestParseEnrollmentError_HTTPStatus(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing parseEnrollmentError handles HTTP status codes correctly")
 
 	testCases := []struct {
@@ -489,6 +498,7 @@ func TestParseEnrollmentError_HTTPStatus(t *testing.T) {
 
 // TestBindingNonce tests that the binding nonce is computed correctly.
 func TestBindingNonce(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing binding nonce computation matches expected SHA256(challenge || pubkey)")
 
 	// Generate test data
@@ -514,6 +524,7 @@ func TestBindingNonce(t *testing.T) {
 
 // TestEnrollCommand_MissingFlags tests the CLI command validation.
 func TestEnrollCommand_MissingFlags(t *testing.T) {
+	t.Parallel()
 	t.Log("Testing EnrollCommand validates required flags")
 
 	// Test missing serial

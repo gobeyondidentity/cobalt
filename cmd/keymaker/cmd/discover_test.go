@@ -11,6 +11,7 @@ import (
 )
 
 func TestTruncate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -66,6 +67,7 @@ func TestTruncate(t *testing.T) {
 }
 
 func TestScanSummaryJSONFormat(t *testing.T) {
+	t.Parallel()
 	// Verify the JSON structure matches the spec
 	summary := ScanSummary{
 		ScanTime:       "2026-01-15T10:30:22Z",
@@ -118,6 +120,7 @@ func TestScanSummaryJSONFormat(t *testing.T) {
 }
 
 func TestScanResultKeyFields(t *testing.T) {
+	t.Parallel()
 	// Verify ScanResultKey has all required fields from the spec
 	key := ScanResultKey{
 		Host:        "gpu-node-01",
@@ -152,6 +155,7 @@ func TestScanResultKeyFields(t *testing.T) {
 }
 
 func TestHostStructure(t *testing.T) {
+	t.Parallel()
 	// Verify Host struct matches the API response format
 	hostJSON := `{
 		"name": "gpu-node-01",
@@ -188,6 +192,7 @@ func TestHostStructure(t *testing.T) {
 }
 
 func TestScanResultConversion(t *testing.T) {
+	t.Parallel()
 	// Test that ScanResult correctly holds sshscan.SSHKey values
 	result := ScanResult{
 		Host:      "test-host",
@@ -225,6 +230,7 @@ func TestScanResultConversion(t *testing.T) {
 }
 
 func TestScanFailureJSON(t *testing.T) {
+	t.Parallel()
 	failure := ScanFailure{
 		Host:  "gpu-node-02",
 		Error: "connection refused (is host-agent running?)",
@@ -249,6 +255,7 @@ func TestScanFailureJSON(t *testing.T) {
 }
 
 func TestExitCodes(t *testing.T) {
+	t.Parallel()
 	// Verify exit codes are defined correctly per spec
 	if ExitDiscoverSuccess != 0 {
 		t.Errorf("ExitDiscoverSuccess should be 0, got %d", ExitDiscoverSuccess)
@@ -265,6 +272,7 @@ func TestExitCodes(t *testing.T) {
 }
 
 func TestGetDefaultSSHUser(t *testing.T) {
+	t.Parallel()
 	// Just verify it doesn't panic and returns something
 	user := getDefaultSSHUser()
 	// We can't assert much about the actual value since it depends on the running user
@@ -273,6 +281,7 @@ func TestGetDefaultSSHUser(t *testing.T) {
 }
 
 func TestMethodBreakdownMap(t *testing.T) {
+	t.Parallel()
 	// Verify method breakdown counts work correctly
 	methodCounts := map[string]int{"agent": 0, "ssh": 0}
 
@@ -289,6 +298,7 @@ func TestMethodBreakdownMap(t *testing.T) {
 }
 
 func TestLogDiscoveryAudit(t *testing.T) {
+	// Cannot run in parallel - subtests modify os.Stderr
 	tests := []struct {
 		name           string
 		hostsScanned   int
@@ -383,6 +393,7 @@ func TestLogDiscoveryAudit(t *testing.T) {
 }
 
 func TestCalculateExitCode(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		succeeded  int
@@ -438,6 +449,7 @@ func TestCalculateExitCode(t *testing.T) {
 }
 
 func TestScanResultsSummaryFormat(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		totalKeys    int
@@ -479,6 +491,7 @@ func TestScanResultsSummaryFormat(t *testing.T) {
 }
 
 func TestBuildMethodBreakdownString(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		methodCounts map[string]int
@@ -514,6 +527,7 @@ func TestBuildMethodBreakdownString(t *testing.T) {
 }
 
 func TestValidateParallelFlag(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		parallel  int
@@ -555,6 +569,7 @@ func TestValidateParallelFlag(t *testing.T) {
 }
 
 func TestValidateParallelFlagErrorMessage(t *testing.T) {
+	t.Parallel()
 	err := validateParallelFlag(0)
 	if err == nil {
 		t.Fatal("expected error for parallel=0")
