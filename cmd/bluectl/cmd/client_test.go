@@ -1486,7 +1486,7 @@ func TestNexusClient_DPoP_AuthErrorHandling(t *testing.T) {
 			name:            "clock sync error",
 			statusCode:      401,
 			errorCode:       "dpop.invalid_iat",
-			expectedMessage: "clock may be out of sync",
+			expectedMessage: "system clock is out of sync",
 		},
 		{
 			name:            "revoked access",
