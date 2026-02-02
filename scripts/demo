@@ -244,6 +244,7 @@ cleanup() {
     # Clean state files
     rm -f ~/.local/share/bluectl/dpus.db 2>/dev/null || true
     rm -f ~/.local/share/bluectl/key 2>/dev/null || true
+    rm -f ~/.config/bluectl/config.yaml 2>/dev/null || true
     rm -rf ~/.km 2>/dev/null || true
     rm -rf /tmp/demo_trustedca 2>/dev/null || true
 
@@ -332,6 +333,13 @@ step_1_infrastructure() {
         print_error "  Failed to start nexus"
         exit 1
     fi
+
+    # Configure bluectl to use local nexus
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Configure CLI to connect to nexus..."
+    print_command "bluectl config set-server http://localhost:18080"
+    bluectl config set-server http://localhost:18080 > /dev/null 2>&1
+    print_success "  Server configured"
     echo ""
 
     # Start dpuemu in background
