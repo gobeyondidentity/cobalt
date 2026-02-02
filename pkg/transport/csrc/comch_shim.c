@@ -321,11 +321,40 @@ int shim_get_state(void) {
 void shim_cleanup(void) {
     if (g_client != NULL) {
         struct doca_ctx *ctx = doca_comch_client_as_ctx(g_client);
-        doca_ctx_stop(ctx);
 
-        // Progress until idle
-        while (g_state != SHIM_STATE_DISCONNECTED && g_pe != NULL) {
-            doca_pe_progress(g_pe);
+        // Clear connection pointer first - this prevents use-after-free in callbacks
+        // if DOCA delivers events for the dying connection
+        struct doca_comch_connection *old_conn = g_conn;
+        g_conn = NULL;
+
+        // Drain any pending events before stopping. This gives DOCA a chance to
+        // detect peer death and transition to error state gracefully, rather than
+        // crashing during the formal stop sequence.
+        if (g_pe != NULL && g_state == SHIM_STATE_CONNECTED) {
+            for (int i = 0; i < 10 && doca_pe_progress(g_pe) > 0; i++) {
+                // Keep draining while there are events
+            }
+        }
+
+        // Now stop the context
+        doca_error_t result = doca_ctx_stop(ctx);
+
+        // Progress until truly idle (not just stopping).
+        // Use iteration limit to prevent infinite loop if peer death prevents
+        // clean state transition.
+        if (result == DOCA_SUCCESS || result == DOCA_ERROR_IN_PROGRESS) {
+            int iterations = 0;
+            enum doca_ctx_states ctx_state;
+            while (iterations < 1000 && g_pe != NULL) {
+                doca_pe_progress(g_pe);
+                iterations++;
+
+                // Check if we've reached idle
+                if (doca_ctx_get_state(ctx, &ctx_state) == DOCA_SUCCESS &&
+                    ctx_state == DOCA_CTX_STATE_IDLE) {
+                    break;
+                }
+            }
         }
 
         doca_comch_client_destroy(g_client);
@@ -841,11 +870,36 @@ int shim_server_close_connection(shim_conn_id_t conn_id) {
 void shim_server_cleanup(void) {
     if (g_server != NULL) {
         struct doca_ctx *ctx = doca_comch_server_as_ctx(g_server);
-        doca_ctx_stop(ctx);
 
-        // Progress until idle
-        while (g_server_state != SHIM_STATE_DISCONNECTED && g_server_pe != NULL) {
-            doca_pe_progress(g_server_pe);
+        // Clear connection tracking first - prevents use-after-free in callbacks
+        memset(g_server_conns, 0, sizeof(g_server_conns));
+        g_pending_head = 0;
+        g_pending_tail = 0;
+
+        // Drain any pending events before stopping
+        if (g_server_pe != NULL && g_server_state == SHIM_STATE_CONNECTED) {
+            for (int i = 0; i < 10 && doca_pe_progress(g_server_pe) > 0; i++) {
+                // Keep draining while there are events
+            }
+        }
+
+        // Now stop the context
+        doca_error_t result = doca_ctx_stop(ctx);
+
+        // Progress until truly idle (not just stopping)
+        if (result == DOCA_SUCCESS || result == DOCA_ERROR_IN_PROGRESS) {
+            int iterations = 0;
+            enum doca_ctx_states ctx_state;
+            while (iterations < 1000 && g_server_pe != NULL) {
+                doca_pe_progress(g_server_pe);
+                iterations++;
+
+                // Check if we've reached idle
+                if (doca_ctx_get_state(ctx, &ctx_state) == DOCA_SUCCESS &&
+                    ctx_state == DOCA_CTX_STATE_IDLE) {
+                    break;
+                }
+            }
         }
 
         doca_comch_server_destroy(g_server);
@@ -866,11 +920,6 @@ void shim_server_cleanup(void) {
         doca_dev_close(g_server_dev);
         g_server_dev = NULL;
     }
-
-    // Clear connection tracking
-    memset(g_server_conns, 0, sizeof(g_server_conns));
-    g_pending_head = 0;
-    g_pending_tail = 0;
 
     g_server_state = SHIM_STATE_DISCONNECTED;
     g_server_max_msg_size = 0;
