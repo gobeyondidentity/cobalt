@@ -193,16 +193,21 @@ func startEchoServerOnDPU(ctx context.Context, t *testing.T, serverName string, 
 	// Start server in background with full detachment from SSH session.
 	// Requirements:
 	// - ssh -f: forks SSH after auth so parent returns immediately
+	// - bash -c: ensures shell operators (&&, &) are interpreted correctly
 	// - nohup: ignores SIGHUP when SSH session ends
 	// - < /dev/null: closes stdin to prevent fd inheritance blocking SSH
 	// - &: backgrounds process in bash so bash can exit
 	// - sudo env VAR=val: preserves env vars (sudo alone strips them)
 	// Without all of these, the process gets "Killed" when SSH detaches.
-	cmd := fmt.Sprintf(
+	innerCmd := fmt.Sprintf(
 		"cd %s && nohup sudo env DPU_SERVER_MODE=echo DOCA_PCI_ADDR=%s DOCA_REP_PCI_ADDR=%s DOCA_SERVER_NAME=%s "+
 			"ECHO_COUNT=%d MAX_MSG_SIZE=%d /tmp/dpu_server_test -test.run=TestDPU_ServerHelper -test.timeout=120s "+
 			"> /tmp/dpu_server.log 2>&1 < /dev/null &",
 		dpuRepoPath, defaultDPUPCIAddr, defaultDPURepPCIAddr, serverName, echoCount, maxMsgSize)
+
+	// Wrap in bash -c to ensure shell operators are interpreted correctly
+	// when exec.Command passes the command string through SSH.
+	cmd := fmt.Sprintf("bash -c %q", innerCmd)
 
 	_, err := runCmd(ctx, t, "ssh",
 		"-f",
