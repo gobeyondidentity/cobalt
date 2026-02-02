@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
 
@@ -400,6 +401,71 @@ func TestHandlePush_StaleAttestationWithForce(t *testing.T) {
 
 // TestHandlePush_Success requires a mock gRPC server, which is beyond unit test scope.
 // Integration tests in a separate file will cover the full flow.
+
+// TestHandlePush_OperatorIDFromDPoPContext tests that operator_id is extracted from
+// DPoP identity context when the request body has an empty operator_id.
+// This is the primary path used by km CLI, which doesn't store operator_id locally.
+func TestHandlePush_OperatorIDFromDPoPContext(t *testing.T) {
+	t.Log("Testing push endpoint extracts operator_id from DPoP context (empty body)")
+	s := setupPushTestStore(t)
+	defer s.Close()
+
+	server := NewServer(s)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	// Create request with empty operator_id in body (km CLI behavior)
+	t.Log("Creating push request with empty operator_id in request body")
+	body, _ := json.Marshal(pushRequest{
+		CAName:     "test-ca",
+		TargetDPU:  "dpu-1",
+		OperatorID: "", // Empty - should be extracted from DPoP context
+	})
+	req := httptest.NewRequest("POST", "/api/v1/push", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Simulate DPoP auth middleware by adding identity to context
+	t.Log("Adding DPoP identity with OperatorID='op-1' to request context")
+	identity := &dpop.Identity{
+		KID:        "km_test-kid",
+		CallerType: dpop.CallerTypeKeyMaker,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op-1", // This should be used by push handler
+	}
+	ctx := dpop.ContextWithIdentity(req.Context(), identity)
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	t.Logf("Response status: %d", w.Code)
+	t.Logf("Response body: %s", w.Body.String())
+
+	// The handler should NOT return "operator_id is required" error.
+	// It should proceed past operator_id validation (status may be 412/500/200
+	// depending on attestation and gRPC, but NOT 400 for missing operator_id).
+	if w.Code == http.StatusBadRequest {
+		var resp map[string]string
+		json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["error"] == "operator_id is required" {
+			t.Errorf("handler failed to extract operator_id from DPoP context")
+		}
+	}
+
+	// Status 412 (attestation blocked) or 503/500 (gRPC unavailable) proves
+	// the handler extracted operator_id from context and proceeded to
+	// subsequent validation steps.
+	validStatuses := map[int]bool{
+		http.StatusPreconditionFailed:  true, // Attestation blocked (expected in test env)
+		http.StatusServiceUnavailable:  true, // gRPC unavailable
+		http.StatusInternalServerError: true, // gRPC error
+		http.StatusOK:                  true, // Would need mock gRPC
+	}
+	if !validStatuses[w.Code] {
+		t.Errorf("unexpected status %d - expected handler to proceed past operator_id validation", w.Code)
+	}
+	t.Log("Handler successfully extracted operator_id from DPoP context")
+}
 
 // TestHandlePush_InvalidJSON tests malformed JSON handling.
 func TestHandlePush_InvalidJSON(t *testing.T) {
