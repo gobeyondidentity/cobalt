@@ -506,6 +506,7 @@ func TestAuthServer_NonceTracking(t *testing.T) {
 // createLinkedTransports creates a pair of linked MockTransports where
 // messages sent on one appear in the receive channel of the other.
 func createLinkedTransports(t *testing.T) (*MockTransport, *MockTransport) {
+	t.Helper()
 	clientTransport := NewMockTransport()
 	serverTransport := NewMockTransport()
 

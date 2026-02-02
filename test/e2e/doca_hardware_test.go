@@ -84,6 +84,7 @@ type TestResult struct {
 
 // newHardwareTestConfig creates a test configuration from environment variables.
 func newHardwareTestConfig(t *testing.T) *HardwareTestConfig {
+	t.Helper()
 	pciAddr := os.Getenv(envDOCAPCIAddr)
 	if pciAddr == "" {
 		pciAddr = defaultDOCAPCIAddr
@@ -184,16 +185,19 @@ func (c *HardwareTestConfig) killProcess(ctx context.Context, process string) {
 
 // hwLogStep logs a test step in blue bold.
 func hwLogStep(t *testing.T, step int, msg string) {
+	t.Helper()
 	fmt.Printf("\n%s %s\n", hwStepFmt(fmt.Sprintf("[Step %d]", step)), msg)
 }
 
 // hwLogOK logs a success message in green.
 func hwLogOK(t *testing.T, msg string) {
+	t.Helper()
 	fmt.Printf("    %s %s\n", hwOkFmt("[OK]"), msg)
 }
 
 // hwLogInfo logs an info message.
 func hwLogInfo(t *testing.T, format string, args ...interface{}) {
+	t.Helper()
 	fmt.Printf("    %s\n", fmt.Sprintf(format, args...))
 }
 

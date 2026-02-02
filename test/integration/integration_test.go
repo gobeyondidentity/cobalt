@@ -45,6 +45,7 @@ type TestConfig struct {
 }
 
 func newTestConfig(t *testing.T) *TestConfig {
+	t.Helper()
 	return &TestConfig{
 		WorkbenchIP:    os.Getenv("WORKBENCH_IP"),
 		UseWorkbench:   os.Getenv("WORKBENCH_IP") != "",
@@ -59,6 +60,7 @@ func newTestConfig(t *testing.T) *TestConfig {
 
 // runCmd executes a command with timeout and returns output
 func runCmd(ctx context.Context, t *testing.T, name string, args ...string) (string, error) {
+	t.Helper()
 	cmdStr := fmt.Sprintf("%s %s", name, strings.Join(args, " "))
 	if t != nil {
 		// Command in bold yellow to make it pop
@@ -148,22 +150,26 @@ func (c *TestConfig) killProcess(ctx context.Context, vm, process string) {
 
 // logStep logs a test step in blue bold
 func logStep(t *testing.T, step int, msg string) {
+	t.Helper()
 	fmt.Printf("\n%s %s\n", stepFmt(fmt.Sprintf("[Step %d]", step)), msg)
 }
 
 // logOK logs a success message in green
 func logOK(t *testing.T, msg string) {
+	t.Helper()
 	fmt.Printf("    %s %s\n", okFmt("✓"), msg)
 }
 
 // logInfo logs an info message
 func logInfo(t *testing.T, format string, args ...interface{}) {
+	t.Helper()
 	fmt.Printf("    %s\n", fmt.Sprintf(format, args...))
 }
 
 // makeTestHostname generates a unique hostname for a test
 // Format: qa-host-{shortname} where shortname is test name truncated and sanitized
 func makeTestHostname(t *testing.T) string {
+	t.Helper()
 	name := t.Name()
 	// Remove "Test" prefix and truncate for readability
 	name = strings.TrimPrefix(name, "Test")
