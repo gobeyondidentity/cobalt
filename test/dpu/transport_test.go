@@ -190,14 +190,21 @@ func startEchoServerOnDPU(ctx context.Context, t *testing.T, serverName string, 
 	dpuKillProcess(ctx, t, "dpu_server_test")
 	time.Sleep(500 * time.Millisecond)
 
-	// Start server in background
+	// Start server in background using ssh -f (forks SSH to background properly)
+	// Note: nohup ... & hangs because SSH waits for child file descriptors
 	cmd := fmt.Sprintf(
 		"cd %s && sudo DPU_SERVER_MODE=echo DOCA_PCI_ADDR=%s DOCA_REP_PCI_ADDR=%s DOCA_SERVER_NAME=%s "+
-			"ECHO_COUNT=%d MAX_MSG_SIZE=%d nohup /tmp/dpu_server_test -test.run=TestDPU_ServerHelper -test.timeout=120s "+
-			"> /tmp/dpu_server.log 2>&1 &",
+			"ECHO_COUNT=%d MAX_MSG_SIZE=%d /tmp/dpu_server_test -test.run=TestDPU_ServerHelper -test.timeout=120s "+
+			"> /tmp/dpu_server.log 2>&1",
 		dpuRepoPath, defaultDPUPCIAddr, defaultDPURepPCIAddr, serverName, echoCount, maxMsgSize)
 
-	_, err := dpuSSH(ctx, t, cmd)
+	_, err := runCmd(ctx, t, "ssh",
+		"-f",
+		"-o", "ConnectTimeout=10",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "BatchMode=yes",
+		fmt.Sprintf("%s@%s", dpuUser, dpuTmfifoIP),
+		cmd)
 	if err != nil {
 		return nil, fmt.Errorf("start server: %w", err)
 	}
