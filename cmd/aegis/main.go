@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -31,10 +32,11 @@ import (
 )
 
 var (
-	listenAddr     = flag.String("listen", ":18051", "gRPC listen address")
-	bmcAddr        = flag.String("bmc-addr", "", "BMC address for Redfish API (optional)")
-	bmcUser        = flag.String("bmc-user", "root", "BMC username")
-	localListen    = flag.String("local-listen", "localhost:9443", "Local API listen address")
+	listenAddr   = flag.String("listen", ":18051", "gRPC listen address")
+	healthListen = flag.String("health-listen", ":18052", "HTTP health endpoint listen address")
+	bmcAddr      = flag.String("bmc-addr", "", "BMC address for Redfish API (optional)")
+	bmcUser      = flag.String("bmc-user", "root", "BMC username")
+	localListen  = flag.String("local-listen", "localhost:9443", "Local API listen address")
 	allowTmfifoNet = flag.Bool("allow-tmfifo-net", false, "Allow connections from tmfifo_net subnet (192.168.100.0/30)")
 	server         = flag.String("server", "", "Nexus server URL (required with --dpu-name for host communication)")
 	dpuName        = flag.String("dpu-name", "", "DPU name for registration (required with --server for host communication)")
@@ -68,6 +70,9 @@ func main() {
 	}
 
 	log.Printf("Fabric Console Agent v%s starting...", version.Version)
+
+	// Start HTTP health endpoint (always available for monitoring)
+	httpHealthServer := startHealthServer(*healthListen)
 
 	// Build configuration
 	cfg := aegis.DefaultConfig()
@@ -180,6 +185,15 @@ func main() {
 			}
 		}
 
+		// Shutdown HTTP health server
+		if httpHealthServer != nil {
+			healthCtx, healthCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer healthCancel()
+			if err := httpHealthServer.Shutdown(healthCtx); err != nil {
+				log.Printf("HTTP health server shutdown error: %v", err)
+			}
+		}
+
 		grpcServer.GracefulStop()
 		cancel()
 	}()
@@ -286,6 +300,34 @@ func initDPoPClient(controlPlaneURL string) (*dpop.Client, error) {
 
 	log.Printf("DPoP: identity loaded successfully (kid=%s)", kid)
 	return client, nil
+}
+
+// startHealthServer starts a minimal HTTP server serving only the /health endpoint.
+// Used for liveness probes and monitoring integration.
+func startHealthServer(addr string) *http.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "ok",
+			"version": version.Version,
+		})
+	})
+
+	server := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	go func() {
+		log.Printf("Health endpoint listening on %s", addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("Health server error: %v", err)
+		}
+	}()
+
+	return server
 }
 
 // tryStartTransportListener attempts to create a transport listener for Host Agent communication.
