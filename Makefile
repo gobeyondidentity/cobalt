@@ -266,6 +266,9 @@ release-clean:
 	rm -rf ~/.local/share/bluectl/
 	sudo rm -rf ~secureinfra/.local/share/bluectl/ 2>/dev/null || true
 	@echo ""
+	@echo "--- Workbench: Cleaning nexus state ---"
+	sudo rm -f /var/lib/secureinfra/nexus.db /var/lib/secureinfra/nexus.db-wal /var/lib/secureinfra/nexus.db-shm
+	@echo ""
 	@echo "--- Workbench: Cleaning km state ---"
 	rm -rf ~/.km/
 	rm -rf ~/.local/share/km/
