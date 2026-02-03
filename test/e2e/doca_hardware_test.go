@@ -246,16 +246,20 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	testID := fmt.Sprintf("%d", time.Now().Unix())
 	dpuName := fmt.Sprintf("hw-dpu-%s", testID)
 	tenantName := fmt.Sprintf("hw-tenant-%s", testID)
+	testDBPath := fmt.Sprintf("/tmp/nexus-test-%s.db", testID)
 
 	// Cleanup on exit
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanupCancel()
 
-		fmt.Printf("\n%s\n", hwDimFmt("Cleaning up processes..."))
+		fmt.Printf("\n%s\n", hwDimFmt("Cleaning up processes and test artifacts..."))
 		cfg.killProcess(cleanupCtx, "aegis")
 		cfg.killProcess(cleanupCtx, "nexus")
 		cfg.killProcess(cleanupCtx, "sentry")
+
+		// Clean up test database
+		cfg.runLocalCmd(cleanupCtx, fmt.Sprintf("rm -f %s", testDBPath))
 	})
 
 	// Step 1: Kill existing aegis
@@ -309,15 +313,20 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 	}
 	hwLogOK(t, "ComCh listener created")
 
-	// Step 4: Start nexus locally
-	hwLogStep(t, 4, "Starting nexus locally...")
+	// Step 4: Start nexus locally with fresh DB
+	hwLogStep(t, 4, "Starting nexus locally with fresh DB...")
 	cfg.killProcess(ctx, "nexus")
 
-	// Start nexus in background
-	_, err = cfg.runLocalCmd(ctx, "setsid ./bin/nexus --no-auth > /tmp/nexus.log 2>&1 < /dev/null &")
+	// Remove any existing test DB to ensure fresh bootstrap window
+	cfg.runLocalCmd(ctx, fmt.Sprintf("rm -f %s", testDBPath))
+
+	// Start nexus in background with test DB
+	nexusCmd := fmt.Sprintf("setsid ./bin/nexus -db %s > /tmp/nexus.log 2>&1 < /dev/null &", testDBPath)
+	_, err = cfg.runLocalCmd(ctx, nexusCmd)
 	if err != nil {
 		// Try alternate path
-		_, err = cfg.runLocalCmd(ctx, "setsid nexus --no-auth > /tmp/nexus.log 2>&1 < /dev/null &")
+		nexusCmd = fmt.Sprintf("setsid nexus -db %s > /tmp/nexus.log 2>&1 < /dev/null &", testDBPath)
+		_, err = cfg.runLocalCmd(ctx, nexusCmd)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("Failed to start nexus: %v", err))
 			t.Fatalf("Failed to start nexus: %v", err)
@@ -333,6 +342,19 @@ func TestDOCAComchEnrollmentE2E(t *testing.T) {
 		t.Fatalf("Nexus not running. Logs:\n%s", logs)
 	}
 	hwLogOK(t, "Nexus started on localhost")
+
+	// Bootstrap nexus with first admin (within 10-minute window)
+	hwLogInfo(t, "Bootstrapping nexus with first admin...")
+	_, err = cfg.runLocalCmd(ctx, "./bin/bluectl init --server http://localhost:18080 --force")
+	if err != nil {
+		_, err = cfg.runLocalCmd(ctx, "bluectl init --server http://localhost:18080 --force")
+		if err != nil {
+			logs, _ := cfg.runLocalCmd(ctx, "cat /tmp/nexus.log")
+			result.Errors = append(result.Errors, fmt.Sprintf("Failed to bootstrap nexus: %v", err))
+			t.Fatalf("Failed to bootstrap nexus. Logs:\n%s", logs)
+		}
+	}
+	hwLogOK(t, "Nexus bootstrapped with admin")
 
 	// Step 5: Register DPU with nexus via bluectl
 	hwLogStep(t, 5, "Registering DPU with nexus...")
@@ -481,6 +503,7 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	tenantName := fmt.Sprintf("hw-cred-tenant-%s", testID)
 	caName := fmt.Sprintf("hw-test-ca-%s", testID)
 	caPath := fmt.Sprintf("/etc/ssh/trusted-user-ca-keys.d/%s.pub", caName)
+	testDBPath := fmt.Sprintf("/tmp/nexus-cred-test-%s.db", testID)
 
 	// Cleanup on exit
 	t.Cleanup(func() {
@@ -492,8 +515,9 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 		cfg.killProcess(cleanupCtx, "nexus")
 		cfg.killProcess(cleanupCtx, "sentry")
 
-		// Clean up test CA file locally
+		// Clean up test CA file and database
 		cfg.runLocalCmd(cleanupCtx, fmt.Sprintf("sudo rm -f %s", caPath))
+		cfg.runLocalCmd(cleanupCtx, fmt.Sprintf("rm -f %s", testDBPath))
 	})
 
 	// Step 1: Kill existing processes
@@ -537,12 +561,18 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 	}
 	hwLogOK(t, "Aegis started with ComCh")
 
-	// Step 3: Start nexus locally
-	hwLogStep(t, 3, "Starting nexus locally...")
+	// Step 3: Start nexus locally with fresh DB
+	hwLogStep(t, 3, "Starting nexus locally with fresh DB...")
 
-	_, err = cfg.runLocalCmd(ctx, "setsid ./bin/nexus --no-auth > /tmp/nexus.log 2>&1 < /dev/null &")
+	// Remove any existing test DB to ensure fresh bootstrap window
+	cfg.runLocalCmd(ctx, fmt.Sprintf("rm -f %s", testDBPath))
+
+	// Start nexus in background with test DB
+	nexusCmd := fmt.Sprintf("setsid ./bin/nexus -db %s > /tmp/nexus.log 2>&1 < /dev/null &", testDBPath)
+	_, err = cfg.runLocalCmd(ctx, nexusCmd)
 	if err != nil {
-		_, err = cfg.runLocalCmd(ctx, "setsid nexus --no-auth > /tmp/nexus.log 2>&1 < /dev/null &")
+		nexusCmd = fmt.Sprintf("setsid nexus -db %s > /tmp/nexus.log 2>&1 < /dev/null &", testDBPath)
+		_, err = cfg.runLocalCmd(ctx, nexusCmd)
 	}
 	time.Sleep(2 * time.Second)
 
@@ -553,6 +583,19 @@ func TestDOCAComchCredentialDeliveryE2E(t *testing.T) {
 		t.Fatalf("Nexus not running. Logs:\n%s", logs)
 	}
 	hwLogOK(t, "Nexus started")
+
+	// Bootstrap nexus with first admin (within 10-minute window)
+	hwLogInfo(t, "Bootstrapping nexus with first admin...")
+	_, err = cfg.runLocalCmd(ctx, "./bin/bluectl init --server http://localhost:18080 --force")
+	if err != nil {
+		_, err = cfg.runLocalCmd(ctx, "bluectl init --server http://localhost:18080 --force")
+		if err != nil {
+			logs, _ := cfg.runLocalCmd(ctx, "cat /tmp/nexus.log")
+			result.Errors = append(result.Errors, fmt.Sprintf("Failed to bootstrap nexus: %v", err))
+			t.Fatalf("Failed to bootstrap nexus. Logs:\n%s", logs)
+		}
+	}
+	hwLogOK(t, "Nexus bootstrapped with admin")
 
 	// Step 4: Register DPU
 	hwLogStep(t, 4, "Registering DPU with nexus...")
