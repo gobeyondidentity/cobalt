@@ -21,9 +21,10 @@ import (
 )
 
 var (
-	listenAddr  = flag.String("listen", ":18080", "HTTP listen address")
-	dbPath      = flag.String("db", "", "Database path (default: ~/.local/share/nexus/nexus.db)")
-	showVersion = flag.Bool("version", false, "Show version and exit")
+	listenAddr             = flag.String("listen", ":18080", "HTTP listen address")
+	dbPath                 = flag.String("db", "", "Database path (default: ~/.local/share/nexus/nexus.db)")
+	showVersion            = flag.Bool("version", false, "Show version and exit")
+	attestationStaleAfter  = flag.String("attestation-stale-after", "1h", "Duration after which attestation is considered stale (e.g., 1h, 30m, 2h30m)")
 )
 
 func main() {
@@ -36,6 +37,17 @@ func main() {
 	}
 
 	log.Printf("Fabric Console API %s starting...", version.String())
+
+	// Parse and validate attestation staleness threshold
+	staleAfter, err := time.ParseDuration(*attestationStaleAfter)
+	if err != nil {
+		log.Fatalf("Invalid --attestation-stale-after value: %v", err)
+	}
+	const minStaleAfter = 5 * time.Minute
+	if staleAfter < minStaleAfter {
+		log.Fatalf("--attestation-stale-after must be at least %v (got %v)", minStaleAfter, staleAfter)
+	}
+	log.Printf("Attestation staleness threshold: %v", staleAfter)
 
 	// Set CLI name for state directory isolation
 	store.SetCLIName("nexus")
@@ -58,8 +70,10 @@ func main() {
 		log.Fatalf("Failed to initialize bootstrap: %v", err)
 	}
 
-	// Create API server
-	server := api.NewServer(db)
+	// Create API server with configuration
+	server := api.NewServerWithConfig(db, api.ServerConfig{
+		AttestationStaleAfter: staleAfter,
+	})
 
 	// Set up HTTP server
 	mux := http.NewServeMux()

@@ -248,6 +248,20 @@ func (s *Store) GetOperatorRole(operatorID, tenantID string) (string, error) {
 	return role, nil
 }
 
+// IsSuperAdmin checks if an operator has super:admin role in any tenant.
+// Per ADR-011, super:admin in any tenant grants global access.
+func (s *Store) IsSuperAdmin(operatorID string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM operator_tenants WHERE operator_id = ? AND role = 'super:admin'`,
+		operatorID,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check super admin status: %w", err)
+	}
+	return count > 0, nil
+}
+
 // ----- KeyMaker Methods -----
 
 // CreateKeyMaker stores a new KeyMaker binding.

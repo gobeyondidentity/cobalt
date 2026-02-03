@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -62,7 +63,7 @@ func runWhoami(cmd *cobra.Command, args []string) error {
 	}
 
 	// Compute fingerprint (SHA256 of public key)
-	pubKey := privKey.Public().(interface{ Bytes() []byte }).Bytes()
+	pubKey := privKey.Public().(ed25519.PublicKey)
 	hash := sha256.Sum256(pubKey)
 	fingerprint := hex.EncodeToString(hash[:])
 
