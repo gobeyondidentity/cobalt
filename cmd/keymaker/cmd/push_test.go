@@ -64,7 +64,7 @@ func TestCallPushAPI_Success(t *testing.T) {
 	}
 
 	t.Log("Calling push API with caName=ops-ca, targetDPU=bf3-lab, force=false")
-	resp, err := callPushAPI(config, "ops-ca", "bf3-lab", false)
+	resp, err := callPushAPI(config, "ops-ca", "bf3-lab", "")
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -109,8 +109,9 @@ func TestCallPushAPI_Success(t *testing.T) {
 	if sentReq.OperatorID != "op_123" {
 		t.Errorf("Expected operator_id=op_123, got %s", sentReq.OperatorID)
 	}
-	if sentReq.Force {
-		t.Error("Expected force=false")
+	// Force bypass should NOT be present when no reason provided
+	if mockClient.request.Header.Get("X-Force-Bypass") != "" {
+		t.Error("Expected no X-Force-Bypass header")
 	}
 }
 
@@ -138,7 +139,7 @@ func TestCallPushAPI_SuccessWithForce(t *testing.T) {
 	}
 
 	t.Log("Calling push API with force=true")
-	resp, err := callPushAPI(config, "ops-ca", "bf3-lab", true)
+	resp, err := callPushAPI(config, "ops-ca", "bf3-lab", "maintenance window")
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -147,12 +148,10 @@ func TestCallPushAPI_SuccessWithForce(t *testing.T) {
 		t.Error("Expected success=true")
 	}
 
-	t.Log("Verifying force flag was sent in request")
-	var sentReq pushRequest
-	body, _ := io.ReadAll(mockClient.request.Body)
-	json.Unmarshal(body, &sentReq)
-	if !sentReq.Force {
-		t.Error("Expected force=true in request")
+	t.Log("Verifying X-Force-Bypass header was sent in request")
+	forceHeader := mockClient.request.Header.Get("X-Force-Bypass")
+	if forceHeader != "maintenance window" {
+		t.Errorf("Expected X-Force-Bypass header='maintenance window', got '%s'", forceHeader)
 	}
 }
 
@@ -176,7 +175,7 @@ func TestCallPushAPI_CANotFound(t *testing.T) {
 	}
 
 	t.Log("Calling push API expecting CA not found error")
-	_, err := callPushAPI(config, "nonexistent-ca", "bf3-lab", false)
+	_, err := callPushAPI(config, "nonexistent-ca", "bf3-lab", "")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -211,7 +210,7 @@ func TestCallPushAPI_DeviceNotFound(t *testing.T) {
 	}
 
 	t.Log("Calling push API expecting device not found error")
-	_, err := callPushAPI(config, "ops-ca", "nonexistent-dpu", false)
+	_, err := callPushAPI(config, "ops-ca", "nonexistent-dpu", "")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -246,7 +245,7 @@ func TestCallPushAPI_NotAuthorized(t *testing.T) {
 	}
 
 	t.Log("Calling push API expecting not authorized error")
-	_, err := callPushAPI(config, "ops-ca", "bf3-lab", false)
+	_, err := callPushAPI(config, "ops-ca", "bf3-lab", "")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -284,7 +283,7 @@ func TestCallPushAPI_AttestationStale(t *testing.T) {
 	}
 
 	t.Log("Calling push API expecting attestation stale error")
-	resp, err := callPushAPI(config, "ops-ca", "bf3-lab", false)
+	resp, err := callPushAPI(config, "ops-ca", "bf3-lab", "")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -329,7 +328,7 @@ func TestCallPushAPI_AttestationFailed(t *testing.T) {
 	}
 
 	t.Log("Calling push API expecting attestation failed error")
-	resp, err := callPushAPI(config, "ops-ca", "bf3-lab", false)
+	resp, err := callPushAPI(config, "ops-ca", "bf3-lab", "")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -366,7 +365,7 @@ func TestCallPushAPI_ConnectionError(t *testing.T) {
 	}
 
 	t.Log("Calling push API expecting connection failed error")
-	_, err := callPushAPI(config, "ops-ca", "bf3-lab", false)
+	_, err := callPushAPI(config, "ops-ca", "bf3-lab", "")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -401,7 +400,7 @@ func TestCallPushAPI_ServerError(t *testing.T) {
 	}
 
 	t.Log("Calling push API expecting internal error")
-	_, err := callPushAPI(config, "ops-ca", "bf3-lab", false)
+	_, err := callPushAPI(config, "ops-ca", "bf3-lab", "")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -436,7 +435,7 @@ func TestCallPushAPI_ServiceUnavailable(t *testing.T) {
 	}
 
 	t.Log("Calling push API expecting connection failed error")
-	_, err := callPushAPI(config, "ops-ca", "bf3-lab", false)
+	_, err := callPushAPI(config, "ops-ca", "bf3-lab", "")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -475,7 +474,7 @@ func TestCallPushAPI_BadRequest(t *testing.T) {
 	}
 
 	t.Log("Calling push API expecting internal error for bad request")
-	_, err := callPushAPI(config, "", "bf3-lab", false)
+	_, err := callPushAPI(config, "", "bf3-lab", "")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}

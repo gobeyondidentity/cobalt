@@ -651,8 +651,22 @@ func (s *Server) handleAssignRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log the role assignment
-	log.Printf("Role assigned: operator=%s tenant=%s role=%s by=%s", operatorID, req.TenantID, req.Role, identity.KID)
+	// Audit log the role assignment
+	auditEntry := &store.AuditEntry{
+		Timestamp: time.Now(),
+		Action:    "operator.role_assign",
+		Target:    operatorID,
+		Decision:  "allowed",
+		Details: map[string]string{
+			"admin_id":  identity.KID,
+			"tenant_id": req.TenantID,
+			"role":      req.Role,
+		},
+	}
+	if _, err := s.store.InsertAuditEntry(auditEntry); err != nil {
+		log.Printf("failed to insert audit entry for role assignment: %v", err)
+		// Don't fail the request, audit logging is non-critical
+	}
 
 	// Return updated operator
 	operator, _ := s.store.GetOperator(operatorID)
@@ -740,8 +754,22 @@ func (s *Server) handleRemoveRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log the role removal
-	log.Printf("Role removed: operator=%s tenant=%s by=%s", operatorID, tenantID, identity.KID)
+	// Audit log the role removal
+	auditEntry := &store.AuditEntry{
+		Timestamp: time.Now(),
+		Action:    "operator.role_remove",
+		Target:    operatorID,
+		Decision:  "allowed",
+		Details: map[string]string{
+			"admin_id":      identity.KID,
+			"tenant_id":     tenantID,
+			"removed_role":  targetRole,
+		},
+	}
+	if _, err := s.store.InsertAuditEntry(auditEntry); err != nil {
+		log.Printf("failed to insert audit entry for role removal: %v", err)
+		// Don't fail the request, audit logging is non-critical
+	}
 
 	w.WriteHeader(http.StatusNoContent)
 }

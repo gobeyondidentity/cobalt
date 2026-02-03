@@ -21,6 +21,9 @@ type Config struct {
 	// PolicyBytes allows loading policies from a custom source (for testing).
 	// If nil, embedded policies.cedar is used.
 	PolicyBytes []byte
+
+	// AuditLogger for recording authorization decisions. If nil, uses NopAuditLogger.
+	AuditLogger AuditLogger
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -28,14 +31,16 @@ func DefaultConfig() Config {
 	return Config{
 		Logger:      nil, // Will use slog.Default() in NewAuthorizer
 		PolicyBytes: nil, // Use embedded policies
+		AuditLogger: nil, // Will use NopAuditLogger in NewAuthorizer
 	}
 }
 
 // Authorizer wraps the Cedar policy engine.
 // All authorization decisions in the system flow through this single component.
 type Authorizer struct {
-	policies *cedar.PolicySet
-	logger   *slog.Logger
+	policies    *cedar.PolicySet
+	logger      *slog.Logger
+	auditLogger AuditLogger
 }
 
 // NewAuthorizer creates an authorizer with the given configuration.
@@ -50,14 +55,20 @@ func NewAuthorizer(cfg Config) (*Authorizer, error) {
 		policyData = policiesContent
 	}
 
+	auditLogger := cfg.AuditLogger
+	if auditLogger == nil {
+		auditLogger = NopAuditLogger{}
+	}
+
 	ps, err := cedar.NewPolicySetFromBytes("policies.cedar", policyData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse policies: %w", err)
 	}
 
 	return &Authorizer{
-		policies: ps,
-		logger:   logger,
+		policies:    ps,
+		logger:      logger,
+		auditLogger: auditLogger,
 	}, nil
 }
 
@@ -111,7 +122,7 @@ func (a *Authorizer) Authorize(ctx context.Context, req AuthzRequest) AuthzDecis
 	}
 
 	// Log the decision (structured for JSON output)
-	a.logDecision(req, result, diagnostic)
+	a.logDecision(ctx, req, result, diagnostic)
 
 	return result
 }
@@ -169,9 +180,13 @@ func getAttestationStatus(ctx map[string]any) AttestationStatus {
 }
 
 // logDecision logs the authorization decision with structured fields.
-func (a *Authorizer) logDecision(req AuthzRequest, result AuthzDecision, diag cedar.Diagnostic) {
-	// Core decision log
+func (a *Authorizer) logDecision(ctx context.Context, req AuthzRequest, result AuthzDecision, diag cedar.Diagnostic) {
+	// Extract request ID for correlation
+	requestID := RequestIDFromContext(ctx)
+
+	// Core decision log with request_id for correlation
 	a.logger.Info("authorization decision",
+		"request_id", requestID,
 		"principal", req.Principal.UID,
 		"principal_type", req.Principal.Type,
 		"role", req.Principal.Role,
@@ -189,6 +204,7 @@ func (a *Authorizer) logDecision(req AuthzRequest, result AuthzDecision, diag ce
 	// Log policy errors separately
 	for _, err := range diag.Errors {
 		a.logger.Error("policy evaluation error",
+			"request_id", requestID,
 			"policy", err.PolicyID,
 			"error", err.Message,
 		)
@@ -197,10 +213,52 @@ func (a *Authorizer) logDecision(req AuthzRequest, result AuthzDecision, diag ce
 	// Security warning for bypass scenarios
 	if result.RequiresForceBypass {
 		a.logger.Warn("SECURITY: force bypass available",
+			"request_id", requestID,
 			"principal", req.Principal.UID,
 			"action", req.Action,
 			"resource", req.Resource.UID,
 			"attestation_status", req.Context["attestation_status"],
+		)
+	}
+
+	// Build audit entry for structured audit logging
+	decision := "deny"
+	if result.Allowed {
+		decision = "allow"
+	}
+
+	auditEntry := AuthzAuditEntry{
+		Timestamp:     time.Now(),
+		RequestID:     requestID,
+		Principal:     req.Principal.UID,
+		PrincipalType: string(req.Principal.Type),
+		Role:          string(req.Principal.Role),
+		Action:        req.Action,
+		Resource:      req.Resource.UID,
+		ResourceType:  req.Resource.Type,
+		TenantID:      req.Resource.TenantID,
+		Decision:      decision,
+		Reason:        result.Reason,
+		PolicyID:      result.PolicyID,
+		DurationUS:    result.Duration.Microseconds(),
+	}
+
+	// Add force bypass fields if applicable
+	if req.Context != nil {
+		if bypassReason, ok := req.Context["force_bypass_reason"].(string); ok && bypassReason != "" {
+			auditEntry.ForceBypass = true
+			auditEntry.BypassReason = bypassReason
+		}
+		if status, ok := req.Context["attestation_status"].(string); ok {
+			auditEntry.AttestationStatus = status
+		}
+	}
+
+	// Write to audit logger (async-safe, non-blocking for request)
+	if err := a.auditLogger.LogDecision(ctx, auditEntry); err != nil {
+		a.logger.Error("failed to write audit log",
+			"request_id", requestID,
+			"error", err,
 		)
 	}
 }

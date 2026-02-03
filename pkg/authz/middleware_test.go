@@ -382,8 +382,7 @@ func TestMiddleware_AttestationStale_SuperAdminWithBypass(t *testing.T) {
 
 	t.Log("Super admin requesting credential:push with stale attestation and X-Force-Bypass")
 	req := httptest.NewRequest("POST", "/api/v1/push", nil)
-	req.Header.Set("X-Force-Bypass", "true")
-	req.Header.Set("X-Force-Bypass-Reason", "emergency maintenance")
+	req.Header.Set("X-Force-Bypass", "emergency maintenance")
 	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
 		KID:        "km_admin123",
 		CallerType: dpop.CallerTypeAdmin,
@@ -439,7 +438,7 @@ func TestMiddleware_AttestationFailed_NoBypass(t *testing.T) {
 
 	t.Log("Super admin requesting credential:push with failed attestation and X-Force-Bypass")
 	req := httptest.NewRequest("POST", "/api/v1/push", nil)
-	req.Header.Set("X-Force-Bypass", "true") // Even with bypass header, should be rejected
+	req.Header.Set("X-Force-Bypass", "emergency maintenance") // Even with bypass header, should be rejected
 	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
 		KID:        "km_admin123",
 		CallerType: dpop.CallerTypeAdmin,

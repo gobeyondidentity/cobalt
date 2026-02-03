@@ -25,7 +25,8 @@ func init() {
 	pushCmd.AddCommand(pushSSHCACmd)
 
 	// Flags for push ssh-ca
-	pushSSHCACmd.Flags().Bool("force", false, "Force push even with stale attestation (audited)")
+	// --force takes a reason string, not a boolean
+	pushSSHCACmd.Flags().String("force", "", "Force push even with stale attestation (requires reason, audited)")
 }
 
 var pushCmd = &cobra.Command{
@@ -48,16 +49,21 @@ The CA public key is sent to the DPU agent, which installs it and reloads sshd.
 Attestation Requirements:
 - DPU must have a verified attestation record
 - Attestation must be fresh (less than 1 hour old by default)
-- Use --force to bypass stale attestation (logged to audit trail)
+- Use --force '<reason>' to bypass stale attestation (logged to audit trail)
 
 Examples:
   km push ssh-ca ops-ca bf3-lab
-  km push ssh-ca ops-ca bf3-lab --force`,
+  km push ssh-ca ops-ca bf3-lab --force 'maintenance window'`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		caName := args[0]
 		targetDPU := args[1]
-		force, _ := cmd.Flags().GetBool("force")
+		forceReason, _ := cmd.Flags().GetString("force")
+
+		// Validate --force flag: if provided, must have a reason
+		if cmd.Flags().Changed("force") && strings.TrimSpace(forceReason) == "" {
+			return fmt.Errorf("--force requires a reason. Usage: --force 'maintenance window'")
+		}
 
 		// Load operator context from config
 		config, err := loadConfig()
@@ -75,7 +81,7 @@ Examples:
 		fmt.Printf("Pushing CA '%s' to %s...\n", caName, targetDPU)
 
 		// Call server push endpoint
-		resp, err := callPushAPI(config, caName, targetDPU, force)
+		resp, err := callPushAPI(config, caName, targetDPU, forceReason)
 		if err != nil {
 			return err
 		}
@@ -97,7 +103,7 @@ Examples:
 		if !resp.Success {
 			fmt.Printf("Push blocked: %s\n", resp.Message)
 			if strings.Contains(resp.Message, "stale") {
-				fmt.Printf("Hint: Use --force to bypass (audited)\n")
+				fmt.Printf("Hint: Use --force 'reason' to bypass (audited)\n")
 			} else if strings.Contains(resp.Message, "failed") {
 				fmt.Printf("Contact your infrastructure team. This event has been logged.\n")
 			}
@@ -124,7 +130,6 @@ type pushRequest struct {
 	CAName     string `json:"ca_name"`
 	TargetDPU  string `json:"target_dpu"`
 	OperatorID string `json:"operator_id"`
-	Force      bool   `json:"force"`
 }
 
 // pushResponse is the response from the push API.
@@ -138,12 +143,12 @@ type pushResponse struct {
 }
 
 // callPushAPI calls the server push endpoint and handles the response.
-func callPushAPI(config *KMConfig, caName, targetDPU string, force bool) (*pushResponse, error) {
+// If forceReason is non-empty, sends X-Force-Bypass header to bypass attestation checks.
+func callPushAPI(config *KMConfig, caName, targetDPU, forceReason string) (*pushResponse, error) {
 	reqBody := pushRequest{
 		CAName:     caName,
 		TargetDPU:  targetDPU,
 		OperatorID: config.OperatorID,
-		Force:      force,
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -160,6 +165,12 @@ func callPushAPI(config *KMConfig, caName, targetDPU string, force bool) (*pushR
 		return nil, clierror.InternalError(fmt.Errorf("failed to create push request: %w", err))
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Add force bypass header if reason provided
+	if forceReason != "" {
+		req.Header.Set("X-Force-Bypass", forceReason)
+		fmt.Printf("  SECURITY WARNING: Bypassing attestation check. Reason: %s\n", forceReason)
+	}
 
 	resp, err := pushHTTPClient.Do(req)
 	if err != nil {

@@ -18,7 +18,7 @@ func init() {
 	// Flags for trust create
 	trustCreateCmd.Flags().String("type", "ssh_host", "Trust type: ssh_host, mtls")
 	trustCreateCmd.Flags().Bool("bidirectional", false, "Create bidirectional trust")
-	trustCreateCmd.Flags().Bool("force", false, "Bypass attestation checks (use with caution)")
+	trustCreateCmd.Flags().String("force", "", "Bypass attestation checks (requires reason, audited)")
 
 	// Flags for trust list
 	trustListCmd.Flags().String("tenant", "", "Filter by tenant")
@@ -59,7 +59,12 @@ Examples:
 		targetHostname := args[1]
 		trustType, _ := cmd.Flags().GetString("type")
 		bidirectional, _ := cmd.Flags().GetBool("bidirectional")
-		force, _ := cmd.Flags().GetBool("force")
+		forceReason, _ := cmd.Flags().GetString("force")
+
+		// Validate --force flag: if provided, must have a reason
+		if cmd.Flags().Changed("force") && strings.TrimSpace(forceReason) == "" {
+			return fmt.Errorf("--force requires a reason. Usage: --force 'maintenance window'")
+		}
 
 		// Validate trust type
 		if trustType != "ssh_host" && trustType != "mtls" {
@@ -86,10 +91,9 @@ Examples:
 			TargetHost:    targetHostname,
 			TrustType:     trustType,
 			Bidirectional: bidirectional,
-			Force:         force,
 		}
 
-		tr, err := client.CreateTrust(cmd.Context(), req)
+		tr, err := client.CreateTrustWithForceBypass(cmd.Context(), req, forceReason)
 		if err != nil {
 			return fmt.Errorf("failed to create trust: %w", err)
 		}

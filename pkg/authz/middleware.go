@@ -212,9 +212,12 @@ func (m *AuthzMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		// Check for force bypass header (super:admin only)
-		forceBypass := r.Header.Get("X-Force-Bypass")
-		if forceBypass == "true" {
+		// Header format: X-Force-Bypass: <reason>
+		// The header VALUE is the bypass reason (not a separate header)
+		forceBypassReason := r.Header.Get("X-Force-Bypass")
+		if forceBypassReason != "" {
 			authzReq.Context["force_bypass_requested"] = true
+			authzReq.Context["force_bypass_reason"] = forceBypassReason
 		}
 
 		// Step 7: Make authorization decision
@@ -244,8 +247,9 @@ func (m *AuthzMiddleware) Wrap(next http.Handler) http.Handler {
 }
 
 // handleForceBypass checks if a force bypass should be allowed.
-// Returns true if bypass is granted (super:admin with X-Force-Bypass header).
+// Returns true if bypass is granted (super:admin with X-Force-Bypass header containing reason).
 // Force bypass is only available for stale/unavailable attestation, never for failed.
+// Header format: X-Force-Bypass: <reason> (the value IS the reason, not a boolean)
 func (m *AuthzMiddleware) handleForceBypass(
 	r *http.Request,
 	decision *AuthzDecision,
@@ -257,16 +261,18 @@ func (m *AuthzMiddleware) handleForceBypass(
 		return false
 	}
 
-	// Check for X-Force-Bypass header
-	forceHeader := r.Header.Get("X-Force-Bypass")
-	if forceHeader != "true" {
+	// Check for X-Force-Bypass header - the VALUE is the bypass reason
+	bypassReason := r.Header.Get("X-Force-Bypass")
+	if bypassReason == "" {
+		// No header present - bypass not requested
 		return false
 	}
 
-	// Get the bypass reason (optional but recommended)
-	bypassReason := r.Header.Get("X-Force-Bypass-Reason")
+	// Reject empty reason (must provide actual justification)
+	bypassReason = strings.TrimSpace(bypassReason)
 	if bypassReason == "" {
-		bypassReason = "no reason provided"
+		// Empty reason after trimming - reject
+		return false
 	}
 
 	// Log security warning for force bypass

@@ -721,7 +721,6 @@ type createTrustRequest struct {
 	TargetHost    string `json:"target_host"`
 	TrustType     string `json:"trust_type"`
 	Bidirectional bool   `json:"bidirectional"`
-	Force         bool   `json:"force"`
 }
 
 // trustResponse matches the API response for trust operations.
@@ -740,6 +739,12 @@ type trustResponse struct {
 
 // CreateTrust creates a trust relationship between two hosts on the Nexus server.
 func (c *NexusClient) CreateTrust(ctx context.Context, req createTrustRequest) (*trustResponse, error) {
+	return c.CreateTrustWithForceBypass(ctx, req, "")
+}
+
+// CreateTrustWithForceBypass creates a trust relationship with optional force bypass.
+// If forceReason is non-empty, sends X-Force-Bypass header to bypass attestation checks.
+func (c *NexusClient) CreateTrustWithForceBypass(ctx context.Context, req createTrustRequest, forceReason string) (*trustResponse, error) {
 	bodyBytes, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode request: %w", err)
@@ -750,6 +755,12 @@ func (c *NexusClient) CreateTrust(ctx context.Context, req createTrustRequest) (
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+
+	// Add force bypass header if reason provided
+	if forceReason != "" {
+		httpReq.Header.Set("X-Force-Bypass", forceReason)
+		fmt.Printf("  SECURITY WARNING: Bypassing attestation check. Reason: %s\n", forceReason)
+	}
 
 	resp, err := c.doRequest(httpReq)
 	if err != nil {
