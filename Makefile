@@ -264,6 +264,7 @@ release-clean:
 	rm -rf ~/.config/bluectl/
 	rm -rf ~/.bluectl/
 	rm -rf ~/.local/share/bluectl/
+	sudo rm -rf ~secureinfra/.local/share/bluectl/ 2>/dev/null || true
 	@echo ""
 	@echo "--- Workbench: Cleaning km state ---"
 	rm -rf ~/.km/
