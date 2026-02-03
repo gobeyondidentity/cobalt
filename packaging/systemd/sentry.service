@@ -1,6 +1,6 @@
 [Unit]
 Description=Sentry - Secure Infrastructure Host Agent
-Documentation=https://github.com/gobeyondidentity/secure-infra
+Documentation=https://github.com/gobeyondidentity/cobalt
 After=network-online.target
 Wants=network-online.target
 

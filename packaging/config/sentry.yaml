@@ -1,5 +1,5 @@
 # Sentry - Secure Infrastructure Host Agent Configuration
-# See documentation: https://github.com/gobeyondidentity/secure-infra
+# See documentation: https://github.com/gobeyondidentity/cobalt
 
 # Control plane connection
 control_plane:

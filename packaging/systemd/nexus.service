@@ -1,6 +1,6 @@
 [Unit]
 Description=Nexus - Secure Infrastructure Control Plane
-Documentation=https://github.com/gobeyondidentity/secure-infra
+Documentation=https://github.com/gobeyondidentity/cobalt
 After=network-online.target
 Wants=network-online.target
 

@@ -8,7 +8,7 @@ version: "${VERSION}"
 maintainer: Beyond Identity <support@beyondidentity.com>
 description: Sentry - Secure Infrastructure host agent with DOCA ComCh transport support
 vendor: Beyond Identity
-homepage: https://github.com/gobeyondidentity/secure-infra
+homepage: https://github.com/gobeyondidentity/cobalt
 license: Apache-2.0
 section: admin
 priority: optional
