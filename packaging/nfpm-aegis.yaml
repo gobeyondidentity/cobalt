@@ -23,8 +23,8 @@ contents:
     dst: /lib/systemd/system/aegis.service
     type: config
 
-  - src: packaging/config/aegis.env
-    dst: /etc/secureinfra/aegis.env
+  - src: packaging/config/aegis.yaml
+    dst: /etc/secureinfra/aegis.yaml
     type: config|noreplace
 
   # Include DOCA runtime libraries

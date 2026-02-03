@@ -8,14 +8,7 @@ Wants=network-online.target
 Type=simple
 User=root
 Group=root
-EnvironmentFile=-/etc/secureinfra/aegis.env
-ExecStart=/usr/bin/aegis \
-    --server ${AEGIS_SERVER} \
-    --dpu-name ${AEGIS_DPU_NAME} \
-    --listen ${AEGIS_LISTEN:-:18051} \
-    --local-listen ${AEGIS_LOCAL_LISTEN:-localhost:9443} \
-    --db-path ${AEGIS_DB_PATH:-/var/lib/aegis/aegis.db} \
-    --keystore ${AEGIS_KEYSTORE:-/var/lib/secureinfra/known_hosts.json}
+ExecStart=/usr/bin/aegis --config /etc/secureinfra/aegis.yaml
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

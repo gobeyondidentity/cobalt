@@ -14,14 +14,10 @@ if ! getent passwd secureinfra >/dev/null 2>&1; then
         --home-dir /var/lib/secureinfra --no-create-home secureinfra
 fi
 
-# Create data directories
+# Create data directory
 mkdir -p /var/lib/secureinfra
 chown secureinfra:secureinfra /var/lib/secureinfra
 chmod 750 /var/lib/secureinfra
-
-# Aegis-specific data directory (aegis runs as root on DPU)
-mkdir -p /var/lib/aegis
-chmod 750 /var/lib/aegis
 
 # Create config directory if it doesn't exist
 mkdir -p /etc/secureinfra
@@ -44,28 +40,10 @@ if [ ! -f "$CERT_FILE" ] || [ ! -f "$KEY_FILE" ]; then
     echo "TLS certificates generated at $CERT_DIR"
 fi
 
-# Migration: update old systemd overrides that use deprecated flags
-AEGIS_OVERRIDE="/etc/systemd/system/aegis.service.d/override.conf"
-if [ -f "$AEGIS_OVERRIDE" ]; then
-    if grep -q -- '--control-plane' "$AEGIS_OVERRIDE"; then
-        echo "Migrating aegis systemd override: --control-plane -> --server"
-        sed -i 's/--control-plane/--server/g' "$AEGIS_OVERRIDE"
-    fi
-    if grep -q -- '--local-api' "$AEGIS_OVERRIDE"; then
-        echo "Migrating aegis systemd override: removing deprecated --local-api flag"
-        sed -i 's/--local-api[[:space:]]*//g' "$AEGIS_OVERRIDE"
-    fi
-    if grep -q -- '--config' "$AEGIS_OVERRIDE"; then
-        echo "WARNING: aegis override uses --config which is no longer supported."
-        echo "Please update $AEGIS_OVERRIDE to use CLI flags instead."
-        echo "See /etc/secureinfra/aegis.env for configuration options."
-    fi
-fi
-
 # Reload systemd to pick up new unit files
 if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload
 fi
 
 echo "Secure Infrastructure package installed successfully."
-echo "Configure the service in /etc/secureinfra/aegis.env before starting."
+echo "Configure the service in /etc/secureinfra/ before starting."
