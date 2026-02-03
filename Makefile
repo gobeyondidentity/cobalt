@@ -255,6 +255,8 @@ release-clean:
 		echo "Detected workbench (x86_64)"; \
 		echo ""; \
 		echo "--- Stopping services ---"; \
+		sudo pkill -9 nexus || true; \
+		sudo pkill -9 sentry || true; \
 		sudo systemctl stop nexus 2>/dev/null || true; \
 		sudo systemctl stop sentry 2>/dev/null || true; \
 		echo ""; \
@@ -292,6 +294,7 @@ release-clean:
 		echo "Detected BF3 (aarch64)"; \
 		echo ""; \
 		echo "--- Stopping aegis service ---"; \
+		sudo pkill -9 aegis || true; \
 		sudo systemctl stop aegis 2>/dev/null || true; \
 		echo ""; \
 		echo "--- Removing aegis package ---"; \
