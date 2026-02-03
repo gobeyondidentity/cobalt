@@ -48,21 +48,19 @@ brew install nmelo/tap/bluectl nmelo/tap/km                    # CLI tools
 brew install nmelo/tap/sentry nmelo/tap/nexus nmelo/tap/dpuemu # Agents and emulator
 ```
 
-### Linux (Debian/Ubuntu)
+### Linux (Debian/Ubuntu/RHEL/Fedora)
 
 ```bash
-# Add repository (auto-detects your distro)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.deb.sh' | sudo bash
-sudo apt update && sudo apt install bluectl km
+# Set up repository and install CLI tools (auto-detects distro)
+curl -1sLf 'https://raw.githubusercontent.com/gobeyondidentity/cobalt/main/scripts/install.sh' | sudo bash -s bluectl km
+
+# Or set up repository only, then install packages separately
+curl -1sLf 'https://raw.githubusercontent.com/gobeyondidentity/cobalt/main/scripts/install.sh' | sudo bash
+sudo apt install bluectl km   # Debian/Ubuntu
+sudo yum install bluectl km   # RHEL/Fedora
 ```
 
-### Linux (RHEL/Fedora)
-
-```bash
-# Add repository (auto-detects your distro)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.rpm.sh' | sudo bash
-sudo yum install bluectl km
-```
+> **Note:** The `aegis` package (DPU agent) requires arm64 and will fail with a clear error on x86_64 systems.
 
 ### Docker
 
