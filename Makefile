@@ -269,6 +269,9 @@ release-clean:
 	rm -rf ~/.km/
 	rm -rf ~/.local/share/km/
 	@echo ""
+	@echo "--- Workbench: Cleaning sentry config ---"
+	sudo rm -f /etc/default/sentry
+	@echo ""
 	@echo "--- Workbench: Cleaning SSH artifacts ---"
 	sudo rm -f /etc/ssh/ssh_host_ed25519_key-cert.pub
 	sudo rm -rf /etc/ssh/trusted_user_ca_keys.d/
@@ -288,6 +291,8 @@ release-clean:
 		sudo rm -f /etc/aegis/key.pem; \
 		sudo rm -f /etc/aegis/kid; \
 		sudo rm -f /var/lib/secureinfra/known_hosts.json; \
+		echo "Cleaning aegis config..."; \
+		sudo rm -f /etc/secureinfra/aegis.env; \
 		echo "Cleaning old .deb files..."; \
 		rm -f ~/secure-infra/*.deb 2>/dev/null || true; \
 		echo "BF3 cleanup complete."'
