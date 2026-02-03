@@ -8,7 +8,22 @@ Wants=network-online.target
 Type=simple
 User=secureinfra
 Group=secureinfra
-ExecStart=/usr/bin/sentry --config /etc/secureinfra/sentry.yaml
+
+# Load environment configuration (optional file)
+EnvironmentFile=-/etc/default/sentry
+
+# CLI flags (sentry does not support --config)
+# Environment variables from /etc/default/sentry:
+#   SENTRY_FORCE_COMCH=1         -> --force-comch
+#   SENTRY_DOCA_PCI_ADDR=...     -> --doca-pci-addr=...
+#   SENTRY_DOCA_SERVER_NAME=...  -> --doca-server-name=...
+#   SENTRY_AUTH_KEY=...          -> --auth-key=...
+ExecStart=/bin/sh -c '/usr/bin/sentry \
+    ${SENTRY_FORCE_COMCH:+--force-comch} \
+    ${SENTRY_DOCA_PCI_ADDR:+--doca-pci-addr=$SENTRY_DOCA_PCI_ADDR} \
+    ${SENTRY_DOCA_SERVER_NAME:+--doca-server-name=$SENTRY_DOCA_SERVER_NAME} \
+    ${SENTRY_AUTH_KEY:+--auth-key=$SENTRY_AUTH_KEY}'
+
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

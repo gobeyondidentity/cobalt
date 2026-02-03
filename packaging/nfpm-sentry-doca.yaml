@@ -23,16 +23,16 @@ contents:
     dst: /lib/systemd/system/sentry.service
     type: config
 
-  - src: packaging/config/sentry.yaml
-    dst: /etc/secureinfra/sentry.yaml
-    type: config|noreplace
-
   # Include DOCA runtime libraries for x86_64
   - src: doca-libs/
     dst: /opt/mellanox/doca/lib/x86_64-linux-gnu/
 
+  # ldconfig for DOCA libraries
+  - src: packaging/ld.so.conf.d/doca-x86_64.conf
+    dst: /etc/ld.so.conf.d/doca-x86_64.conf
+
 scripts:
-  postinstall: packaging/scripts/postinstall.sh
+  postinstall: packaging/scripts/postinstall-sentry-doca.sh
   preremove: packaging/scripts/preremove.sh
 
 depends:
