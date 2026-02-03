@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/fatih/color"
+	"github.com/gobeyondidentity/secure-infra/internal/version"
 	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -51,8 +52,9 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 `
 
 var rootCmd = &cobra.Command{
-	Use:   "bluectl",
-	Short: "🧊 Fabric Console CLI for DPU management",
+	Use:     "bluectl",
+	Short:   "🧊 Fabric Console CLI for DPU management",
+	Version: version.Version,
 	Long: `bluectl is a command-line interface for managing NVIDIA BlueField DPUs.
 
 It provides commands to register DPUs, query system information,

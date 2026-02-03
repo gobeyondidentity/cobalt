@@ -55,10 +55,18 @@ var (
 	enrollMode      = flag.Bool("enroll", false, "Run enrollment to register this DPU with the control plane")
 	serial          = flag.String("serial", "", "DPU serial number (required for --enroll)")
 	skipAttestation = flag.Bool("skip-attestation", false, "Skip SPDM attestation (development mode only)")
+
+	// Version flag
+	showVersion = flag.Bool("version", false, "Show version and exit")
 )
 
 func main() {
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("aegis version %s\n", version.Version)
+		os.Exit(0)
+	}
 
 	// Handle enrollment mode
 	if *enrollMode {

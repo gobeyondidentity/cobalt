@@ -21,13 +21,19 @@ import (
 )
 
 var (
-	listenAddr = flag.String("listen", ":18080", "HTTP listen address")
-	dbPath     = flag.String("db", "", "Database path (default: ~/.local/share/bluectl/dpus.db)")
+	listenAddr  = flag.String("listen", ":18080", "HTTP listen address")
+	dbPath      = flag.String("db", "", "Database path (default: ~/.local/share/bluectl/dpus.db)")
+	showVersion = flag.Bool("version", false, "Show version and exit")
 )
 
 func main() {
 	flag.CommandLine.SetOutput(os.Stdout)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("nexus version %s\n", version.Version)
+		os.Exit(0)
+	}
 
 	log.Printf("Fabric Console API v%s starting...", version.Version)
 

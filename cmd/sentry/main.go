@@ -49,7 +49,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("sentry v%s\n", version.Version)
+		fmt.Printf("sentry version %s\n", version.Version)
 		os.Exit(0)
 	}
 

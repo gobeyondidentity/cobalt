@@ -241,13 +241,13 @@ func TestVersionCommandRegistered(t *testing.T) {
 	}
 }
 
-// TestRootCmdVersionFieldRemoved verifies we removed the built-in Version field
-func TestRootCmdVersionFieldRemoved(t *testing.T) {
+// TestRootCmdVersionField verifies the Version field is set for --version flag support
+func TestRootCmdVersionField(t *testing.T) {
 	// Cannot run in parallel - uses shared cobra command state
-	t.Log("Verify rootCmd.Version is empty (we use version subcommand)")
+	t.Log("Verify rootCmd.Version is set (enables --version flag)")
 
-	// rootCmd.Version should be empty since we use a subcommand instead
-	if rootCmd.Version != "" {
-		t.Errorf("rootCmd.Version should be empty (we use version subcommand), got %q", rootCmd.Version)
+	// rootCmd.Version should be set so Cobra auto-handles --version
+	if rootCmd.Version == "" {
+		t.Error("rootCmd.Version should be set to enable --version flag")
 	}
 }
