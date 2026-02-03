@@ -1723,3 +1723,168 @@ func TestNewNexusClientWithDPoPFromPaths_MismatchedFilesReturnsError(t *testing.
 		t.Errorf("expected error about missing key file, got: %v", err)
 	}
 }
+
+// ----- Role Management Client Tests -----
+
+func TestNexusClient_AssignRole(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing AssignRole client method")
+
+	tests := []struct {
+		name       string
+		operatorID string
+		tenantID   string
+		role       string
+		serverCode int
+		wantErr    bool
+	}{
+		{
+			name:       "successful assign",
+			operatorID: "op_abc123",
+			tenantID:   "tnt_xyz789",
+			role:       "tenant:admin",
+			serverCode: http.StatusOK,
+			wantErr:    false,
+		},
+		{
+			name:       "permission denied",
+			operatorID: "op_abc123",
+			tenantID:   "tnt_xyz789",
+			role:       "super:admin",
+			serverCode: http.StatusForbidden,
+			wantErr:    true,
+		},
+		{
+			name:       "operator not found",
+			operatorID: "op_nonexistent",
+			tenantID:   "tnt_xyz789",
+			role:       "operator",
+			serverCode: http.StatusNotFound,
+			wantErr:    true,
+		},
+		{
+			name:       "invalid role",
+			operatorID: "op_abc123",
+			tenantID:   "tnt_xyz789",
+			role:       "invalid",
+			serverCode: http.StatusBadRequest,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Logf("Received request: %s %s", r.Method, r.URL.Path)
+
+				if r.Method != http.MethodPost {
+					t.Errorf("expected POST, got %s", r.Method)
+				}
+
+				expectedPath := "/api/v1/operators/" + tt.operatorID + "/roles"
+				if r.URL.Path != expectedPath {
+					t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
+				}
+
+				// Verify request body
+				var req assignRoleRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("failed to decode request body: %v", err)
+				}
+				if req.TenantID != tt.tenantID {
+					t.Errorf("expected tenant_id %s, got %s", tt.tenantID, req.TenantID)
+				}
+				if req.Role != tt.role {
+					t.Errorf("expected role %s, got %s", tt.role, req.Role)
+				}
+
+				w.WriteHeader(tt.serverCode)
+				if tt.serverCode == http.StatusOK {
+					json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+				} else {
+					json.NewEncoder(w).Encode(map[string]string{"error": "test error"})
+				}
+			}))
+			defer server.Close()
+
+			client := NewNexusClient(server.URL)
+			err := client.AssignRole(context.Background(), tt.operatorID, tt.tenantID, tt.role)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("AssignRole() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNexusClient_RemoveRole(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing RemoveRole client method")
+
+	tests := []struct {
+		name       string
+		operatorID string
+		tenantID   string
+		serverCode int
+		wantErr    bool
+	}{
+		{
+			name:       "successful remove",
+			operatorID: "op_abc123",
+			tenantID:   "tnt_xyz789",
+			serverCode: http.StatusNoContent,
+			wantErr:    false,
+		},
+		{
+			name:       "permission denied",
+			operatorID: "op_abc123",
+			tenantID:   "tnt_xyz789",
+			serverCode: http.StatusForbidden,
+			wantErr:    true,
+		},
+		{
+			name:       "operator not found",
+			operatorID: "op_nonexistent",
+			tenantID:   "tnt_xyz789",
+			serverCode: http.StatusNotFound,
+			wantErr:    true,
+		},
+		{
+			name:       "role not found",
+			operatorID: "op_abc123",
+			tenantID:   "tnt_notamember",
+			serverCode: http.StatusNotFound,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Logf("Received request: %s %s", r.Method, r.URL.Path)
+
+				if r.Method != http.MethodDelete {
+					t.Errorf("expected DELETE, got %s", r.Method)
+				}
+
+				expectedPath := "/api/v1/operators/" + tt.operatorID + "/roles/" + tt.tenantID
+				if r.URL.Path != expectedPath {
+					t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
+				}
+
+				w.WriteHeader(tt.serverCode)
+				if tt.serverCode != http.StatusNoContent {
+					json.NewEncoder(w).Encode(map[string]string{"error": "test error"})
+				}
+			}))
+			defer server.Close()
+
+			client := NewNexusClient(server.URL)
+			err := client.RemoveRole(context.Background(), tt.operatorID, tt.tenantID)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RemoveRole() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

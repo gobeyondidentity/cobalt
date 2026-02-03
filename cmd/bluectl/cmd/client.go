@@ -1047,6 +1047,69 @@ func (c *NexusClient) GrantAuthorization(ctx context.Context, email, tenantID st
 	return &auth, nil
 }
 
+// ----- Role Management Methods -----
+
+// assignRoleRequest is the request body for assigning a role.
+type assignRoleRequest struct {
+	TenantID string `json:"tenant_id"`
+	Role     string `json:"role"`
+}
+
+// AssignRole assigns or updates a role for an operator in a tenant.
+// API: POST /api/v1/operators/{id}/roles
+func (c *NexusClient) AssignRole(ctx context.Context, operatorID, tenantID, role string) error {
+	reqBody := assignRoleRequest{
+		TenantID: tenantID,
+		Role:     role,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/operators/"+operatorID+"/roles", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// RemoveRole removes an operator's role in a specific tenant.
+// API: DELETE /api/v1/operators/{id}/roles/{tenant_id}
+func (c *NexusClient) RemoveRole(ctx context.Context, operatorID, tenantID string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/operators/"+operatorID+"/roles/"+tenantID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 // ----- KeyMaker Methods -----
 
 // keymakerResponse matches the API response for KeyMaker operations.
