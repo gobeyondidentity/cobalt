@@ -5,8 +5,8 @@ package transport
 
 /*
 #cgo CFLAGS: -I/opt/mellanox/doca/include -I${SRCDIR}/csrc
-#cgo linux,arm64 LDFLAGS: -L/opt/mellanox/doca/lib/aarch64-linux-gnu -ldoca_comch -ldoca_common -ldoca_argp -lstdc++ -lnl-3 -lnl-genl-3 -lm
-#cgo linux,amd64 LDFLAGS: -L/opt/mellanox/doca/lib/x86_64-linux-gnu -ldoca_comch -ldoca_common -ldoca_argp -lstdc++ -lnl-3 -lnl-genl-3 -lm
+#cgo linux,arm64 LDFLAGS: -L/opt/mellanox/doca/lib/aarch64-linux-gnu -ldoca_comch -ldoca_common -ldoca_argp -libverbs -lmlx5 -lrdmacm -lcrypto -lnl-3 -lnl-genl-3 -lstdc++ -lm -lpthread -ldl
+#cgo linux,amd64 LDFLAGS: -L/opt/mellanox/doca/lib/x86_64-linux-gnu -ldoca_comch -ldoca_common -ldoca_argp -libverbs -lmlx5 -lrdmacm -lcrypto -lnl-3 -lnl-genl-3 -lstdc++ -lm -lpthread -ldl
 
 #include <stdlib.h>
 #include "comch_shim.h"

@@ -4,7 +4,7 @@
 package transport
 
 /*
-#cgo LDFLAGS: -ldoca_comch -ldoca_argp -ldoca_common -lstdc++ -lnl-3 -lnl-genl-3 -lm
+#cgo LDFLAGS: -ldoca_comch -ldoca_argp -ldoca_common -libverbs -lmlx5 -lrdmacm -lcrypto -lnl-3 -lnl-genl-3 -lstdc++ -lm -lpthread -ldl
 
 #include <doca_comch.h>
 #include <doca_comch_consumer.h>
