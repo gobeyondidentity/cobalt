@@ -31,11 +31,11 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nexus version %s\n", version.Version)
+		fmt.Printf("nexus version %s\n", version.String())
 		os.Exit(0)
 	}
 
-	log.Printf("Fabric Console API v%s starting...", version.Version)
+	log.Printf("Fabric Console API %s starting...", version.String())
 
 	// Open database
 	path := *dbPath
