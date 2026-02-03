@@ -24,7 +24,9 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 # ldflags for embedding version
 LDFLAGS := -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)
 
-.PHONY: all aegis bluectl nexus km sentry dpuemu test clean
+.PHONY: all aegis bluectl nexus km sentry dpuemu test clean \
+	packages package-aegis package-sentry-doca \
+	docker-sentry docker-nexus docker-aegis
 
 # Default target: build all binaries
 all: $(BIN_DIR)
@@ -142,6 +144,100 @@ benchmark:
 # Legacy test targets (aliases for backward compatibility)
 test-integration-remote:
 	WORKBENCH_IP=192.168.1.235 go test -tags=integration -v -timeout 5m ./test/integration/...
+
+# =============================================================================
+# Package Builds for QA Validation
+# Mirrors CI exactly so QA can test packages before release
+# =============================================================================
+
+# Build all standard packages (pure Go, no DOCA)
+# Run anywhere. Output: dist/
+packages:
+	@if ! command -v goreleaser >/dev/null 2>&1; then \
+		echo "Error: goreleaser not found"; \
+		echo "Install: brew install goreleaser (macOS) or go install github.com/goreleaser/goreleaser/v2@latest"; \
+		exit 1; \
+	fi
+	@echo "Building packages with goreleaser..."
+	goreleaser release --snapshot --skip=publish --clean
+	@echo "Packages built in dist/"
+
+# Build aegis package with DOCA (run on BF3 only)
+# Requires: DOCA SDK at /opt/mellanox/doca/, nfpm
+package-aegis:
+	@if [ "$$(uname -m)" != "aarch64" ]; then \
+		echo "Error: package-aegis must run on BF3 (arm64)"; \
+		exit 1; \
+	fi
+	@if ! command -v nfpm >/dev/null 2>&1; then \
+		echo "Error: nfpm not found"; \
+		echo "Install: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest"; \
+		exit 1; \
+	fi
+	@echo "Building aegis with DOCA..."
+	CGO_ENABLED=1 $(GO) build -tags doca \
+		-ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)" \
+		-o aegis ./cmd/aegis
+	@echo "Copying DOCA runtime libraries..."
+	mkdir -p doca-libs
+	cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_comch.so* doca-libs/
+	cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_common.so* doca-libs/
+	@echo "Building packages..."
+	VERSION=$(VERSION) nfpm package -p deb -f packaging/nfpm-aegis.yaml
+	VERSION=$(VERSION) nfpm package -p rpm -f packaging/nfpm-aegis.yaml
+	@echo "Built: aegis_$(VERSION)_arm64.deb, aegis-$(VERSION)-1.aarch64.rpm"
+
+# Build sentry-doca package (run on workbench only)
+# Requires: DOCA SDK at /opt/mellanox/doca/, nfpm
+package-sentry-doca:
+	@if [ "$$(uname -m)" != "x86_64" ]; then \
+		echo "Error: package-sentry-doca must run on workbench (x86_64)"; \
+		exit 1; \
+	fi
+	@if ! command -v nfpm >/dev/null 2>&1; then \
+		echo "Error: nfpm not found"; \
+		echo "Install: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest"; \
+		exit 1; \
+	fi
+	@echo "Building sentry with DOCA..."
+	CGO_ENABLED=1 CGO_LDFLAGS="-L/opt/mellanox/doca/lib/x86_64-linux-gnu" \
+		$(GO) build -tags doca \
+		-ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)" \
+		-o sentry ./cmd/sentry
+	@echo "Copying DOCA runtime libraries..."
+	mkdir -p doca-libs
+	cp /opt/mellanox/doca/lib/x86_64-linux-gnu/libdoca_comch.so* doca-libs/
+	cp /opt/mellanox/doca/lib/x86_64-linux-gnu/libdoca_common.so* doca-libs/
+	@echo "Building packages..."
+	VERSION=$(VERSION) nfpm package -p deb -f packaging/nfpm-sentry-doca.yaml
+	VERSION=$(VERSION) nfpm package -p rpm -f packaging/nfpm-sentry-doca.yaml
+	@echo "Built: sentry-doca_$(VERSION)_amd64.deb, sentry-doca-$(VERSION)-1.x86_64.rpm"
+
+# =============================================================================
+# Docker Builds for QA Validation
+# =============================================================================
+
+# Build sentry container (run anywhere)
+docker-sentry:
+	@echo "Building sentry container..."
+	docker build --provenance=false -f Dockerfile.sentry -t sentry:dev .
+	@echo "Built: sentry:dev"
+
+# Build nexus container (run anywhere)
+docker-nexus:
+	@echo "Building nexus container..."
+	docker build --provenance=false -f Dockerfile.nexus -t nexus:dev .
+	@echo "Built: nexus:dev"
+
+# Build aegis container (run on BF3 only)
+docker-aegis:
+	@if [ "$$(uname -m)" != "aarch64" ]; then \
+		echo "Error: docker-aegis must run on BF3 (arm64)"; \
+		exit 1; \
+	fi
+	@echo "Building aegis container..."
+	docker build -f Dockerfile.aegis -t aegis:dev .
+	@echo "Built: aegis:dev"
 
 # Remove bin directory contents
 clean:
