@@ -190,6 +190,21 @@ func (s *Store) AddOperatorToTenant(operatorID, tenantID, role string) error {
 	return nil
 }
 
+// UpdateOperatorRole updates or creates an operator's role in a tenant.
+// Uses upsert semantics: if the membership exists, updates the role;
+// if it doesn't exist, creates a new membership.
+func (s *Store) UpdateOperatorRole(operatorID, tenantID, role string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO operator_tenants (operator_id, tenant_id, role) VALUES (?, ?, ?)
+		 ON CONFLICT(operator_id, tenant_id) DO UPDATE SET role = excluded.role`,
+		operatorID, tenantID, role,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update operator role: %w", err)
+	}
+	return nil
+}
+
 // RemoveOperatorFromTenant removes an operator from a tenant.
 func (s *Store) RemoveOperatorFromTenant(operatorID, tenantID string) error {
 	result, err := s.db.Exec(

@@ -128,6 +128,10 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/v1/operators/{email}/status", s.handleUpdateOperatorStatus)
 	mux.HandleFunc("DELETE /api/v1/operators/{email}", s.handleDeleteOperator)
 
+	// Role management routes
+	mux.HandleFunc("POST /api/v1/operators/{id}/roles", s.handleAssignRole)
+	mux.HandleFunc("DELETE /api/v1/operators/{id}/roles/{tenant_id}", s.handleRemoveRole)
+
 	// Invite routes
 	mux.HandleFunc("DELETE /api/v1/invites/{code}", s.handleDeleteInvite)
 
