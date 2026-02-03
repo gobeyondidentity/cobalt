@@ -17,6 +17,7 @@ import (
 
 	"github.com/gobeyondidentity/secure-infra/internal/api"
 	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/secure-infra/pkg/authz"
 	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
 	"github.com/gobeyondidentity/secure-infra/pkg/store"
 )
@@ -101,12 +102,33 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpop.WithLogger(logger))
 
-	// Apply middleware: logging -> CORS -> auth -> routes
+	// Initialize Cedar authorization middleware
+	authorizer, err := authz.NewAuthorizer(authz.Config{Logger: logger})
+	if err != nil {
+		log.Fatalf("Failed to initialize authorizer: %v", err)
+	}
+	log.Printf("Cedar authorizer initialized with %d policies", authorizer.PolicyCount())
+
+	actionRegistry := authz.NewActionRegistry()
+	principalLookup := api.NewStorePrincipalLookup(db)
+	resourceExtractor := api.NewStoreResourceExtractor(db)
+	attestationLookup := api.NewStoreAttestationLookup(db)
+
+	authzMiddleware := authz.NewAuthzMiddleware(
+		authorizer,
+		actionRegistry,
+		principalLookup,
+		resourceExtractor,
+		authz.WithLogger(logger),
+		authz.WithAttestationLookup(attestationLookup),
+	)
+
+	// Apply middleware: logging -> CORS -> DPoP auth -> Cedar authz -> routes
 	// CORS wraps auth so that CORS headers (including DPoP) are set even on auth failures
 	// and OPTIONS preflight requests bypass authentication
 	httpServer := &http.Server{
 		Addr:    *listenAddr,
-		Handler: loggingMiddleware(corsMiddleware(authMiddleware.Wrap(mux))),
+		Handler: loggingMiddleware(corsMiddleware(authMiddleware.Wrap(authzMiddleware.Wrap(mux)))),
 	}
 
 	// Handle shutdown

@@ -1,0 +1,215 @@
+// Cedar Schema for Project Cobalt Authorization
+// Defines entity types, attributes, and action mappings per ADR-011
+//
+// Entity Hierarchy:
+//   Tenant (container) -> DPU, CertificateAuthority, Authorization
+//   Operator (principal) -> belongs to Tenants
+//   DPU (principal & resource) -> belongs to single Tenant
+
+namespace Cobalt {
+    // =========================================================================
+    // Principal Types (can appear as principal in authorization requests)
+    // =========================================================================
+
+    // Operator: Human identity (operators, tenant admins, super admins)
+    // Principal when using km or bluectl CLI
+    type Operator = {
+        // Role hierarchy: "operator" < "tenant:admin" < "super:admin"
+        role: String,
+        // Set of tenant IDs this operator belongs to (for multi-tenant support)
+        tenant_ids: Set<String>,
+    };
+
+    // DPU: Device identity (NVIDIA BlueField Data Processing Unit)
+    // Principal when Aegis agent makes requests
+    // Also a Resource when operators manage DPUs
+    type DPU = {
+        // Owning tenant ID
+        tenant: String,
+        // Current attestation status: "verified", "stale", "unavailable", "failed"
+        attestation_status: String,
+    };
+
+    // =========================================================================
+    // Resource Types (targets of authorization requests)
+    // =========================================================================
+
+    // Tenant: Isolation boundary for DPUs and policies
+    type Tenant = {
+        name: String,
+    };
+
+    // CertificateAuthority: Issues credentials for operators
+    type CertificateAuthority = {
+        tenant: String,
+    };
+
+    // Authorization: Links operator to CAs and devices within a tenant
+    type Authorization = {
+        tenant: String,
+    };
+
+    // IssuedCredential: Short-lived credential issued by a CA
+    // Resource when DPU pulls credentials
+    type IssuedCredential = {
+        tenant: String,
+        // Target DPU this credential is destined for (EntityUID reference)
+        target_dpu: DPU,
+    };
+
+    // Cobalt: Root entity representing the Nexus Server
+    type Cobalt = {};
+
+    // =========================================================================
+    // Entity Definitions with Parent Relationships
+    // =========================================================================
+
+    entity Operator in [Tenant] = Operator;
+    entity DPU in [Tenant] = DPU;
+    entity Tenant = Tenant;
+    entity CertificateAuthority in [Tenant] = CertificateAuthority;
+    entity Authorization in [Tenant] = Authorization;
+    entity IssuedCredential in [Tenant] = IssuedCredential;
+    entity Cobalt = Cobalt;
+
+    // =========================================================================
+    // Action Definitions (map 1:1 with API endpoints per ADR-011)
+    // =========================================================================
+
+    // ----- Operator Management -----
+    action "operator:read_self" appliesTo {
+        principal: [Operator],
+        resource: [Operator],
+    };
+    action "operator:invite" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+    action "operator:list" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+    action "operator:read" appliesTo {
+        principal: [Operator],
+        resource: [Operator],
+    };
+    action "operator:revoke" appliesTo {
+        principal: [Operator],
+        resource: [Operator],
+    };
+
+    // ----- Role Management -----
+    action "role:assign" appliesTo {
+        principal: [Operator],
+        resource: [Operator],
+        context: {
+            // Role being assigned: "operator", "tenant:admin", "super:admin"
+            target_role: String,
+            // Tenant context for the role assignment
+            target_tenant: String,
+        },
+    };
+    action "role:remove" appliesTo {
+        principal: [Operator],
+        resource: [Operator],
+    };
+
+    // ----- Authorization Management -----
+    action "authorization:list" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+    action "authorization:create" appliesTo {
+        principal: [Operator],
+        resource: [Authorization],
+    };
+    action "authorization:delete" appliesTo {
+        principal: [Operator],
+        resource: [Authorization],
+    };
+
+    // ----- DPU Management -----
+    action "dpu:list" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+    action "dpu:read" appliesTo {
+        principal: [Operator],
+        resource: [DPU],
+    };
+    action "dpu:register" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+    action "dpu:delete" appliesTo {
+        principal: [Operator],
+        resource: [DPU],
+    };
+    action "dpu:read_attestation" appliesTo {
+        principal: [Operator],
+        resource: [DPU],
+    };
+
+    // ----- Credential Distribution (ATTESTATION GATED) -----
+    action "credential:push" appliesTo {
+        principal: [Operator],
+        resource: [DPU],
+        context: {
+            // Attestation status of the target DPU
+            attestation_status: String,
+            // Whether operator has Authorization for CA+device
+            operator_authorized: Bool,
+        },
+    };
+    action "credential:pull" appliesTo {
+        principal: [DPU],
+        resource: [DPU, IssuedCredential],
+        context: {
+            attestation_status: String,
+        },
+    };
+    action "distribution:list" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+
+    // ----- DPU Self-Access (Aegis agent operations) -----
+    action "dpu:report_attestation" appliesTo {
+        principal: [DPU],
+        resource: [DPU],
+    };
+    action "dpu:read_own_config" appliesTo {
+        principal: [DPU],
+        resource: [DPU],
+    };
+
+    // ----- Tenant Management (bluectl only) -----
+    action "tenant:create" appliesTo {
+        principal: [Operator],
+        resource: [Cobalt],
+    };
+    action "tenant:list" appliesTo {
+        principal: [Operator],
+        resource: [Cobalt],
+    };
+    action "tenant:delete" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+
+    // ----- Audit -----
+    action "audit:export" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+
+    // ----- Trust Management [POST-MVP] -----
+    action "trust:create" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+    action "trust:delete" appliesTo {
+        principal: [Operator],
+        resource: [Tenant],
+    };
+}
