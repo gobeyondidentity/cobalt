@@ -45,6 +45,7 @@ func main() {
 	authKeyPath := flag.String("auth-key", "/etc/secureinfra/host-agent.key", "Path to host authentication key")
 	pollInterval := flag.Duration("poll-interval", 30*time.Second, "Credential polling interval (HTTP transport only)")
 	hostnameFlag := flag.String("hostname", "", "Override hostname (for testing)")
+	healthPort := flag.Int("health-port", 18052, "HTTP health endpoint port (0 to disable)")
 	flag.Parse()
 
 	if *showVersion {
@@ -104,6 +105,14 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	stopCh := make(chan struct{})
+
+	// Start health server
+	healthShutdown := startHealthServer(*healthPort)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		healthShutdown(ctx)
+	}()
 
 	// Run with the selected transport
 	runWithTransport(t, hostname, p, *interval, *oneshot, *dpuAgent, *authKeyPath, *pollInterval, sigCh, stopCh)
@@ -571,4 +580,33 @@ func installSSHCA(name string, data []byte) error {
 
 	log.Printf("SSH CA installed: %s", caPath)
 	return nil
+}
+
+// startHealthServer starts a lightweight HTTP server for health checks.
+// Returns a shutdown function. Pass port=0 to disable.
+func startHealthServer(port int) (shutdown func(context.Context) error) {
+	if port == 0 {
+		return func(context.Context) error { return nil }
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status":"ok","version":"%s"}`, version.Version)
+	})
+
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: mux,
+	}
+
+	go func() {
+		log.Printf("Health endpoint listening on :%d/health", port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("Health server error: %v", err)
+		}
+	}()
+
+	return server.Shutdown
 }
