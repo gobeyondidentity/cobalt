@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.13] - 2026-02-02
+
+### Added
+- **`make release-clean` Target**: QA validation utility that cleans local state, service user files, config files, nexus DB, and kills manually-started processes
+
+### Changed
+- **Aegis Deferred Local API** (si-d2y.5.1): Local HTTP API now initializes after service startup instead of blocking. Enables aegis to start and establish ComCh connection before local API is ready.
+
+### Fixed
+- **DOCA Static Linking**: Complete library dependencies added to CGO LDFLAGS (`libm`, `libnl3`, `libstdc++`) for proper static builds
+- **Aegis Service File**: Shell wrapper added to aegis.service for correct bash variable expansion
+- **Sentry Service File**: Added `/etc/secureinfra` to ReadWritePaths
+- **Version String Format**: Fixed inconsistency across CLIs (nexus now uses `version.String()`)
+- **Documentation URLs**: Updated from secure-infra to cobalt
+
 ## [0.6.12] - 2026-02-02
 
 ### Added
