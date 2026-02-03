@@ -76,7 +76,7 @@ Getting started:
   2. Create an SSH CA:      km ssh-ca create ops-ca
   3. Push to a DPU:         km push ssh-ca ops-ca target-dpu
   4. View history:          km history`,
-	Version:      version.Version,
+	Version:      version.String(),
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip store initialization for commands that don't need it

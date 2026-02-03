@@ -34,7 +34,7 @@ Examples:
 
 func runVersion(cmd *cobra.Command, args []string) error {
 	// Always print current version
-	fmt.Fprintf(cmd.OutOrStdout(), "km version %s\n", version.Version)
+	fmt.Fprintf(cmd.OutOrStdout(), "km version %s\n", version.String())
 
 	// If --skip-update-check is set, or --check is not set, stop here
 	if skipUpdateCheck || !checkForUpdates {

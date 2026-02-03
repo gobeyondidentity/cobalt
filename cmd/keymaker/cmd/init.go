@@ -121,7 +121,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	inviteCode, _ := cmd.Flags().GetString("invite-code")
 
 	// Print header with version and platform info
-	fmt.Printf("KeyMaker v%s\n", version.Version)
+	fmt.Printf("KeyMaker %s\n", version.String())
 	fmt.Printf("Platform: %s (%s)\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Printf("Secure Element: software (TPM/Secure Enclave not available)\n")
 	fmt.Println()

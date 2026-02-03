@@ -16,7 +16,7 @@ func TestVersionCommand_BasicOutput(t *testing.T) {
 	result.AssertSuccess(t)
 
 	// Should contain "km version X.X.X"
-	expectedPrefix := "km version " + version.Version
+	expectedPrefix := "km version " + version.String()
 	result.AssertPrefix(t, expectedPrefix)
 }
 
@@ -28,7 +28,7 @@ func TestVersionCommand_CheckFlag(t *testing.T) {
 	result.AssertSuccess(t)
 
 	// Should contain version info
-	result.AssertContains(t, "km version "+version.Version)
+	result.AssertContains(t, "km version "+version.String())
 
 	// Should contain either:
 	// - "You are running the latest version."
@@ -51,7 +51,7 @@ func TestVersionCommand_SkipUpdateCheckFlag(t *testing.T) {
 	result.AssertSuccess(t)
 
 	// Should contain version info
-	expectedPrefix := "km version " + version.Version
+	expectedPrefix := "km version " + version.String()
 	result.AssertPrefix(t, expectedPrefix)
 
 	// Should NOT contain update check info (since we skipped)

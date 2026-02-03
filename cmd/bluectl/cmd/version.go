@@ -48,7 +48,7 @@ Use --check to check for available updates.`,
 
 func runVersion(cmd *cobra.Command, checker *versioncheck.Checker) error {
 	// Always show current version first
-	fmt.Fprintf(cmd.OutOrStdout(), "bluectl version %s\n", version.Version)
+	fmt.Fprintf(cmd.OutOrStdout(), "bluectl version %s\n", version.String())
 
 	// Skip update check if --skip-update-check is set or --check is not set
 	if skipUpdateCheck || !checkForUpdate {

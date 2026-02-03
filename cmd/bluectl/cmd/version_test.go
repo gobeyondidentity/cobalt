@@ -22,7 +22,7 @@ func TestVersionCommand_BasicOutput(t *testing.T) {
 	result.AssertSuccess(t)
 
 	// Should contain "bluectl version X.Y.Z"
-	expectedPrefix := "bluectl version " + version.Version
+	expectedPrefix := "bluectl version " + version.String()
 	result.AssertPrefix(t, expectedPrefix)
 }
 
@@ -59,8 +59,8 @@ func TestVersionCommand_CheckFlag_UpdateAvailable(t *testing.T) {
 	result := cli.Run(cmd, "--check")
 	result.AssertSuccess(t)
 
-	// Should show current version
-	result.AssertContains(t, "bluectl version "+version.Version)
+	// Should show current version (version.String() adds v prefix, but we set Version="1.0.0")
+	result.AssertContains(t, "bluectl version v1.0.0")
 
 	// Should show newer version available
 	result.AssertContains(t, "A newer version is available: 99.99.99")
@@ -102,7 +102,7 @@ func TestVersionCommand_CheckFlag_NoUpdate(t *testing.T) {
 	result.AssertSuccess(t)
 
 	// Should show current version
-	result.AssertContains(t, "bluectl version "+version.Version)
+	result.AssertContains(t, "bluectl version "+version.String())
 
 	// Should indicate no update available
 	result.AssertContains(t, "You are running the latest version")
@@ -133,7 +133,7 @@ func TestVersionCommand_CheckFlag_NetworkError(t *testing.T) {
 	result.AssertSuccess(t)
 
 	// Should still show current version
-	result.AssertContains(t, "bluectl version "+version.Version)
+	result.AssertContains(t, "bluectl version "+version.String())
 
 	// Should show graceful error message
 	result.AssertContains(t, "Could not check for updates")
@@ -169,7 +169,7 @@ func TestVersionCommand_SkipUpdateCheck(t *testing.T) {
 	}
 
 	// Should only show version
-	result.AssertContains(t, "bluectl version "+version.Version)
+	result.AssertContains(t, "bluectl version "+version.String())
 
 	// Should NOT contain update check messages
 	result.AssertNotContains(t, "newer version")
@@ -205,7 +205,7 @@ func TestVersionCommand_NoFlags_ShowsOnlyVersion(t *testing.T) {
 		t.Error("server should not be called without --check flag")
 	}
 
-	expected := "bluectl version " + version.Version + "\n"
+	expected := "bluectl version " + version.String() + "\n"
 	result.AssertExact(t, expected)
 }
 
@@ -218,7 +218,7 @@ func TestVersionCommand_OutputFormat(t *testing.T) {
 	result.AssertSuccess(t)
 
 	// Should be exactly "bluectl version X.Y.Z\n"
-	expected := "bluectl version " + version.Version + "\n"
+	expected := "bluectl version " + version.String() + "\n"
 	result.AssertExact(t, expected)
 }
 

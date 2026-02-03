@@ -49,7 +49,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("sentry version %s\n", version.Version)
+		fmt.Printf("sentry version %s\n", version.String())
 		os.Exit(0)
 	}
 
@@ -61,7 +61,7 @@ func main() {
 		hostname = *hostnameFlag
 	}
 
-	log.Printf("Sentry v%s starting...", version.Version)
+	log.Printf("Sentry %s starting...", version.String())
 
 	// Handle certificate request mode (uses network)
 	if *requestCertFlag {

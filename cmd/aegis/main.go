@@ -64,20 +64,20 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("aegis version %s\n", version.Version)
+		fmt.Printf("aegis version %s\n", version.String())
 		os.Exit(0)
 	}
 
 	// Handle enrollment mode
 	if *enrollMode {
-		log.Printf("Fabric Console Agent v%s - Enrollment Mode", version.Version)
+		log.Printf("Fabric Console Agent %s - Enrollment Mode", version.String())
 		if err := EnrollCommand(*serial, *server, *skipAttestation); err != nil {
 			log.Fatalf("Enrollment failed: %v", err)
 		}
 		return
 	}
 
-	log.Printf("Fabric Console Agent v%s starting...", version.Version)
+	log.Printf("Fabric Console Agent %s starting...", version.String())
 
 	// Start HTTP health endpoint (always available for monitoring)
 	httpHealthServer := startHealthServer(*healthListen)

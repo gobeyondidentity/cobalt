@@ -54,7 +54,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 var rootCmd = &cobra.Command{
 	Use:     "bluectl",
 	Short:   "🧊 Fabric Console CLI for DPU management",
-	Version: version.Version,
+	Version: version.String(),
 	Long: `bluectl is a command-line interface for managing NVIDIA BlueField DPUs.
 
 It provides commands to register DPUs, query system information,
