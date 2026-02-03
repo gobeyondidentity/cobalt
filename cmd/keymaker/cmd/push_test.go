@@ -59,7 +59,7 @@ func TestCallPushAPI_Success(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -133,7 +133,7 @@ func TestCallPushAPI_SuccessWithForce(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -171,7 +171,7 @@ func TestCallPushAPI_CANotFound(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -206,7 +206,7 @@ func TestCallPushAPI_DeviceNotFound(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -241,7 +241,7 @@ func TestCallPushAPI_NotAuthorized(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -279,7 +279,7 @@ func TestCallPushAPI_AttestationStale(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -324,7 +324,7 @@ func TestCallPushAPI_AttestationFailed(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -361,7 +361,7 @@ func TestCallPushAPI_ConnectionError(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -396,7 +396,7 @@ func TestCallPushAPI_ServerError(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -431,7 +431,7 @@ func TestCallPushAPI_ServiceUnavailable(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 
@@ -470,7 +470,7 @@ func TestCallPushAPI_BadRequest(t *testing.T) {
 	defer func() { pushHTTPClient = originalClient }()
 
 	config := &KMConfig{
-		ControlPlaneURL: "http://localhost:8080",
+		ServerURL: "http://localhost:8080",
 		OperatorID:      "op_123",
 	}
 

@@ -22,7 +22,7 @@ import (
 
 var (
 	listenAddr  = flag.String("listen", ":18080", "HTTP listen address")
-	dbPath      = flag.String("db", "", "Database path (default: ~/.local/share/bluectl/dpus.db)")
+	dbPath      = flag.String("db", "", "Database path (default: ~/.local/share/nexus/nexus.db)")
 	showVersion = flag.Bool("version", false, "Show version and exit")
 )
 
@@ -36,6 +36,9 @@ func main() {
 	}
 
 	log.Printf("Fabric Console API %s starting...", version.String())
+
+	// Set CLI name for state directory isolation
+	store.SetCLIName("nexus")
 
 	// Open database
 	path := *dbPath

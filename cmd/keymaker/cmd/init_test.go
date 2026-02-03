@@ -765,7 +765,7 @@ func TestEnrollment_ConfigStructure(t *testing.T) {
 	// Test that KMConfig marshals correctly
 	config := KMConfig{
 		KID:             "km_test123",
-		ControlPlaneURL: "https://nexus.example.com",
+		ServerURL: "https://nexus.example.com",
 	}
 
 	data, err := json.Marshal(config)
@@ -784,9 +784,9 @@ func TestEnrollment_ConfigStructure(t *testing.T) {
 		t.Error("Expected 'kid' field in JSON output")
 	}
 
-	// Check that 'control_plane_url' field exists
-	if _, ok := parsed["control_plane_url"]; !ok {
-		t.Error("Expected 'control_plane_url' field in JSON output")
+	// Check that 'server_url' field exists
+	if _, ok := parsed["server_url"]; !ok {
+		t.Error("Expected 'server_url' field in JSON output")
 	}
 
 	// Verify the values
@@ -794,8 +794,8 @@ func TestEnrollment_ConfigStructure(t *testing.T) {
 		t.Errorf("Expected kid to be 'km_test123', got %v", parsed["kid"])
 	}
 
-	if parsed["control_plane_url"] != "https://nexus.example.com" {
-		t.Errorf("Expected control_plane_url to be 'https://nexus.example.com', got %v", parsed["control_plane_url"])
+	if parsed["server_url"] != "https://nexus.example.com" {
+		t.Errorf("Expected server_url to be 'https://nexus.example.com', got %v", parsed["server_url"])
 	}
 
 	t.Log("Config structure has correct JSON tags")

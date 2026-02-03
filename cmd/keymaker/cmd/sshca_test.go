@@ -59,7 +59,7 @@ func TestRegisterSSHCA_Success(t *testing.T) {
 
 	config := &KMConfig{
 		OperatorID:      "op_test123",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 	}
 
 	t.Log("Calling registerSSHCA with test config")
@@ -90,7 +90,7 @@ func TestRegisterSSHCA_Conflict(t *testing.T) {
 
 	config := &KMConfig{
 		OperatorID:      "op_test123",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 	}
 
 	t.Log("Calling registerSSHCA expecting conflict response")
@@ -121,7 +121,7 @@ func TestRegisterSSHCA_ServerError(t *testing.T) {
 
 	config := &KMConfig{
 		OperatorID:      "op_test123",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 	}
 
 	t.Log("Calling registerSSHCA expecting error response")
@@ -142,7 +142,7 @@ func TestRegisterSSHCA_ConnectionFailed(t *testing.T) {
 
 	config := &KMConfig{
 		OperatorID:      "op_test123",
-		ControlPlaneURL: "http://localhost:99999", // Invalid port
+		ServerURL: "http://localhost:99999", // Invalid port
 	}
 
 	t.Log("Calling registerSSHCA with unreachable server")
@@ -176,7 +176,7 @@ func TestRegisterSSHCA_BadRequest(t *testing.T) {
 
 	config := &KMConfig{
 		OperatorID:      "op_invalid",
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 	}
 
 	t.Log("Calling registerSSHCA with invalid operator")
@@ -253,7 +253,7 @@ func TestRegisterSSHCA_RequestBody(t *testing.T) {
 
 	config := &KMConfig{
 		OperatorID:      expectedOperatorID,
-		ControlPlaneURL: server.URL,
+		ServerURL: server.URL,
 	}
 
 	t.Log("Calling registerSSHCA with specific values")

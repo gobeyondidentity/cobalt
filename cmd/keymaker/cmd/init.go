@@ -33,12 +33,13 @@ func init() {
 
 // KMConfig is stored in ~/.km/config.json
 type KMConfig struct {
-	KID             string `json:"kid"`               // Server-assigned key ID (e.g., "km_xxx")
-	ControlPlaneURL string `json:"control_plane_url"` // Server URL
+	KID       string `json:"kid"`        // Server-assigned key ID (e.g., "km_xxx")
+	ServerURL string `json:"server_url"` // Server URL
 	// Legacy fields for backward compatibility
-	KeyMakerID    string `json:"keymaker_id,omitempty"`
-	OperatorID    string `json:"operator_id,omitempty"`
-	OperatorEmail string `json:"operator_email,omitempty"`
+	KeyMakerID      string `json:"keymaker_id,omitempty"`
+	OperatorID      string `json:"operator_id,omitempty"`
+	OperatorEmail   string `json:"operator_email,omitempty"`
+	ControlPlaneURL string `json:"control_plane_url,omitempty"` // Deprecated: use ServerURL
 }
 
 // getConfigDirFunc is a variable to allow testing with a custom directory
@@ -167,9 +168,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Save config
 	config := KMConfig{
-		KID:             enrollResult.ID,
-		ControlPlaneURL: serverURL,
-		OperatorEmail:   enrollResult.OperatorEmail,
+		KID:           enrollResult.ID,
+		ServerURL:     serverURL,
+		OperatorEmail: enrollResult.OperatorEmail,
 	}
 
 	configData, _ := json.MarshalIndent(config, "", "  ")
@@ -374,7 +375,7 @@ var whoamiCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Identity: %s\n", kid)
-		fmt.Printf("Server:   %s\n", config.ControlPlaneURL)
+		fmt.Printf("Server:   %s\n", config.ServerURL)
 
 		// Show legacy fields if present and verbose
 		if verbose {
@@ -473,6 +474,11 @@ func loadConfig() (*KMConfig, error) {
 	var config KMConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, err
+	}
+
+	// Migrate from deprecated control_plane_url to server_url
+	if config.ServerURL == "" && config.ControlPlaneURL != "" {
+		config.ServerURL = config.ControlPlaneURL
 	}
 
 	return &config, nil

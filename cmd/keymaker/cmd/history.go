@@ -139,7 +139,7 @@ func runHistory(cmd *cobra.Command, args []string) error {
 	params.Set("limit", strconv.Itoa(limit))
 
 	// Call the server API
-	reqURL := config.ControlPlaneURL + "/api/distribution/history"
+	reqURL := config.ServerURL + "/api/distribution/history"
 	if len(params) > 0 {
 		reqURL += "?" + params.Encode()
 	}

@@ -66,7 +66,7 @@ Examples:
 		}
 
 		// Use DPoP-enabled HTTP client for push requests
-		httpClient, err := getDPoPHTTPClient(config.ControlPlaneURL)
+		httpClient, err := getDPoPHTTPClient(config.ServerURL)
 		if err != nil {
 			return clierror.InternalError(err)
 		}
@@ -153,7 +153,7 @@ func callPushAPI(config *KMConfig, caName, targetDPU string, force bool) (*pushR
 
 	req, err := http.NewRequest(
 		http.MethodPost,
-		config.ControlPlaneURL+"/api/v1/push",
+		config.ServerURL+"/api/v1/push",
 		bytes.NewReader(jsonBody),
 	)
 	if err != nil {
