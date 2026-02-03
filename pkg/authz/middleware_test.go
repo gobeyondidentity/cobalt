@@ -580,3 +580,282 @@ func TestMiddleware_DPUSelfAccess(t *testing.T) {
 
 	t.Log("DPU self-access correctly permitted")
 }
+
+func TestMiddleware_ForceBypass_EmptyReason(t *testing.T) {
+	t.Log("Testing that X-Force-Bypass with empty reason is rejected")
+
+	registry := NewActionRegistry()
+	authorizer, _ := NewAuthorizer(Config{})
+
+	principal := &Principal{
+		UID:       "km_admin123",
+		Type:      PrincipalOperator,
+		Role:      RoleSuperAdmin,
+		TenantIDs: []string{"tenant1"},
+	}
+
+	resource := &Resource{
+		UID:      "dpu_stale",
+		Type:     "DPU",
+		TenantID: "tenant1",
+	}
+
+	middleware := NewAuthzMiddleware(
+		authorizer,
+		registry,
+		&mockPrincipalLookup{principal: principal},
+		&mockResourceExtractor{resource: resource},
+		WithAttestationLookup(&mockAttestationLookup{status: AttestationStale}),
+	)
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should NOT be called with empty bypass reason")
+	}))
+
+	t.Log("Super admin requesting with X-Force-Bypass set to empty string")
+	req := httptest.NewRequest("POST", "/api/v1/push", nil)
+	req.Header.Set("X-Force-Bypass", "") // Empty reason
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        "km_admin123",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_admin",
+	})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusPreconditionFailed {
+		t.Errorf("expected status 412, got %d", rec.Code)
+	}
+
+	t.Log("Empty bypass reason correctly rejected")
+}
+
+func TestMiddleware_ForceBypass_NoHeader_BypassAvailable(t *testing.T) {
+	t.Log("Testing that super:admin without X-Force-Bypass gets 412 with bypass_available=true")
+
+	registry := NewActionRegistry()
+	authorizer, _ := NewAuthorizer(Config{})
+
+	principal := &Principal{
+		UID:       "km_admin123",
+		Type:      PrincipalOperator,
+		Role:      RoleSuperAdmin,
+		TenantIDs: []string{"tenant1"},
+	}
+
+	resource := &Resource{
+		UID:      "dpu_stale",
+		Type:     "DPU",
+		TenantID: "tenant1",
+	}
+
+	middleware := NewAuthzMiddleware(
+		authorizer,
+		registry,
+		&mockPrincipalLookup{principal: principal},
+		&mockResourceExtractor{resource: resource},
+		WithAttestationLookup(&mockAttestationLookup{status: AttestationStale}),
+	)
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should NOT be called without bypass header")
+	}))
+
+	t.Log("Super admin requesting with stale attestation but no X-Force-Bypass header")
+	req := httptest.NewRequest("POST", "/api/v1/push", nil)
+	// No X-Force-Bypass header
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        "km_admin123",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_admin",
+	})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusPreconditionFailed {
+		t.Errorf("expected status 412, got %d", rec.Code)
+	}
+
+	// Verify response indicates bypass is available
+	var errResp map[string]any
+	json.NewDecoder(rec.Body).Decode(&errResp)
+	if errResp["bypass_available"] != true {
+		t.Errorf("expected bypass_available=true in response, got %v", errResp["bypass_available"])
+	}
+
+	t.Log("Super admin correctly received 412 with bypass_available=true")
+}
+
+func TestMiddleware_ForceBypass_TenantAdmin_Rejected(t *testing.T) {
+	t.Log("Testing that tenant:admin cannot use force bypass (only super:admin)")
+
+	registry := NewActionRegistry()
+	authorizer, _ := NewAuthorizer(Config{})
+
+	// Tenant admin (not super admin)
+	principal := &Principal{
+		UID:       "km_tadmin123",
+		Type:      PrincipalOperator,
+		Role:      RoleTenantAdmin,
+		TenantIDs: []string{"tenant1"},
+	}
+
+	resource := &Resource{
+		UID:      "dpu_stale",
+		Type:     "DPU",
+		TenantID: "tenant1",
+	}
+
+	middleware := NewAuthzMiddleware(
+		authorizer,
+		registry,
+		&mockPrincipalLookup{principal: principal},
+		&mockResourceExtractor{resource: resource},
+		WithAttestationLookup(&mockAttestationLookup{status: AttestationStale}),
+	)
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should NOT be called for tenant:admin with force bypass")
+	}))
+
+	t.Log("Tenant admin requesting with stale attestation and X-Force-Bypass header")
+	req := httptest.NewRequest("POST", "/api/v1/push", nil)
+	req.Header.Set("X-Force-Bypass", "emergency maintenance")
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        "km_tadmin123",
+		CallerType: dpop.CallerTypeKeyMaker,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_tadmin",
+	})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	// Tenant admin should be blocked regardless of bypass header
+	if rec.Code != http.StatusPreconditionFailed {
+		t.Errorf("expected status 412, got %d", rec.Code)
+	}
+
+	// Verify bypass is NOT available for tenant:admin
+	var errResp map[string]any
+	json.NewDecoder(rec.Body).Decode(&errResp)
+	if errResp["bypass_available"] == true {
+		t.Errorf("bypass_available should NOT be true for tenant:admin")
+	}
+
+	t.Log("Tenant admin correctly rejected, force bypass not available")
+}
+
+func TestMiddleware_RequestIDGeneration(t *testing.T) {
+	t.Log("Testing that request ID is generated and available in context")
+
+	registry := NewActionRegistry()
+	authorizer, _ := NewAuthorizer(Config{})
+
+	principal := &Principal{
+		UID:       "km_admin123",
+		Type:      PrincipalOperator,
+		Role:      RoleSuperAdmin,
+		TenantIDs: []string{"tenant1"},
+	}
+
+	resource := &Resource{
+		UID:      "dpu_test",
+		Type:     "DPU",
+		TenantID: "tenant1",
+	}
+
+	middleware := NewAuthzMiddleware(
+		authorizer,
+		registry,
+		&mockPrincipalLookup{principal: principal},
+		&mockResourceExtractor{resource: resource},
+	)
+
+	var capturedRequestID string
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRequestID = RequestIDFromContext(r.Context())
+		t.Logf("Request ID in handler: %s", capturedRequestID)
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Log("Making request without X-Request-ID header")
+	req := httptest.NewRequest("GET", "/api/v1/dpus", nil)
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        "km_admin123",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_admin",
+	})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if capturedRequestID == "" {
+		t.Error("request ID should be generated when not provided")
+	}
+
+	t.Logf("Request ID was generated: %s", capturedRequestID)
+}
+
+func TestMiddleware_RequestIDPassthrough(t *testing.T) {
+	t.Log("Testing that provided X-Request-ID header is preserved")
+
+	registry := NewActionRegistry()
+	authorizer, _ := NewAuthorizer(Config{})
+
+	principal := &Principal{
+		UID:       "km_admin123",
+		Type:      PrincipalOperator,
+		Role:      RoleSuperAdmin,
+		TenantIDs: []string{"tenant1"},
+	}
+
+	resource := &Resource{
+		UID:      "dpu_test",
+		Type:     "DPU",
+		TenantID: "tenant1",
+	}
+
+	middleware := NewAuthzMiddleware(
+		authorizer,
+		registry,
+		&mockPrincipalLookup{principal: principal},
+		&mockResourceExtractor{resource: resource},
+	)
+
+	var capturedRequestID string
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRequestID = RequestIDFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	providedID := "custom-request-id-12345"
+	t.Logf("Making request with X-Request-ID: %s", providedID)
+	req := httptest.NewRequest("GET", "/api/v1/dpus", nil)
+	req.Header.Set("X-Request-ID", providedID)
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        "km_admin123",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_admin",
+	})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if capturedRequestID != providedID {
+		t.Errorf("expected request ID %q, got %q", providedID, capturedRequestID)
+	}
+
+	t.Log("Provided X-Request-ID correctly passed through")
+}

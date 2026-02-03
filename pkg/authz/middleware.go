@@ -105,6 +105,16 @@ func (m *AuthzMiddleware) Wrap(next http.Handler) http.Handler {
 		method := r.Method
 		path := r.URL.Path
 
+		// Ensure request ID exists for correlation
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			ctx, requestID = EnsureRequestID(ctx)
+		} else {
+			ctx = ContextWithRequestID(ctx, requestID)
+		}
+		r = r.WithContext(ctx)
+		_ = requestID // Used for logging
+
 		// Step 1: Check pre-auth bypass
 		if m.registry.IsPreAuthEndpoint(method, path) {
 			m.logger.Debug("pre-auth endpoint bypassed",
@@ -289,8 +299,18 @@ func (m *AuthzMiddleware) writeDeniedResponse(
 	case strings.Contains(reason, "attestation failed"):
 		authzErr = ErrAttestationFailed(resource.UID)
 	case strings.Contains(reason, "attestation") && strings.Contains(reason, "stale"):
+		// For super:admin with stale attestation, indicate bypass is available
+		if decision.RequiresForceBypass && principal.Role == RoleSuperAdmin {
+			m.writeBypassAvailableResponse(w, resource.UID, "stale")
+			return
+		}
 		authzErr = ErrAttestationStale(resource.UID)
 	case strings.Contains(reason, "attestation") && strings.Contains(reason, "unavailable"):
+		// For super:admin with unavailable attestation, indicate bypass is available
+		if decision.RequiresForceBypass && principal.Role == RoleSuperAdmin {
+			m.writeBypassAvailableResponse(w, resource.UID, "unavailable")
+			return
+		}
 		authzErr = ErrAttestationUnavailable(resource.UID)
 	default:
 		authzErr = ErrForbidden(decision.Reason)
@@ -308,6 +328,24 @@ func (m *AuthzMiddleware) writeDeniedResponse(
 	)
 
 	m.writeError(w, authzErr.HTTPStatus(), authzErr.Code, authzErr.Message)
+}
+
+// writeBypassAvailableResponse writes a 412 response indicating force bypass is available.
+func (m *AuthzMiddleware) writeBypassAvailableResponse(
+	w http.ResponseWriter,
+	resourceUID string,
+	attestationStatus string,
+) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusPreconditionFailed)
+	json.NewEncoder(w).Encode(map[string]any{
+		"error":              "authz.attestation_" + attestationStatus,
+		"message":            "attestation " + attestationStatus + " - force bypass available",
+		"attestation_status": attestationStatus,
+		"bypass_available":   true,
+		"bypass_header":      "X-Force-Bypass",
+		"bypass_usage":       "Set X-Force-Bypass header to your justification reason (e.g., 'maintenance window')",
+	})
 }
 
 // extractDPUID extracts the DPU ID for attestation lookup.

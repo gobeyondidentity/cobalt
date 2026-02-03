@@ -88,6 +88,17 @@ func (a *Authorizer) Authorize(ctx context.Context, req AuthzRequest) AuthzDecis
 	allowed := decision == cedar.Allow
 	duration := time.Since(start)
 
+	// Attestation gate override: even if Cedar allows, attestation-gated actions
+	// must have verified attestation. This enforces the attestation gate independently
+	// of Cedar policy evaluation.
+	if allowed && RequiresAttestationGate(req.Action) {
+		attestationStatus := getAttestationStatus(req.Context)
+		// Override allow if attestation is not verified
+		if attestationStatus != AttestationVerified && attestationStatus != "" {
+			allowed = false
+		}
+	}
+
 	// Determine reason and RequiresForceBypass
 	reason, requiresForceBypass := a.buildReasonAndBypass(req, allowed, diagnostic)
 
