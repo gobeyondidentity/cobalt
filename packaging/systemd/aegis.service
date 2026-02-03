@@ -9,10 +9,12 @@ Type=simple
 User=root
 Group=root
 EnvironmentFile=/etc/secureinfra/aegis.env
-ExecStart=/usr/bin/aegis --server $AEGIS_SERVER --dpu-name $AEGIS_DPU_NAME \
-    ${DOCA_PCI_ADDR:+--doca-pci-addr $DOCA_PCI_ADDR} \
-    ${DOCA_REP_PCI_ADDR:+--doca-rep-pci-addr $DOCA_REP_PCI_ADDR} \
-    ${DOCA_SERVER_NAME:+--doca-server-name $DOCA_SERVER_NAME}
+ExecStart=/bin/sh -c '/usr/bin/aegis \
+    --server $AEGIS_SERVER \
+    --dpu-name $AEGIS_DPU_NAME \
+    ${DOCA_PCI_ADDR:+--doca-pci-addr=$DOCA_PCI_ADDR} \
+    ${DOCA_REP_PCI_ADDR:+--doca-rep-pci-addr=$DOCA_REP_PCI_ADDR} \
+    ${DOCA_SERVER_NAME:+--doca-server-name=$DOCA_SERVER_NAME}'
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
