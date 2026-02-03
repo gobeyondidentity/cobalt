@@ -24,7 +24,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 # ldflags for embedding version
 LDFLAGS := -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)
 
-.PHONY: all aegis bluectl nexus km sentry dpuemu test clean \
+.PHONY: all aegis bluectl nexus km sentry dpuemu test clean release-clean \
 	packages package-aegis package-sentry-doca \
 	docker-sentry docker-nexus docker-aegis
 
@@ -256,3 +256,55 @@ clean:
 	@echo "Cleaning bin/..."
 	@rm -rf $(BIN_DIR)/*
 	@echo "Done."
+
+# =============================================================================
+# Release Cleanup for QA Validation
+# Removes ALL state from workbench and BF3 for clean-slate testing
+# =============================================================================
+
+release-clean:
+	@echo "=== Release Clean: Removing all state for QA validation ==="
+	@echo ""
+	@echo "--- Workbench: Stopping services ---"
+	sudo systemctl stop nexus 2>/dev/null || true
+	sudo systemctl stop sentry 2>/dev/null || true
+	@echo ""
+	@echo "--- Workbench: Removing packages ---"
+	sudo dpkg -r nexus 2>/dev/null || true
+	sudo dpkg -r sentry-doca 2>/dev/null || true
+	sudo dpkg -r bluectl 2>/dev/null || true
+	sudo dpkg -r km 2>/dev/null || true
+	@echo ""
+	@echo "--- Workbench: Cleaning bluectl state ---"
+	rm -rf ~/.config/bluectl/
+	rm -rf ~/.bluectl/
+	rm -rf ~/.local/share/bluectl/
+	@echo ""
+	@echo "--- Workbench: Cleaning km state ---"
+	rm -rf ~/.km/
+	rm -rf ~/.local/share/km/
+	@echo ""
+	@echo "--- Workbench: Cleaning SSH artifacts ---"
+	sudo rm -f /etc/ssh/ssh_host_ed25519_key-cert.pub
+	sudo rm -rf /etc/ssh/trusted_user_ca_keys.d/
+	@echo ""
+	@echo "--- Workbench: Cleaning old .deb files ---"
+	rm -f ~/secure-infra/*.deb 2>/dev/null || true
+	rm -f ~/secure-infra/dist/*.deb 2>/dev/null || true
+	@echo ""
+	@echo "--- BF3: Cleaning via SSH ---"
+	ssh ubuntu@bluefield3 '\
+		echo "Stopping aegis service..."; \
+		sudo systemctl stop aegis 2>/dev/null || true; \
+		echo "Removing aegis package..."; \
+		sudo dpkg -r aegis 2>/dev/null || true; \
+		echo "Cleaning aegis state..."; \
+		sudo rm -f /var/lib/aegis/aegis.db; \
+		sudo rm -f /etc/aegis/key.pem; \
+		sudo rm -f /etc/aegis/kid; \
+		sudo rm -f /var/lib/secureinfra/known_hosts.json; \
+		echo "Cleaning old .deb files..."; \
+		rm -f ~/secure-infra/*.deb 2>/dev/null || true; \
+		echo "BF3 cleanup complete."'
+	@echo ""
+	@echo "=== Release clean complete ==="
