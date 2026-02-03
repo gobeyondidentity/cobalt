@@ -41,6 +41,10 @@ var (
 	noComch        = flag.Bool("no-comch", false, "Disable ComCh transport listener")
 	keystorePath   = flag.String("keystore", "/var/lib/secureinfra/known_hosts.json", "Path to TOFU keystore for host authentication")
 
+	// Backwards compatibility aliases (deprecated)
+	controlPlane = flag.String("control-plane", "", "Deprecated: use --server instead")
+	localAPI     = flag.Bool("local-api", false, "Deprecated: local API now auto-enables when --server and --dpu-name are set")
+
 	// DOCA ComCh configuration
 	docaPCIAddr    = flag.String("doca-pci-addr", "", "PCI address of DOCA device on DPU (e.g., \"03:00.0\")")
 	docaRepPCIAddr = flag.String("doca-rep-pci-addr", "", "Representor PCI address for host connection")
@@ -57,6 +61,19 @@ var (
 
 func main() {
 	flag.Parse()
+
+	// Handle deprecated flags for backwards compatibility
+	if *controlPlane != "" {
+		if *server == "" {
+			log.Printf("WARNING: --control-plane is deprecated, use --server instead")
+			*server = *controlPlane
+		} else {
+			log.Printf("WARNING: --control-plane is deprecated and ignored (--server takes precedence)")
+		}
+	}
+	if *localAPI {
+		log.Printf("WARNING: --local-api is deprecated and ignored; local API now auto-enables when --server and --dpu-name are set")
+	}
 
 	// Handle enrollment mode
 	if *enrollMode {
