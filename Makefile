@@ -174,14 +174,10 @@ package-aegis:
 		echo "Install: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest"; \
 		exit 1; \
 	fi
-	@echo "Building aegis with DOCA..."
+	@echo "Building aegis with DOCA (static linking)..."
 	CGO_ENABLED=1 $(GO) build -tags doca \
 		-ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)" \
 		-o aegis ./cmd/aegis
-	@echo "Copying DOCA runtime libraries..."
-	mkdir -p doca-libs
-	cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_comch.so* doca-libs/
-	cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_common.so* doca-libs/
 	@echo "Building packages..."
 	VERSION=$(VERSION) nfpm package -p deb -f packaging/nfpm-aegis.yaml
 	VERSION=$(VERSION) nfpm package -p rpm -f packaging/nfpm-aegis.yaml
@@ -199,15 +195,11 @@ package-sentry-doca:
 		echo "Install: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest"; \
 		exit 1; \
 	fi
-	@echo "Building sentry with DOCA..."
+	@echo "Building sentry with DOCA (static linking)..."
 	CGO_ENABLED=1 CGO_LDFLAGS="-L/opt/mellanox/doca/lib/x86_64-linux-gnu" \
 		$(GO) build -tags doca \
 		-ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)" \
 		-o sentry ./cmd/sentry
-	@echo "Copying DOCA runtime libraries..."
-	mkdir -p doca-libs
-	cp /opt/mellanox/doca/lib/x86_64-linux-gnu/libdoca_comch.so* doca-libs/
-	cp /opt/mellanox/doca/lib/x86_64-linux-gnu/libdoca_common.so* doca-libs/
 	@echo "Building packages..."
 	VERSION=$(VERSION) nfpm package -p deb -f packaging/nfpm-sentry-doca.yaml
 	VERSION=$(VERSION) nfpm package -p rpm -f packaging/nfpm-sentry-doca.yaml
