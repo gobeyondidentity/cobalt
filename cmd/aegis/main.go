@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -133,40 +134,21 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	// Auto-enable local API + ComCh when server + dpu-name configured
-	var localServer *localapi.Server
-	var hostListener transport.TransportListener
-	var transportCtx context.Context
-	var transportCancel context.CancelFunc
+	apiState := &localAPIState{}
 
 	if cfg.ServerURL != "" && cfg.DPUName != "" {
-		// Start local API
-		localServer, err = startLocalAPI(ctx, cfg, agentServer)
-		if err != nil {
-			log.Fatalf("Failed to start local API: %v", err)
-		}
-		agentServer.SetLocalAPI(localServer)
-
-		// Start ComCh transport (unless disabled)
-		if !*noComch {
-			hostListener = tryStartTransportListener(*docaPCIAddr, *docaRepPCIAddr, *docaServerName)
-			if hostListener != nil {
-				localServer.SetHostListener(hostListener)
-				agentServer.SetHostListener(hostListener)
-
-				// Create keystore for TOFU authentication
-				keystore, err := transport.NewKeyStore(*keystorePath)
-				if err != nil {
-					log.Fatalf("Failed to create keystore: %v", err)
-				}
-				log.Printf("transport: keystore initialized at %s", *keystorePath)
-
-				// Create auth server for transport connections
-				authServer := transport.NewAuthServer(keystore, 1) // maxConns=1 for single host
-
-				// Start message handling loop with authentication
-				transportCtx, transportCancel = context.WithCancel(ctx)
-				go runTransportLoop(transportCtx, hostListener, localServer, authServer)
-			}
+		if isAegisEnrolled(cfg.ServerURL) {
+			// Already enrolled, start local API immediately
+			initLocalAPIAndTransport(ctx, cfg, agentServer, apiState)
+		} else {
+			// Not yet enrolled, defer local API initialization
+			log.Printf("Awaiting enrollment, local API deferred")
+			go watchForEnrollment(ctx, enrollmentWatcherConfig{
+				pollInterval: 5 * time.Second,
+				serverURL:    cfg.ServerURL,
+			}, func() {
+				initLocalAPIAndTransport(ctx, cfg, agentServer, apiState)
+			})
 		}
 	}
 
@@ -174,24 +156,8 @@ func main() {
 		sig := <-sigCh
 		log.Printf("Received signal %v, shutting down...", sig)
 
-		// Shutdown transport listener first
-		if transportCancel != nil {
-			transportCancel()
-		}
-		if hostListener != nil {
-			if err := hostListener.Close(); err != nil {
-				log.Printf("transport listener shutdown error: %v", err)
-			}
-		}
-
-		// Shutdown local API server
-		if localServer != nil {
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer shutdownCancel()
-			if err := localServer.Stop(shutdownCtx); err != nil {
-				log.Printf("Local API shutdown error: %v", err)
-			}
-		}
+		// Shutdown local API and transport
+		apiState.shutdown()
 
 		// Shutdown HTTP health server
 		if httpHealthServer != nil {
@@ -615,4 +581,121 @@ func fetchAttestation(ctx context.Context, agentServer *aegis.Server) (*localapi
 		Measurements: measurements,
 		LastChecked:  time.Now(),
 	}, nil
+}
+
+// localAPIState holds the state for local API and transport, protected by mutex
+// for safe concurrent access between the enrollment watcher and signal handler.
+type localAPIState struct {
+	mu              sync.Mutex
+	server          *localapi.Server
+	hostListener    transport.TransportListener
+	transportCancel context.CancelFunc
+}
+
+// shutdown gracefully stops the local API and transport.
+func (s *localAPIState) shutdown() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.transportCancel != nil {
+		s.transportCancel()
+	}
+	if s.hostListener != nil {
+		if err := s.hostListener.Close(); err != nil {
+			log.Printf("transport listener shutdown error: %v", err)
+		}
+	}
+	if s.server != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := s.server.Stop(shutdownCtx); err != nil {
+			log.Printf("Local API shutdown error: %v", err)
+		}
+	}
+}
+
+// initLocalAPIAndTransport starts the local API server and ComCh transport.
+// This is called either immediately (if enrolled) or deferred (after enrollment keys appear).
+func initLocalAPIAndTransport(ctx context.Context, cfg *aegis.Config, agentServer *aegis.Server, state *localAPIState) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	// Start local API
+	localServer, err := startLocalAPI(ctx, cfg, agentServer)
+	if err != nil {
+		log.Printf("Failed to start local API: %v", err)
+		return
+	}
+	state.server = localServer
+	agentServer.SetLocalAPI(localServer)
+
+	// Start ComCh transport (unless disabled)
+	if !*noComch {
+		hostListener := tryStartTransportListener(*docaPCIAddr, *docaRepPCIAddr, *docaServerName)
+		if hostListener != nil {
+			state.hostListener = hostListener
+			localServer.SetHostListener(hostListener)
+			agentServer.SetHostListener(hostListener)
+
+			// Create keystore for TOFU authentication
+			keystore, err := transport.NewKeyStore(*keystorePath)
+			if err != nil {
+				log.Printf("Failed to create keystore: %v", err)
+				return
+			}
+			log.Printf("transport: keystore initialized at %s", *keystorePath)
+
+			// Create auth server for transport connections
+			authServer := transport.NewAuthServer(keystore, 1) // maxConns=1 for single host
+
+			// Start message handling loop with authentication
+			transportCtx, transportCancel := context.WithCancel(ctx)
+			state.transportCancel = transportCancel
+			go runTransportLoop(transportCtx, hostListener, localServer, authServer)
+		}
+	}
+}
+
+// isAegisEnrolled checks if aegis has been enrolled (key + kid files exist).
+func isAegisEnrolled(serverURL string) bool {
+	keyPath, kidPath := dpop.DefaultKeyPaths("aegis")
+	keyStore := dpop.NewFileKeyStore(keyPath)
+	kidStore := dpop.NewFileKIDStore(kidPath)
+
+	idCfg := dpop.IdentityConfig{
+		KeyStore:  keyStore,
+		KIDStore:  kidStore,
+		ServerURL: serverURL,
+	}
+
+	return dpop.IsEnrolled(idCfg)
+}
+
+// enrollmentWatcherConfig holds configuration for the enrollment watcher.
+type enrollmentWatcherConfig struct {
+	pollInterval time.Duration
+	serverURL    string
+}
+
+// watchForEnrollment polls for enrollment key files and calls onEnrolled when detected.
+// The watcher runs until ctx is canceled or enrollment is detected.
+func watchForEnrollment(ctx context.Context, cfg enrollmentWatcherConfig, onEnrolled func()) {
+	ticker := time.NewTicker(cfg.pollInterval)
+	defer ticker.Stop()
+
+	keyPath, kidPath := dpop.DefaultKeyPaths("aegis")
+	log.Printf("Watching for enrollment keys: %s, %s", keyPath, kidPath)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if isAegisEnrolled(cfg.serverURL) {
+				log.Printf("Enrollment detected, starting local API")
+				onEnrolled()
+				return
+			}
+		}
+	}
 }
