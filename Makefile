@@ -249,56 +249,70 @@ clean:
 
 release-clean:
 	@echo "=== Release Clean: Removing all state for QA validation ==="
-	@echo ""
-	@echo "--- Workbench: Stopping services ---"
-	sudo systemctl stop nexus 2>/dev/null || true
-	sudo systemctl stop sentry 2>/dev/null || true
-	@echo ""
-	@echo "--- Workbench: Removing packages ---"
-	sudo dpkg -r nexus 2>/dev/null || true
-	sudo dpkg -r sentry-doca 2>/dev/null || true
-	sudo dpkg -r bluectl 2>/dev/null || true
-	sudo dpkg -r km 2>/dev/null || true
-	@echo ""
-	@echo "--- Workbench: Cleaning bluectl state ---"
-	rm -rf ~/.config/bluectl/
-	rm -rf ~/.bluectl/
-	rm -rf ~/.local/share/bluectl/
-	sudo rm -rf ~secureinfra/.local/share/bluectl/ 2>/dev/null || true
-	@echo ""
-	@echo "--- Workbench: Cleaning nexus state ---"
-	sudo rm -f /var/lib/secureinfra/nexus.db /var/lib/secureinfra/nexus.db-wal /var/lib/secureinfra/nexus.db-shm
-	@echo ""
-	@echo "--- Workbench: Cleaning km state ---"
-	rm -rf ~/.km/
-	rm -rf ~/.local/share/km/
-	@echo ""
-	@echo "--- Workbench: Cleaning sentry config ---"
-	sudo rm -f /etc/default/sentry
-	@echo ""
-	@echo "--- Workbench: Cleaning SSH artifacts ---"
-	sudo rm -f /etc/ssh/ssh_host_ed25519_key-cert.pub
-	sudo rm -rf /etc/ssh/trusted_user_ca_keys.d/
-	@echo ""
-	@echo "--- Workbench: Cleaning old .deb files ---"
-	rm -f ~/secure-infra/*.deb 2>/dev/null || true
-	rm -f ~/secure-infra/dist/*.deb 2>/dev/null || true
-	@echo ""
-	@echo "--- BF3: Cleaning via SSH ---"
-	ssh ubuntu@bluefield3 '\
-		echo "Stopping aegis service..."; \
+	@ARCH=$$(uname -m); \
+	if [ "$$ARCH" = "x86_64" ]; then \
+		echo ""; \
+		echo "Detected workbench (x86_64)"; \
+		echo ""; \
+		echo "--- Stopping services ---"; \
+		sudo systemctl stop nexus 2>/dev/null || true; \
+		sudo systemctl stop sentry 2>/dev/null || true; \
+		echo ""; \
+		echo "--- Removing packages ---"; \
+		sudo dpkg -r nexus 2>/dev/null || true; \
+		sudo dpkg -r sentry-doca 2>/dev/null || true; \
+		sudo dpkg -r bluectl 2>/dev/null || true; \
+		sudo dpkg -r km 2>/dev/null || true; \
+		echo ""; \
+		echo "--- Cleaning bluectl state ---"; \
+		rm -rf ~/.config/bluectl/; \
+		rm -rf ~/.bluectl/; \
+		rm -rf ~/.local/share/bluectl/; \
+		sudo rm -rf ~secureinfra/.local/share/bluectl/ 2>/dev/null || true; \
+		echo ""; \
+		echo "--- Cleaning nexus state ---"; \
+		sudo rm -f /var/lib/secureinfra/nexus.db /var/lib/secureinfra/nexus.db-wal /var/lib/secureinfra/nexus.db-shm; \
+		echo ""; \
+		echo "--- Cleaning km state ---"; \
+		rm -rf ~/.km/; \
+		rm -rf ~/.local/share/km/; \
+		echo ""; \
+		echo "--- Cleaning sentry config ---"; \
+		sudo rm -f /etc/default/sentry; \
+		echo ""; \
+		echo "--- Cleaning SSH artifacts ---"; \
+		sudo rm -f /etc/ssh/ssh_host_ed25519_key-cert.pub; \
+		sudo rm -rf /etc/ssh/trusted_user_ca_keys.d/; \
+		echo ""; \
+		echo "--- Cleaning old .deb files ---"; \
+		rm -f ~/secure-infra/*.deb 2>/dev/null || true; \
+		rm -f ~/secure-infra/dist/*.deb 2>/dev/null || true; \
+	elif [ "$$ARCH" = "aarch64" ]; then \
+		echo ""; \
+		echo "Detected BF3 (aarch64)"; \
+		echo ""; \
+		echo "--- Stopping aegis service ---"; \
 		sudo systemctl stop aegis 2>/dev/null || true; \
-		echo "Removing aegis package..."; \
+		echo ""; \
+		echo "--- Removing aegis package ---"; \
 		sudo dpkg -r aegis 2>/dev/null || true; \
-		echo "Cleaning aegis state..."; \
+		echo ""; \
+		echo "--- Cleaning aegis state ---"; \
 		sudo rm -f /var/lib/aegis/aegis.db; \
 		sudo rm -f /etc/aegis/key.pem; \
 		sudo rm -f /etc/aegis/kid; \
 		sudo rm -f /var/lib/secureinfra/known_hosts.json; \
-		echo "Cleaning aegis config..."; \
+		echo ""; \
+		echo "--- Cleaning aegis config ---"; \
 		sudo rm -f /etc/secureinfra/aegis.env; \
-		echo "Cleaning old .deb files..."; \
+		echo ""; \
+		echo "--- Cleaning old .deb files ---"; \
 		rm -f ~/secure-infra/*.deb 2>/dev/null || true; \
-		echo "BF3 cleanup complete."'
+	else \
+		echo ""; \
+		echo "Unknown architecture: $$ARCH"; \
+		echo "Expected x86_64 (workbench) or aarch64 (BF3)"; \
+		exit 1; \
+	fi
 	@echo ""
 	@echo "=== Release clean complete ==="
