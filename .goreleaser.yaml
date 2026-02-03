@@ -223,7 +223,7 @@ brews:
     description: "Nexus control plane for Project Cobalt"
     license: "Apache-2.0"
     install: |
-      bin.install "control-plane" => "nexus"
+      bin.install "nexus"
     test: |
       system "#{bin}/nexus", "--help"
 
