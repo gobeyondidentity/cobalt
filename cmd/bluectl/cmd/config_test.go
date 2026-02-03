@@ -190,3 +190,101 @@ func TestEmptyConfigYAML(t *testing.T) {
 		t.Errorf("Empty YAML produced Server = %q, want empty", cfg.Server)
 	}
 }
+
+func TestNormalizeServerURL(t *testing.T) {
+	t.Log("Testing URL normalization auto-prefixes http:// when no scheme provided")
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "bare IP with port",
+			input: "192.168.1.127:18080",
+			want:  "http://192.168.1.127:18080",
+		},
+		{
+			name:  "bare IP without port",
+			input: "192.168.1.127",
+			want:  "http://192.168.1.127",
+		},
+		{
+			name:  "hostname with port",
+			input: "nexus.example.com:18080",
+			want:  "http://nexus.example.com:18080",
+		},
+		{
+			name:  "hostname without port",
+			input: "nexus.example.com",
+			want:  "http://nexus.example.com",
+		},
+		{
+			name:  "http scheme already present",
+			input: "http://192.168.1.127:18080",
+			want:  "http://192.168.1.127:18080",
+		},
+		{
+			name:  "https scheme already present",
+			input: "https://nexus.example.com:443",
+			want:  "https://nexus.example.com:443",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("Input: %q", tt.input)
+			got := NormalizeServerURL(tt.input)
+			if got != tt.want {
+				t.Errorf("NormalizeServerURL(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+			t.Logf("Output: %q (correct)", got)
+		})
+	}
+}
+
+func TestGetServerNormalizesBareIP(t *testing.T) {
+	t.Log("Testing GetServer normalizes bare IP addresses from flag")
+
+	// Save original flag value
+	originalFlag := serverFlag
+	defer func() { serverFlag = originalFlag }()
+
+	// Clear any env vars
+	os.Unsetenv("SERVER_URL")
+
+	// Set flag to bare IP with port
+	serverFlag = "192.168.1.127:18080"
+
+	server := GetServer()
+	want := "http://192.168.1.127:18080"
+	if server != want {
+		t.Errorf("GetServer() = %q, want %q", server, want)
+	}
+	t.Logf("Bare IP %q normalized to %q", serverFlag, server)
+}
+
+func TestGetServerNormalizesEnvVar(t *testing.T) {
+	t.Log("Testing GetServer normalizes bare IP addresses from SERVER_URL env var")
+
+	// Save and clear flag
+	originalFlag := serverFlag
+	defer func() { serverFlag = originalFlag }()
+	serverFlag = ""
+
+	// Set SERVER_URL to bare IP
+	os.Setenv("SERVER_URL", "192.168.1.127")
+	defer os.Unsetenv("SERVER_URL")
+
+	server := GetServer()
+	want := "http://192.168.1.127"
+	if server != want {
+		t.Errorf("GetServer() = %q, want %q", server, want)
+	}
+	t.Logf("Bare IP from env var normalized to %q", server)
+}

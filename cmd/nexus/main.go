@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -57,6 +58,13 @@ func main() {
 	if path == "" {
 		path = store.DefaultPath()
 	}
+
+	// Resolve to absolute path for logging
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path // Fall back to original if resolution fails
+	}
+	log.Printf("Database: %s", absPath)
 
 	db, err := store.Open(path)
 	if err != nil {

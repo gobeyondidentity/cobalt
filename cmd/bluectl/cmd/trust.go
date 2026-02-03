@@ -53,7 +53,7 @@ Examples:
   bluectl trust create compute-01 slurm-head
   bluectl trust create compute-01 slurm-head --type mtls
   bluectl trust create compute-01 slurm-head --bidirectional`,
-	Args: cobra.ExactArgs(2),
+	Args: ExactArgsWithUsage(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sourceHostname := args[0]
 		targetHostname := args[1]
@@ -191,7 +191,7 @@ Use --yes/-y to skip the confirmation prompt.
 Examples:
   bluectl trust delete tr_a1b2c3d4
   bluectl trust delete tr_a1b2c3d4 --yes`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		trustID := args[0]
 		yes, _ := cmd.Flags().GetBool("yes")

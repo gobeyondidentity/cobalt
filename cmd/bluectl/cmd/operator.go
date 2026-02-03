@@ -74,7 +74,7 @@ Examples:
   bluectl operator invite nelson@acme.com acme
   bluectl operator invite marcus@acme.com acme tenant:admin
   bluectl operator invite admin@acme.com acme super:admin`,
-	Args: cobra.RangeArgs(2, 3),
+	Args: RangeArgsWithUsage(2, 3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		tenantName := args[1]
@@ -201,7 +201,7 @@ authorization checks will fail until reactivated.
 
 Examples:
   bluectl operator suspend marcus@acme.com`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
@@ -242,7 +242,7 @@ var operatorActivateCmd = &cobra.Command{
 
 Examples:
   bluectl operator activate marcus@acme.com`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
@@ -291,7 +291,7 @@ Examples:
   bluectl operator grant nelson@acme.com acme ops-ca bf3-lab-01
   bluectl operator grant nelson@acme.com acme ops-ca bf3-lab-01,bf3-lab-02
   bluectl operator grant nelson@acme.com acme dev-ca all`,
-	Args: cobra.ExactArgs(4),
+	Args: ExactArgsWithUsage(4),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		tenantName := args[1]
@@ -385,7 +385,7 @@ var operatorAuthorizationsCmd = &cobra.Command{
 
 Examples:
   bluectl operator authorizations nelson@acme.com`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
@@ -410,7 +410,7 @@ var operatorRevokeCmd = &cobra.Command{
 
 Examples:
   bluectl operator revoke nelson@acme.com --tenant acme --ca ops-ca`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		tenantName, _ := cmd.Flags().GetString("tenant")
@@ -444,7 +444,7 @@ Use --yes/-y to skip the confirmation prompt.
 Examples:
   bluectl operator remove marcus@acme.com
   bluectl operator remove marcus@acme.com --yes`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		yes, _ := cmd.Flags().GetBool("yes")
