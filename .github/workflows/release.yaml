@@ -395,18 +395,10 @@ jobs:
           brew upgrade nmelo/tap/km
           \`\`\`
 
-          ### CLI Tools (Debian/Ubuntu)
+          ### CLI Tools (Linux)
           \`\`\`bash
-          # Add repository (auto-detects your distro)
-          curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.deb.sh' | sudo bash
-          sudo apt update && sudo apt install bluectl km
-          \`\`\`
-
-          ### CLI Tools (RHEL/Fedora)
-          \`\`\`bash
-          # Add repository (auto-detects your distro)
-          curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.rpm.sh' | sudo bash
-          sudo yum install bluectl km
+          # Set up repository and install (auto-detects distro and validates architecture)
+          curl -1sLf 'https://raw.githubusercontent.com/gobeyondidentity/cobalt/main/scripts/install.sh' | sudo bash -s bluectl km
           \`\`\`
 
           ### CLI Tools (Direct Download)
