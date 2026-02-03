@@ -34,7 +34,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/secureinfra
+ReadWritePaths=/var/lib/secureinfra /etc/secureinfra
 
 [Install]
 WantedBy=multi-user.target
