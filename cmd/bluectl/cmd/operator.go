@@ -10,6 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ValidRoles defines the valid role values for operator invites.
+var ValidRoles = []string{"operator", "tenant:admin", "super:admin"}
+
 func init() {
 	rootCmd.AddCommand(operatorCmd)
 	operatorCmd.AddCommand(operatorInviteCmd)
@@ -21,8 +24,7 @@ func init() {
 	operatorCmd.AddCommand(operatorRevokeCmd)
 	operatorCmd.AddCommand(operatorRemoveCmd)
 
-	// Flags for operator invite
-	operatorInviteCmd.Flags().String("role", "operator", "Role: admin or operator")
+	// No flags for operator invite - role is now a positional argument
 
 	// Flags for operator list
 	operatorListCmd.Flags().String("tenant", "", "Filter by tenant")
@@ -55,25 +57,44 @@ Workflow:
 }
 
 var operatorInviteCmd = &cobra.Command{
-	Use:   "invite <email> <tenant>",
+	Use:   "invite <email> <tenant> [role]",
 	Short: "Invite an operator to a tenant",
 	Long: `Generate an invite code for an operator to join a tenant.
 
 The invite code should be shared with the operator, who will use it
 with 'km init' to bind their KeyMaker to the control plane.
 
+Arguments:
+  email   Operator email address
+  tenant  Tenant name
+  role    Role to assign (optional, default: operator)
+          Valid values: operator, tenant:admin, super:admin
+
 Examples:
   bluectl operator invite nelson@acme.com acme
-  bluectl operator invite marcus@acme.com acme --role admin`,
-	Args: cobra.ExactArgs(2),
+  bluectl operator invite marcus@acme.com acme tenant:admin
+  bluectl operator invite admin@acme.com acme super:admin`,
+	Args: cobra.RangeArgs(2, 3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		tenantName := args[1]
-		role, _ := cmd.Flags().GetString("role")
+
+		// Default role to "operator" if not provided
+		role := "operator"
+		if len(args) == 3 {
+			role = args[2]
+		}
 
 		// Validate role
-		if role != "admin" && role != "operator" {
-			return fmt.Errorf("invalid role: %s (must be 'admin' or 'operator')", role)
+		validRole := false
+		for _, r := range ValidRoles {
+			if role == r {
+				validRole = true
+				break
+			}
+		}
+		if !validRole {
+			return fmt.Errorf("invalid role: %s (must be one of: %s)", role, strings.Join(ValidRoles, ", "))
 		}
 
 		serverURL, err := requireServer()

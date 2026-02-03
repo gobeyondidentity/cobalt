@@ -217,22 +217,62 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 		req.Role = "operator"
 	}
 
-	// Validate role
-	if req.Role != "admin" && req.Role != "operator" {
-		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid role: %s (must be 'admin' or 'operator')", req.Role))
+	// Validate role - role privilege levels for authorization checks
+	rolePrivilege := map[string]int{
+		"operator":     1, // lowest privilege
+		"tenant:admin": 2,
+		"super:admin":  3, // highest privilege
+	}
+	requestedPrivilege, ok := rolePrivilege[req.Role]
+	if !ok {
+		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid role: %s (must be 'operator', 'tenant:admin', or 'super:admin')", req.Role))
 		return
 	}
 
-	// Get tenant
+	// Get tenant (needed for both validation and authorization check)
 	tenant, err := s.store.GetTenant(req.TenantName)
 	if err != nil {
 		writeError(w, r, http.StatusNotFound, fmt.Sprintf("tenant not found: %s", req.TenantName))
 		return
 	}
 
-	// Get admin identity from auth context for audit logging
+	// Authorization check: caller cannot invite with role higher than their own
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity != nil && identity.OperatorID != "" {
+		// Check if caller is super:admin in any tenant (grants global access per ADR-011)
+		isSuperAdmin, err := s.store.IsSuperAdmin(identity.OperatorID)
+		if err != nil {
+			writeError(w, r, http.StatusInternalServerError, "failed to check caller permissions")
+			return
+		}
+
+		if isSuperAdmin {
+			// Super-admin can assign any role
+		} else {
+			// Not super-admin: check caller's role in the target tenant
+			callerRole, err := s.store.GetOperatorRole(identity.OperatorID, tenant.ID)
+			if err != nil {
+				writeError(w, r, http.StatusForbidden, "you do not have permission to invite operators to this tenant")
+				return
+			}
+
+			callerPrivilege := rolePrivilege[callerRole]
+			if callerPrivilege == 0 {
+				// Unknown role defaults to operator (lowest)
+				callerPrivilege = 1
+			}
+
+			// Caller cannot invite with role higher than their own
+			if requestedPrivilege > callerPrivilege {
+				writeError(w, r, http.StatusForbidden, fmt.Sprintf("cannot invite with role '%s': your role '%s' does not have sufficient privileges", req.Role, callerRole))
+				return
+			}
+		}
+	}
+
+	// Get admin identity from auth context for audit logging (reuse identity from authorization check)
 	adminKID := "unknown"
-	if identity := dpop.IdentityFromContext(r.Context()); identity != nil {
+	if identity != nil {
 		adminKID = identity.KID
 	}
 

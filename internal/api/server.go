@@ -22,17 +22,36 @@ import (
 // Example: "enroll_" + uuid.New().String()[:UUIDShortLength] produces "enroll_abc12345"
 const UUIDShortLength = 8
 
+// ServerConfig holds configuration options for the API server.
+type ServerConfig struct {
+	// AttestationStaleAfter is the duration after which attestation is considered stale.
+	// Defaults to 1 hour if zero.
+	AttestationStaleAfter time.Duration
+}
+
 // Server is the HTTP API server.
 type Server struct {
 	store *store.Store
 	gate  *attestation.Gate
 }
 
-// NewServer creates a new API server.
+// NewServer creates a new API server with default configuration.
 func NewServer(s *store.Store) *Server {
+	return NewServerWithConfig(s, ServerConfig{})
+}
+
+// NewServerWithConfig creates a new API server with the given configuration.
+func NewServerWithConfig(s *store.Store, cfg ServerConfig) *Server {
+	gate := attestation.NewGate(s)
+
+	// Apply attestation staleness configuration
+	if cfg.AttestationStaleAfter > 0 {
+		gate.FreshnessWindow = cfg.AttestationStaleAfter
+	}
+
 	return &Server{
 		store: s,
-		gate:  attestation.NewGate(s),
+		gate:  gate,
 	}
 }
 
