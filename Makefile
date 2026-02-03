@@ -230,14 +230,26 @@ docker-nexus:
 	@echo "Built: nexus:dev (version: $(VERSION))"
 
 # Build aegis container (run on BF3 only)
+# Bundles DOCA and RDMA libs from host to avoid version mismatch with Ubuntu base
 docker-aegis:
 	@if [ "$$(uname -m)" != "aarch64" ]; then \
 		echo "Error: docker-aegis must run on BF3 (arm64)"; \
 		exit 1; \
 	fi
+	@echo "Building aegis binary with DOCA..."
+	CGO_ENABLED=1 $(GO) build -tags doca \
+		-ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)" \
+		-o aegis ./cmd/aegis
+	@echo "Bundling DOCA and RDMA libraries from host..."
+	mkdir -p doca-libs
+	cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_comch.so* doca-libs/
+	cp /opt/mellanox/doca/lib/aarch64-linux-gnu/libdoca_common.so* doca-libs/
+	cp /usr/lib/aarch64-linux-gnu/libibverbs.so* doca-libs/
+	cp /usr/lib/aarch64-linux-gnu/libmlx5.so* doca-libs/
+	cp /usr/lib/aarch64-linux-gnu/libibverbs/*.so* doca-libs/ 2>/dev/null || true
 	@echo "Building aegis container..."
-	docker build -f Dockerfile.aegis -t aegis:dev .
-	@echo "Built: aegis:dev"
+	docker build --provenance=false -f Dockerfile.aegis -t aegis:dev .
+	@echo "Built: aegis:dev (version: $(VERSION))"
 
 # Remove bin directory contents
 clean:

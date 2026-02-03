@@ -3,24 +3,27 @@
 #
 # This Dockerfile expects:
 # - aegis binary in the build context (built with CGO and DOCA)
-# - DOCA runtime libraries copied from the host
+# - DOCA and RDMA runtime libraries copied from the host (doca-libs/)
+#
+# Note: We bundle libibverbs and libmlx5 from the BF3 host rather than
+# installing from Ubuntu apt because DOCA requires newer versions than
+# Ubuntu 24.04 provides.
 
 FROM ubuntu:24.04
 
-# Install minimal runtime dependencies
+# Install minimal runtime dependencies (no RDMA libs - bundled from host)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libstdc++6 \
     libnl-3-200 \
     libnl-route-3-200 \
-    libibverbs1 \
-    libmlx5-1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create DOCA library directory
+# Create library directory for bundled libs
 RUN mkdir -p /opt/mellanox/doca/lib/aarch64-linux-gnu
 
-# Copy DOCA runtime libraries from build context
+# Copy DOCA and RDMA runtime libraries from build context
+# Includes: libdoca_*, libibverbs, libmlx5, and dependencies
 COPY doca-libs/ /opt/mellanox/doca/lib/aarch64-linux-gnu/
 
 # Configure library path
