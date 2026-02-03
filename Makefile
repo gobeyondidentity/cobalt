@@ -220,14 +220,14 @@ package-sentry-doca:
 # Build sentry container (run anywhere)
 docker-sentry:
 	@echo "Building sentry container..."
-	docker build --provenance=false -f Dockerfile.sentry -t sentry:dev .
-	@echo "Built: sentry:dev"
+	docker build --provenance=false --build-arg VERSION=$(VERSION) -f Dockerfile.sentry -t sentry:dev .
+	@echo "Built: sentry:dev (version: $(VERSION))"
 
 # Build nexus container (run anywhere)
 docker-nexus:
 	@echo "Building nexus container..."
-	docker build --provenance=false -f Dockerfile.nexus -t nexus:dev .
-	@echo "Built: nexus:dev"
+	docker build --provenance=false --build-arg VERSION=$(VERSION) -f Dockerfile.nexus -t nexus:dev .
+	@echo "Built: nexus:dev (version: $(VERSION))"
 
 # Build aegis container (run on BF3 only)
 docker-aegis:

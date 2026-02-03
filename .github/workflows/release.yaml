@@ -293,7 +293,10 @@ jobs:
 
       - name: Build and push amd64 image
         run: |
-          docker build --provenance=false -f ${{ matrix.dockerfile }} -t ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 .
+          docker build --provenance=false \
+            --build-arg VERSION=${{ steps.version.outputs.VERSION }} \
+            -f ${{ matrix.dockerfile }} \
+            -t ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64 .
           docker push ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-amd64
 
   # Build arm64 container images (native on spark-1)
@@ -320,7 +323,10 @@ jobs:
 
       - name: Build and push arm64 image
         run: |
-          docker build --provenance=false -f ${{ matrix.dockerfile }} -t ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64 .
+          docker build --provenance=false \
+            --build-arg VERSION=${{ steps.version.outputs.VERSION }} \
+            -f ${{ matrix.dockerfile }} \
+            -t ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64 .
           docker push ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ steps.version.outputs.VERSION }}-arm64
 
   # Create multi-arch manifests from native images
