@@ -13,6 +13,7 @@ const (
 	ErrCodeAttestationUnavailable = "authz.attestation_unavailable" // DPU attestation unavailable
 	ErrCodeAttestationFailed      = "authz.attestation_failed"      // DPU attestation failed (hard block)
 	ErrCodeUnknownAction          = "authz.unknown_action"          // Action not in registry
+	ErrCodeUnknownRoute           = "authz.unknown_route"           // Route not in action registry
 	ErrCodePolicyError            = "authz.policy_error"            // Policy evaluation error
 )
 
@@ -23,6 +24,7 @@ var httpStatusMap = map[string]int{
 	ErrCodeAttestationUnavailable: http.StatusPreconditionFailed,  // 412
 	ErrCodeAttestationFailed:      http.StatusPreconditionFailed,  // 412
 	ErrCodeUnknownAction:          http.StatusBadRequest,          // 400
+	ErrCodeUnknownRoute:           http.StatusNotFound,            // 404
 	ErrCodePolicyError:            http.StatusInternalServerError, // 500
 }
 
@@ -85,6 +87,12 @@ func ErrUnknownAction(action string) *AuthzError {
 // ErrPolicyError creates an error for policy evaluation failures.
 func ErrPolicyError(detail string) *AuthzError {
 	return newError(ErrCodePolicyError, fmt.Sprintf("policy evaluation error: %s", detail))
+}
+
+// ErrUnknownRoute creates an error for routes not in the action registry.
+// SECURITY: Unknown routes return error (fail-secure), not silent pass.
+func ErrUnknownRoute(method, path string) *AuthzError {
+	return newError(ErrCodeUnknownRoute, fmt.Sprintf("unknown route %s %s", method, path))
 }
 
 // ErrorCode extracts the authz error code from an error.
