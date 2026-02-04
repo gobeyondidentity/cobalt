@@ -877,24 +877,167 @@ func (s *Server) handleGetKeyMaker(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.keymakerToResponse(km))
 }
 
+// RevokeKeyMakerRequest is the request body for revoking a KeyMaker.
+type RevokeKeyMakerRequest struct {
+	Reason string `json:"reason"`
+}
+
+// RevokeKeyMakerResponse is the response for a successful KeyMaker revocation.
+type RevokeKeyMakerResponse struct {
+	ID            string `json:"id"`
+	Status        string `json:"status"`
+	RevokedAt     string `json:"revoked_at"`
+	RevokedBy     string `json:"revoked_by"`
+	RevokedReason string `json:"revoked_reason"`
+}
+
 // handleRevokeKeyMaker handles DELETE /api/v1/keymakers/{id}
+// Requires JSON body with reason field.
+// Authorization: operator can revoke own, tenant:admin for tenant, super:admin for any.
 func (s *Server) handleRevokeKeyMaker(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	// Check if keymaker exists first
+	// Parse request body
+	var req RevokeKeyMakerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		return
+	}
+
+	// Validate reason is non-empty
+	req.Reason = strings.TrimSpace(req.Reason)
+	if req.Reason == "" {
+		writeError(w, r, http.StatusBadRequest, "reason is required")
+		return
+	}
+
+	// Get KeyMaker to check existence and ownership
 	km, err := s.store.GetKeyMaker(id)
 	if err != nil {
 		writeError(w, r, http.StatusNotFound, "KeyMaker not found")
 		return
 	}
 
-	// Revoke the keymaker
-	if err := s.store.RevokeKeyMaker(id); err != nil {
+	// Check if already revoked
+	if km.Status == "revoked" {
+		writeError(w, r, http.StatusConflict, "KeyMaker already revoked")
+		return
+	}
+
+	// Get caller identity
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	// Authorization check
+	authorized, authzErr := s.authorizeKeyMakerRevocation(identity, km)
+	if authzErr != nil {
+		writeError(w, r, http.StatusInternalServerError, "authorization check failed")
+		return
+	}
+	if !authorized {
+		writeError(w, r, http.StatusForbidden, "not authorized to revoke this KeyMaker")
+		return
+	}
+
+	// Atomically revoke (handles concurrent revocation with 409)
+	if err := s.store.RevokeKeyMakerAtomic(id, identity.KID, req.Reason); err != nil {
+		if err == store.ErrAlreadyRevoked {
+			writeError(w, r, http.StatusConflict, "KeyMaker already revoked")
+			return
+		}
 		writeError(w, r, http.StatusInternalServerError, "Failed to revoke keymaker: "+err.Error())
 		return
 	}
 
-	log.Printf("KeyMaker revoked: id=%s operator_id=%s name=%s", km.ID, km.OperatorID, km.Name)
+	// Re-fetch to get updated timestamps
+	km, err = s.store.GetKeyMaker(id)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "Failed to fetch revoked keymaker")
+		return
+	}
 
-	w.WriteHeader(http.StatusNoContent)
+	// Audit log the revocation
+	auditEntry := &store.AuditEntry{
+		Timestamp: time.Now(),
+		Action:    "keymaker.revoke",
+		Target:    km.ID,
+		Decision:  "allowed",
+		Details: map[string]string{
+			"actor":       identity.KID,
+			"operator_id": km.OperatorID,
+			"reason":      req.Reason,
+		},
+	}
+	if _, err := s.store.InsertAuditEntry(auditEntry); err != nil {
+		log.Printf("failed to insert audit entry for keymaker revocation: %v", err)
+		// Don't fail the request, audit logging is non-critical
+	}
+
+	log.Printf("KeyMaker revoked: id=%s operator_id=%s name=%s by=%s reason=%s",
+		km.ID, km.OperatorID, km.Name, identity.KID, req.Reason)
+
+	// Build response
+	resp := RevokeKeyMakerResponse{
+		ID:            km.ID,
+		Status:        km.Status,
+		RevokedReason: req.Reason,
+		RevokedBy:     identity.KID,
+	}
+	if km.RevokedAt != nil {
+		resp.RevokedAt = km.RevokedAt.Format(time.RFC3339)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// authorizeKeyMakerRevocation checks if the caller can revoke a KeyMaker.
+// Rules per security-architecture.md:
+// - Operator can revoke own KeyMakers
+// - tenant:admin can revoke KeyMakers for operators in own tenant
+// - super:admin can revoke any KeyMaker
+func (s *Server) authorizeKeyMakerRevocation(identity *dpop.Identity, km *store.KeyMaker) (bool, error) {
+	// Self-revocation: operator can revoke their own KeyMakers
+	if identity.OperatorID == km.OperatorID {
+		return true, nil
+	}
+
+	// Check if caller is super:admin (can revoke any KeyMaker)
+	isSuperAdmin, err := s.store.IsSuperAdmin(identity.OperatorID)
+	if err != nil {
+		return false, err
+	}
+	if isSuperAdmin {
+		return true, nil
+	}
+
+	// Check if caller is tenant:admin in a tenant where the KeyMaker's operator is a member
+	// First, get the KeyMaker's operator's tenant memberships
+	targetTenants, err := s.store.GetOperatorTenants(km.OperatorID)
+	if err != nil {
+		return false, err
+	}
+
+	// Check if caller has tenant:admin in any of those tenants
+	callerTenants, err := s.store.GetOperatorTenants(identity.OperatorID)
+	if err != nil {
+		return false, err
+	}
+
+	for _, callerMembership := range callerTenants {
+		if callerMembership.Role != "tenant:admin" {
+			continue
+		}
+		// Check if target operator is in this tenant
+		for _, targetMembership := range targetTenants {
+			if targetMembership.TenantID == callerMembership.TenantID {
+				return true, nil
+			}
+		}
+	}
+
+	// Not authorized
+	return false, nil
 }
