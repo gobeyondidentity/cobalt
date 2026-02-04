@@ -982,6 +982,54 @@ func (s *Store) RevokeAdminKeyWithReason(id, revokedBy, reason string) error {
 	return nil
 }
 
+// CountActiveSuperAdminKeys returns the count of active admin keys belonging to
+// operators who have super:admin role in any tenant. Used to prevent revoking the
+// last active super:admin key, which would cause system lockout.
+func (s *Store) CountActiveSuperAdminKeys() (int, error) {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(DISTINCT ak.id)
+		FROM admin_keys ak
+		INNER JOIN operator_tenants ot ON ak.operator_id = ot.operator_id
+		WHERE ak.status = 'active' AND ot.role = 'super:admin'
+	`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count active super admin keys: %w", err)
+	}
+	return count, nil
+}
+
+// IsAdminKeyLastActiveSuperAdmin checks if the given admin key is the only active
+// admin key for a super:admin operator. Returns true if revoking this key would
+// cause system lockout.
+func (s *Store) IsAdminKeyLastActiveSuperAdmin(adminKeyID string) (bool, error) {
+	// First check if this admin key belongs to a super:admin
+	var isSuperAdminKey int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM admin_keys ak
+		INNER JOIN operator_tenants ot ON ak.operator_id = ot.operator_id
+		WHERE ak.id = ? AND ak.status = 'active' AND ot.role = 'super:admin'
+	`, adminKeyID).Scan(&isSuperAdminKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if key is super admin: %w", err)
+	}
+
+	// If this key doesn't belong to a super:admin, it's safe to revoke
+	if isSuperAdminKey == 0 {
+		return false, nil
+	}
+
+	// Count all active super:admin keys
+	totalActive, err := s.CountActiveSuperAdminKeys()
+	if err != nil {
+		return false, err
+	}
+
+	// If this is the only active super:admin key, revocation would cause lockout
+	return totalActive <= 1, nil
+}
+
 func (s *Store) scanAdminKey(row *sql.Row) (*AdminKey, error) {
 	var ak AdminKey
 	var boundAt int64
