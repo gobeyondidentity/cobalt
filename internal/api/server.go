@@ -65,7 +65,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/dpus", s.handleListDPUs)
 	mux.HandleFunc("POST /api/v1/dpus", s.handleAddDPU)
 	mux.HandleFunc("GET /api/v1/dpus/{id}", s.handleGetDPU)
-	mux.HandleFunc("DELETE /api/v1/dpus/{id}", s.handleDeleteDPU)
+	mux.HandleFunc("DELETE /api/v1/dpus/{id}", s.handleDecommissionDPU)
 	mux.HandleFunc("GET /api/v1/dpus/{id}/info", s.handleGetSystemInfo)
 	mux.HandleFunc("GET /api/v1/dpus/{id}/flows", s.handleGetFlows)
 	mux.HandleFunc("GET /api/v1/dpus/{id}/attestation", s.handleGetAttestation)
@@ -324,15 +324,6 @@ func (s *Server) handleGetDPU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, dpuToResponse(dpu))
-}
-
-func (s *Server) handleDeleteDPU(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if err := s.store.Remove(id); err != nil {
-		writeError(w, r, http.StatusNotFound, "DPU not found")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleGetSystemInfo(w http.ResponseWriter, r *http.Request) {

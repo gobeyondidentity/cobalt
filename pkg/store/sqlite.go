@@ -926,6 +926,68 @@ func (s *Store) ReactivateDPU(id string, enrollmentExpiresAt time.Time) error {
 	return nil
 }
 
+// ErrAlreadyDecommissioned is returned when attempting to decommission an already-decommissioned DPU.
+var ErrAlreadyDecommissioned = fmt.Errorf("DPU already decommissioned")
+
+// DecommissionDPUAtomic atomically decommissions a DPU and optionally scrubs its credentials.
+// Returns ErrAlreadyDecommissioned if the DPU is already decommissioned (for 409 response).
+// Returns the count of credentials scrubbed if scrubCredentials is true.
+func (s *Store) DecommissionDPUAtomic(id, decommissionedBy, reason string, scrubCredentials bool) (int, error) {
+	// Start transaction for atomicity
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// First check if DPU exists and get its current status and name
+	var status, name string
+	err = tx.QueryRow(`SELECT status, name FROM dpus WHERE id = ? OR name = ?`, id, id).Scan(&status, &name)
+	if err != nil {
+		return 0, fmt.Errorf("DPU not found: %s", id)
+	}
+
+	// Check if already decommissioned
+	if status == "decommissioned" {
+		return 0, ErrAlreadyDecommissioned
+	}
+
+	// Update status to decommissioned
+	now := time.Now().Unix()
+	_, err = tx.Exec(
+		`UPDATE dpus SET status = 'decommissioned', decommissioned_at = ?, decommissioned_by = ?, decommissioned_reason = ? WHERE id = ? OR name = ?`,
+		now, decommissionedBy, reason, id, id,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to decommission DPU: %w", err)
+	}
+
+	// Scrub credentials if requested
+	var credentialsScrubbed int
+	if scrubCredentials {
+		// Count credentials first
+		err = tx.QueryRow(`SELECT COUNT(*) FROM credential_queue WHERE dpu_name = ?`, name).Scan(&credentialsScrubbed)
+		if err != nil {
+			return 0, fmt.Errorf("failed to count credentials: %w", err)
+		}
+
+		// Delete credentials
+		if credentialsScrubbed > 0 {
+			_, err = tx.Exec(`DELETE FROM credential_queue WHERE dpu_name = ?`, name)
+			if err != nil {
+				return 0, fmt.Errorf("failed to scrub credentials: %w", err)
+			}
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return credentialsScrubbed, nil
+}
+
 func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	var dpu DPU
 	var lastSeen sql.NullInt64
