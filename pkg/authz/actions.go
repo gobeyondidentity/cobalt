@@ -36,9 +36,12 @@ const (
 	ActionDPUReadOwnConfig     = "dpu:read_own_config"
 
 	// Tenant management (bluectl only)
-	ActionTenantCreate = "tenant:create"
-	ActionTenantList   = "tenant:list"
-	ActionTenantDelete = "tenant:delete"
+	ActionTenantCreate      = "tenant:create"
+	ActionTenantList        = "tenant:list"
+	ActionTenantDelete      = "tenant:delete"
+	ActionTenantAssignDPU   = "tenant:assign_dpu"
+	ActionTenantListDPUs    = "tenant:list_dpus"
+	ActionTenantUnassignDPU = "tenant:unassign_dpu"
 
 	// Audit
 	ActionAuditExport = "audit:export"
@@ -84,6 +87,9 @@ var validActions = map[string]bool{
 	ActionTenantCreate:         true,
 	ActionTenantList:           true,
 	ActionTenantDelete:         true,
+	ActionTenantAssignDPU:      true,
+	ActionTenantListDPUs:       true,
+	ActionTenantUnassignDPU:    true,
 	ActionAuditExport:          true,
 	ActionTrustCreate:          true,
 	ActionTrustDelete:          true,
@@ -198,6 +204,9 @@ func NewActionRegistry() *ActionRegistry {
 	r.register("POST", "/api/v1/tenants", Action(ActionTenantCreate))
 	r.register("GET", "/api/v1/tenants", Action(ActionTenantList))
 	r.register("DELETE", "/api/v1/tenants/{id}", Action(ActionTenantDelete))
+	r.register("POST", "/api/v1/tenants/{id}/dpus", Action(ActionTenantAssignDPU))
+	r.register("GET", "/api/v1/tenants/{id}/dpus", Action(ActionTenantListDPUs))
+	r.register("DELETE", "/api/v1/tenants/{id}/dpus/{dpuId}", Action(ActionTenantUnassignDPU))
 
 	// ----- Audit Endpoints -----
 	r.register("GET", "/api/v1/audit", Action(ActionAuditExport))
