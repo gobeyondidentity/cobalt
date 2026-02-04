@@ -518,6 +518,231 @@ func (s *Server) handleUpdateOperatorStatus(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, operatorToResponse(operator))
 }
 
+// ----- Operator Lifecycle Endpoints (Phase 4) -----
+
+// SuspendOperatorRequest is the request body for suspending an operator.
+type SuspendOperatorRequest struct {
+	Reason string `json:"reason"`
+}
+
+// UnsuspendOperatorRequest is the request body for unsuspending an operator.
+type UnsuspendOperatorRequest struct {
+	Reason string `json:"reason"`
+}
+
+// handleSuspendOperator handles POST /api/v1/operators/{id}/suspend
+// Suspends an operator, blocking all their KeyMakers immediately.
+// Requires tenant:admin (for operators in shared tenant) or super:admin.
+func (s *Server) handleSuspendOperator(w http.ResponseWriter, r *http.Request) {
+	operatorID := r.PathValue("id")
+
+	// Parse request body
+	var req SuspendOperatorRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		return
+	}
+
+	// Validate reason is non-empty
+	req.Reason = strings.TrimSpace(req.Reason)
+	if req.Reason == "" {
+		writeError(w, r, http.StatusBadRequest, "reason is required and cannot be empty")
+		return
+	}
+
+	// Get caller identity from context
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	// Get target operator
+	operator, err := s.store.GetOperator(operatorID)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "operator not found")
+		return
+	}
+
+	// Check if already suspended
+	if operator.Status == "suspended" {
+		writeError(w, r, http.StatusConflict, "operator is already suspended")
+		return
+	}
+
+	// Authorization check
+	canManage, err := s.canManageOperator(identity.OperatorID, operatorID)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to check permissions")
+		return
+	}
+	if !canManage {
+		writeError(w, r, http.StatusForbidden, "you do not have permission to suspend this operator")
+		return
+	}
+
+	// Suspend the operator
+	if err := s.store.SuspendOperator(operatorID, identity.KID, req.Reason); err != nil {
+		writeInternalError(w, r, err, "failed to suspend operator")
+		return
+	}
+
+	// Create audit log entry
+	auditEntry := &store.AuditEntry{
+		Timestamp: time.Now(),
+		Action:    "operator.suspend",
+		Target:    operatorID,
+		Decision:  "allowed",
+		Details: map[string]string{
+			"admin_id":       identity.KID,
+			"operator_id":    operatorID,
+			"operator_email": operator.Email,
+			"reason":         req.Reason,
+		},
+	}
+	if _, err := s.store.InsertAuditEntry(auditEntry); err != nil {
+		log.Printf("failed to insert audit entry for operator suspension: %v", err)
+		// Don't fail the request, audit logging is non-critical
+	}
+
+	log.Printf("Operator suspended: operator_id=%s email=%s by=%s reason=%s", operatorID, operator.Email, identity.KID, req.Reason)
+
+	// Fetch updated operator and return response
+	operator, _ = s.store.GetOperator(operatorID)
+	writeJSON(w, http.StatusOK, operatorToResponse(operator))
+}
+
+// handleUnsuspendOperator handles POST /api/v1/operators/{id}/unsuspend
+// Restores a suspended operator, allowing all their KeyMakers to function again.
+// Requires tenant:admin (for operators in shared tenant) or super:admin.
+func (s *Server) handleUnsuspendOperator(w http.ResponseWriter, r *http.Request) {
+	operatorID := r.PathValue("id")
+
+	// Parse request body
+	var req UnsuspendOperatorRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		return
+	}
+
+	// Validate reason is non-empty
+	req.Reason = strings.TrimSpace(req.Reason)
+	if req.Reason == "" {
+		writeError(w, r, http.StatusBadRequest, "reason is required and cannot be empty")
+		return
+	}
+
+	// Get caller identity from context
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	// Get target operator
+	operator, err := s.store.GetOperator(operatorID)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "operator not found")
+		return
+	}
+
+	// Check if not suspended
+	if operator.Status != "suspended" {
+		writeError(w, r, http.StatusConflict, "operator is not currently suspended")
+		return
+	}
+
+	// Authorization check
+	canManage, err := s.canManageOperator(identity.OperatorID, operatorID)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to check permissions")
+		return
+	}
+	if !canManage {
+		writeError(w, r, http.StatusForbidden, "you do not have permission to unsuspend this operator")
+		return
+	}
+
+	// Unsuspend the operator
+	if err := s.store.UnsuspendOperator(operatorID); err != nil {
+		writeInternalError(w, r, err, "failed to unsuspend operator")
+		return
+	}
+
+	// Create audit log entry
+	auditEntry := &store.AuditEntry{
+		Timestamp: time.Now(),
+		Action:    "operator.unsuspend",
+		Target:    operatorID,
+		Decision:  "allowed",
+		Details: map[string]string{
+			"admin_id":       identity.KID,
+			"operator_id":    operatorID,
+			"operator_email": operator.Email,
+			"reason":         req.Reason,
+		},
+	}
+	if _, err := s.store.InsertAuditEntry(auditEntry); err != nil {
+		log.Printf("failed to insert audit entry for operator unsuspension: %v", err)
+		// Don't fail the request, audit logging is non-critical
+	}
+
+	log.Printf("Operator unsuspended: operator_id=%s email=%s by=%s reason=%s", operatorID, operator.Email, identity.KID, req.Reason)
+
+	// Fetch updated operator and return response
+	operator, _ = s.store.GetOperator(operatorID)
+	writeJSON(w, http.StatusOK, operatorToResponse(operator))
+}
+
+// canManageOperator checks if the caller has permission to manage (suspend/unsuspend) the target operator.
+// Returns true if:
+// - Caller is super:admin (can manage any operator)
+// - Caller is tenant:admin in at least one tenant where the target operator is also a member
+func (s *Server) canManageOperator(callerOperatorID, targetOperatorID string) (bool, error) {
+	// Check if caller is super:admin
+	isSuperAdmin, err := s.store.IsSuperAdmin(callerOperatorID)
+	if err != nil {
+		return false, fmt.Errorf("failed to check super admin status: %w", err)
+	}
+	if isSuperAdmin {
+		return true, nil
+	}
+
+	// Get caller's tenant memberships
+	callerTenants, err := s.store.GetOperatorTenants(callerOperatorID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get caller tenants: %w", err)
+	}
+
+	// Build set of tenants where caller is tenant:admin
+	callerAdminTenants := make(map[string]bool)
+	for _, t := range callerTenants {
+		if t.Role == "tenant:admin" || t.Role == "super:admin" {
+			callerAdminTenants[t.TenantID] = true
+		}
+	}
+
+	// If caller is not admin in any tenant, they can't manage anyone
+	if len(callerAdminTenants) == 0 {
+		return false, nil
+	}
+
+	// Get target operator's tenant memberships
+	targetTenants, err := s.store.GetOperatorTenants(targetOperatorID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get target tenants: %w", err)
+	}
+
+	// Check if there's any overlap where caller is admin
+	for _, t := range targetTenants {
+		if callerAdminTenants[t.TenantID] {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // handleDeleteOperator handles DELETE /api/v1/operators/{email}
 func (s *Server) handleDeleteOperator(w http.ResponseWriter, r *http.Request) {
 	email := r.PathValue("email")

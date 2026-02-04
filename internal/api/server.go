@@ -116,6 +116,10 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/v1/operators/{email}/status", s.handleUpdateOperatorStatus)
 	mux.HandleFunc("DELETE /api/v1/operators/{email}", s.handleDeleteOperator)
 
+	// Operator lifecycle routes (Phase 4)
+	mux.HandleFunc("POST /api/v1/operators/{id}/suspend", s.handleSuspendOperator)
+	mux.HandleFunc("POST /api/v1/operators/{id}/unsuspend", s.handleUnsuspendOperator)
+
 	// Role management routes
 	mux.HandleFunc("POST /api/v1/operators/{id}/roles", s.handleAssignRole)
 	mux.HandleFunc("DELETE /api/v1/operators/{id}/roles/{tenant_id}", s.handleRemoveRole)
