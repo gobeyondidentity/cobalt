@@ -108,3 +108,28 @@ forbid(
 ) when {
     resource.target_dpu != principal
 };
+
+// ============================================================================
+// DPU SELF-ACCESS: Register Connected Host (Phase 5)
+// ============================================================================
+
+// DPU can register its connected host with Nexus.
+// Aegis reports host information for the machine this DPU is installed in.
+@id("resources-dpu-register-host")
+permit(
+    principal is Cobalt::DPU,
+    action == Cobalt::Action::"host:register",
+    resource is Cobalt::DPU
+) when {
+    principal == resource
+};
+
+// FORBID: DPU cannot register a host for another DPU.
+@id("resources-forbid-dpu-cross-host-register")
+forbid(
+    principal is Cobalt::DPU,
+    action == Cobalt::Action::"host:register",
+    resource is Cobalt::DPU
+) when {
+    principal != resource
+};

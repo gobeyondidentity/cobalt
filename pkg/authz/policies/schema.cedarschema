@@ -212,4 +212,11 @@ namespace Cobalt {
         principal: [Operator],
         resource: [Tenant],
     };
+
+    // ----- Host Management (Phase 5) -----
+    // DPU registers its connected host with Nexus
+    action "host:register" appliesTo {
+        principal: [DPU],
+        resource: [DPU],
+    };
 }

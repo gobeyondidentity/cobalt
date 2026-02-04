@@ -178,6 +178,52 @@ func TestDPUCrossAccessDenied(t *testing.T) {
 	})
 }
 
+// TestDPUHostRegister validates host:register policies.
+func TestDPUHostRegister(t *testing.T) {
+	ps, err := cedar.NewPolicySetFromBytes("resources.cedar", resourcesPolicies)
+	if err != nil {
+		t.Fatalf("Failed to parse resources.cedar: %v", err)
+	}
+
+	t.Run("DPU can register own host", func(t *testing.T) {
+		t.Log("Testing: DPU-001 can register host for DPU-001")
+
+		entities := buildDPUTestEntities()
+		req := cedar.Request{
+			Principal: cedar.NewEntityUID("Cobalt::DPU", "dpu_001"),
+			Action:    cedar.NewEntityUID("Cobalt::Action", "host:register"),
+			Resource:  cedar.NewEntityUID("Cobalt::DPU", "dpu_001"),
+			Context:   cedar.NewRecord(cedar.RecordMap{}),
+		}
+
+		decision, diag := cedar.Authorize(ps, entities, req)
+		t.Logf("Decision: %v, Reasons: %v", decision, diag.Reasons)
+
+		if decision != cedar.Allow {
+			t.Error("Expected permit for DPU registering own host")
+		}
+	})
+
+	t.Run("DPU cannot register host for another DPU", func(t *testing.T) {
+		t.Log("Testing: DPU-001 CANNOT register host for DPU-002")
+
+		entities := buildDPUTestEntities()
+		req := cedar.Request{
+			Principal: cedar.NewEntityUID("Cobalt::DPU", "dpu_001"),
+			Action:    cedar.NewEntityUID("Cobalt::Action", "host:register"),
+			Resource:  cedar.NewEntityUID("Cobalt::DPU", "dpu_002"),
+			Context:   cedar.NewRecord(cedar.RecordMap{}),
+		}
+
+		decision, diag := cedar.Authorize(ps, entities, req)
+		t.Logf("Decision: %v, Reasons: %v", decision, diag.Reasons)
+
+		if decision == cedar.Allow {
+			t.Error("Expected deny for DPU-001 registering host for DPU-002")
+		}
+	})
+}
+
 // buildDPUTestEntities creates entity map for DPU self-access testing.
 func buildDPUTestEntities() cedar.EntityMap {
 	acmeTenant := cedar.NewEntityUID("Cobalt::Tenant", "tnt_acme")
