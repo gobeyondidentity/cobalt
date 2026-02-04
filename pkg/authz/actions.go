@@ -33,6 +33,11 @@ const (
 	ActionCredentialPull   = "credential:pull"
 	ActionDistributionList = "distribution:list"
 
+	// SSH CA management
+	ActionSSHCACreate = "ssh-ca:create"
+	ActionSSHCAList   = "ssh-ca:list"
+	ActionSSHCARead   = "ssh-ca:read"
+
 	// DPU self-access (Aegis agent operations)
 	ActionDPUReportAttestation = "dpu:report_attestation"
 	ActionDPUReadOwnConfig     = "dpu:read_own_config"
@@ -84,6 +89,9 @@ var validActions = map[string]bool{
 	ActionCredentialPush:       true,
 	ActionCredentialPull:       true,
 	ActionDistributionList:     true,
+	ActionSSHCACreate:          true,
+	ActionSSHCAList:            true,
+	ActionSSHCARead:            true,
 	ActionDPUReportAttestation: true,
 	ActionDPUReadOwnConfig:     true,
 	ActionTenantCreate:         true,
@@ -196,6 +204,11 @@ func NewActionRegistry() *ActionRegistry {
 	// ----- Credential Distribution Endpoints -----
 	r.register("POST", "/api/v1/push", Action(ActionCredentialPush))
 	r.register("GET", "/api/v1/distributions", Action(ActionDistributionList))
+
+	// ----- SSH CA Endpoints -----
+	r.register("POST", "/api/v1/ssh-cas", Action(ActionSSHCACreate))
+	r.register("GET", "/api/v1/credentials/ssh-cas", Action(ActionSSHCAList))
+	r.register("GET", "/api/v1/credentials/ssh-cas/{name}", Action(ActionSSHCARead))
 
 	// ----- DPU Agent Endpoints (Aegis) -----
 	r.register("GET", "/api/v1/dpus/{id}/credentials", Action(ActionCredentialPull))
