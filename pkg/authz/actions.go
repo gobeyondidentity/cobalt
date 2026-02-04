@@ -140,9 +140,9 @@ func NewActionRegistry() *ActionRegistry {
 	// These are the ONLY endpoints that bypass authentication.
 	r.register("GET", "/health", NoAuthRequired)
 	r.register("POST", "/api/v1/admin/bootstrap", NoAuthRequired)
-	r.register("POST", "/enroll/init", NoAuthRequired)
-	r.register("POST", "/enroll/dpu/init", NoAuthRequired)
-	r.register("POST", "/enroll/complete", NoAuthRequired)
+	r.register("POST", "/api/v1/enroll/init", NoAuthRequired)
+	r.register("POST", "/api/v1/enroll/dpu/init", NoAuthRequired)
+	r.register("POST", "/api/v1/enroll/complete", NoAuthRequired)
 
 	// ----- Operator Endpoints -----
 	r.register("GET", "/api/v1/operators/me", Action(ActionOperatorReadSelf))

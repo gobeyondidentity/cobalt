@@ -236,9 +236,9 @@ func TestActionRegistry_PreAuthEndpoints(t *testing.T) {
 	}{
 		{"GET", "/health"},
 		{"POST", "/api/v1/admin/bootstrap"},
-		{"POST", "/enroll/init"},
-		{"POST", "/enroll/dpu/init"},
-		{"POST", "/enroll/complete"},
+		{"POST", "/api/v1/enroll/init"},
+		{"POST", "/api/v1/enroll/dpu/init"},
+		{"POST", "/api/v1/enroll/complete"},
 	}
 
 	for _, ep := range preAuthEndpoints {
