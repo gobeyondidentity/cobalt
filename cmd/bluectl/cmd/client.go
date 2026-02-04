@@ -196,7 +196,7 @@ func (c *NexusClient) AddDPU(ctx context.Context, name, host string, port int) (
 		return nil, fmt.Errorf("failed to encode request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/dpus", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/dpus", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -223,7 +223,7 @@ func (c *NexusClient) AddDPU(ctx context.Context, name, host string, port int) (
 
 // ListDPUs retrieves all registered DPUs from the Nexus server.
 func (c *NexusClient) ListDPUs(ctx context.Context) ([]dpuResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/dpus", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/dpus", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -249,7 +249,7 @@ func (c *NexusClient) ListDPUs(ctx context.Context) ([]dpuResponse, error) {
 
 // RemoveDPU deletes a DPU from the Nexus server.
 func (c *NexusClient) RemoveDPU(ctx context.Context, id string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/dpus/"+id, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/dpus/"+id, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -272,7 +272,7 @@ func (c *NexusClient) RemoveDPU(ctx context.Context, id string) error {
 
 // ListTenants retrieves all tenants from the Nexus server.
 func (c *NexusClient) ListTenants(ctx context.Context) ([]tenantResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/tenants", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/tenants", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -310,7 +310,7 @@ func (c *NexusClient) CreateTenant(ctx context.Context, name, description, conta
 		return nil, fmt.Errorf("failed to encode request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/tenants", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/tenants", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -337,7 +337,7 @@ func (c *NexusClient) CreateTenant(ctx context.Context, name, description, conta
 
 // GetTenant retrieves a tenant by ID from the Nexus server.
 func (c *NexusClient) GetTenant(ctx context.Context, id string) (*tenantResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/tenants/"+id, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/tenants/"+id, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -375,7 +375,7 @@ func (c *NexusClient) UpdateTenant(ctx context.Context, id, name, description, c
 		return nil, fmt.Errorf("failed to encode request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+"/api/tenants/"+id, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+"/api/v1/tenants/"+id, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -402,7 +402,7 @@ func (c *NexusClient) UpdateTenant(ctx context.Context, id, name, description, c
 
 // DeleteTenant removes a tenant from the Nexus server.
 func (c *NexusClient) DeleteTenant(ctx context.Context, id string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/tenants/"+id, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/tenants/"+id, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -432,7 +432,7 @@ func (c *NexusClient) AssignDPUToTenant(ctx context.Context, tenantID, dpuID str
 		return fmt.Errorf("failed to encode request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/tenants/"+tenantID+"/dpus", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/tenants/"+tenantID+"/dpus", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -454,7 +454,7 @@ func (c *NexusClient) AssignDPUToTenant(ctx context.Context, tenantID, dpuID str
 
 // UnassignDPUFromTenant removes a DPU from a tenant on the Nexus server.
 func (c *NexusClient) UnassignDPUFromTenant(ctx context.Context, tenantID, dpuID string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/tenants/"+tenantID+"/dpus/"+dpuID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/tenants/"+tenantID+"/dpus/"+dpuID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -685,7 +685,7 @@ func (c *NexusClient) UpdateOperatorStatus(ctx context.Context, email, status st
 
 // GetDPU retrieves a DPU by name or ID from the Nexus server.
 func (c *NexusClient) GetDPU(ctx context.Context, nameOrID string) (*dpuResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/dpus/"+nameOrID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/dpus/"+nameOrID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -942,7 +942,7 @@ type sshCAResponse struct {
 
 // ListSSHCAs retrieves all SSH CAs from the Nexus server.
 func (c *NexusClient) ListSSHCAs(ctx context.Context) ([]sshCAResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/credentials/ssh-cas", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/credentials/ssh-cas", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -968,7 +968,7 @@ func (c *NexusClient) ListSSHCAs(ctx context.Context) ([]sshCAResponse, error) {
 
 // GetSSHCA retrieves an SSH CA by name from the Nexus server.
 func (c *NexusClient) GetSSHCA(ctx context.Context, name string) (*sshCAResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/credentials/ssh-cas/"+name, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/credentials/ssh-cas/"+name, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

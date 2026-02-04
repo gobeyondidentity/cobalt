@@ -63,30 +63,30 @@ func (s *Server) Gate() *attestation.Gate {
 // RegisterRoutes registers all API routes.
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// DPU routes
-	mux.HandleFunc("GET /api/dpus", s.handleListDPUs)
-	mux.HandleFunc("POST /api/dpus", s.handleAddDPU)
-	mux.HandleFunc("GET /api/dpus/{id}", s.handleGetDPU)
-	mux.HandleFunc("DELETE /api/dpus/{id}", s.handleDeleteDPU)
-	mux.HandleFunc("GET /api/dpus/{id}/info", s.handleGetSystemInfo)
-	mux.HandleFunc("GET /api/dpus/{id}/flows", s.handleGetFlows)
-	mux.HandleFunc("GET /api/dpus/{id}/attestation", s.handleGetAttestation)
-	mux.HandleFunc("GET /api/dpus/{id}/attestation/chains", s.handleGetAttestationChains)
-	mux.HandleFunc("GET /api/dpus/{id}/inventory", s.handleGetInventory)
-	mux.HandleFunc("GET /api/dpus/{id}/health", s.handleHealthCheck)
-	mux.HandleFunc("GET /api/dpus/{id}/measurements", s.handleGetMeasurements)
-	mux.HandleFunc("GET /api/dpus/{id}/corim/validate", s.handleValidateCoRIM)
+	mux.HandleFunc("GET /api/v1/dpus", s.handleListDPUs)
+	mux.HandleFunc("POST /api/v1/dpus", s.handleAddDPU)
+	mux.HandleFunc("GET /api/v1/dpus/{id}", s.handleGetDPU)
+	mux.HandleFunc("DELETE /api/v1/dpus/{id}", s.handleDeleteDPU)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/info", s.handleGetSystemInfo)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/flows", s.handleGetFlows)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/attestation", s.handleGetAttestation)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/attestation/chains", s.handleGetAttestationChains)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/inventory", s.handleGetInventory)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/health", s.handleHealthCheck)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/measurements", s.handleGetMeasurements)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/corim/validate", s.handleValidateCoRIM)
 
 	// Tenant routes
-	mux.HandleFunc("GET /api/tenants", s.handleListTenants)
-	mux.HandleFunc("POST /api/tenants", s.handleCreateTenant)
-	mux.HandleFunc("GET /api/tenants/{id}", s.handleGetTenant)
-	mux.HandleFunc("PUT /api/tenants/{id}", s.handleUpdateTenant)
-	mux.HandleFunc("DELETE /api/tenants/{id}", s.handleDeleteTenant)
-	mux.HandleFunc("GET /api/tenants/{id}/dpus", s.handleListTenantDPUs)
-	mux.HandleFunc("POST /api/tenants/{id}/dpus", s.handleAssignDPUToTenant)
-	mux.HandleFunc("DELETE /api/tenants/{id}/dpus/{dpuId}", s.handleUnassignDPUFromTenant)
+	mux.HandleFunc("GET /api/v1/tenants", s.handleListTenants)
+	mux.HandleFunc("POST /api/v1/tenants", s.handleCreateTenant)
+	mux.HandleFunc("GET /api/v1/tenants/{id}", s.handleGetTenant)
+	mux.HandleFunc("PUT /api/v1/tenants/{id}", s.handleUpdateTenant)
+	mux.HandleFunc("DELETE /api/v1/tenants/{id}", s.handleDeleteTenant)
+	mux.HandleFunc("GET /api/v1/tenants/{id}/dpus", s.handleListTenantDPUs)
+	mux.HandleFunc("POST /api/v1/tenants/{id}/dpus", s.handleAssignDPUToTenant)
+	mux.HandleFunc("DELETE /api/v1/tenants/{id}/dpus/{dpuId}", s.handleUnassignDPUFromTenant)
 
-	// Host routes
+	// Host routes (legacy dashboard routes - kept unversioned to avoid conflict with Phase 5 /api/v1/hosts/*)
 	mux.HandleFunc("GET /api/hosts", s.handleListHosts)
 	mux.HandleFunc("POST /api/hosts", s.handleAddHost)
 	mux.HandleFunc("GET /api/hosts/{id}", s.handleGetHost)
@@ -99,17 +99,17 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/hosts/{id}/link", s.handleUnlinkHostFromDPU)
 
 	// DPU host info (get host info for a DPU)
-	mux.HandleFunc("GET /api/dpus/{id}/host", s.handleGetDPUHost)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/host", s.handleGetDPUHost)
 
 	// CoRIM routes
-	mux.HandleFunc("GET /api/corim/list", s.handleListCoRIMs)
+	mux.HandleFunc("GET /api/v1/corim/list", s.handleListCoRIMs)
 
 	// Credential routes
-	mux.HandleFunc("GET /api/credentials/ssh-cas", s.handleListSSHCAs)
-	mux.HandleFunc("GET /api/credentials/ssh-cas/{name}", s.handleGetSSHCA)
+	mux.HandleFunc("GET /api/v1/credentials/ssh-cas", s.handleListSSHCAs)
+	mux.HandleFunc("GET /api/v1/credentials/ssh-cas/{name}", s.handleGetSSHCA)
 
 	// Distribution routes
-	mux.HandleFunc("GET /api/distribution/history", s.handleDistributionHistory)
+	mux.HandleFunc("GET /api/v1/distribution/history", s.handleDistributionHistory)
 
 	// Health routes (no auth required - bypassed in middleware)
 	mux.HandleFunc("GET /health", s.handleHealth)

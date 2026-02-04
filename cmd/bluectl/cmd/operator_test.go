@@ -77,7 +77,7 @@ func TestSetRoleRemote(t *testing.T) {
 					}
 
 				// GET /api/tenants - List tenants
-				case r.Method == http.MethodGet && r.URL.Path == "/api/tenants":
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tenants":
 					tenants := []tenantResponse{
 						{ID: tenantID, Name: tenantName},
 						{ID: "tnt_other", Name: "other-tenant"},
@@ -213,7 +213,7 @@ func TestRemoveRoleRemote(t *testing.T) {
 					}
 
 				// GET /api/tenants - List tenants
-				case r.Method == http.MethodGet && r.URL.Path == "/api/tenants":
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tenants":
 					tenants := []tenantResponse{
 						{ID: tenantID, Name: tenantName},
 						{ID: "tnt_other", Name: "other-tenant"},
@@ -292,7 +292,7 @@ func TestSetRoleRemote_PermissionDenied(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(operatorResponse{ID: operatorID, Email: operatorEmail})
 
-		case r.Method == http.MethodGet && r.URL.Path == "/api/tenants":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tenants":
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode([]tenantResponse{{ID: tenantID, Name: tenantName}})
 

@@ -184,7 +184,7 @@ func TestReadyEndpoint_BootstrapOpen(t *testing.T) {
 func TestTenantListEmpty(t *testing.T) {
 	_, mux := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/tenants", nil)
+	req := httptest.NewRequest("GET", "/api/v1/tenants", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -207,7 +207,7 @@ func TestTenantCreate(t *testing.T) {
 	_, mux := setupTestServer(t)
 
 	body := `{"name": "Acme Corp", "description": "Test tenant", "contact": "admin@acme.com", "tags": ["production", "us-east"]}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(body))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -243,7 +243,7 @@ func TestTenantCreate_MissingName(t *testing.T) {
 	_, mux := setupTestServer(t)
 
 	body := `{"description": "No name tenant"}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(body))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -259,7 +259,7 @@ func TestTenantCreate_DuplicateName(t *testing.T) {
 
 	// Create first tenant
 	body := `{"name": "Acme Corp"}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(body))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -269,7 +269,7 @@ func TestTenantCreate_DuplicateName(t *testing.T) {
 	}
 
 	// Try to create duplicate
-	req = httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(body))
+	req = httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -285,7 +285,7 @@ func TestTenantGet(t *testing.T) {
 
 	// Create a tenant first
 	body := `{"name": "Test Tenant", "description": "For testing"}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(body))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -294,7 +294,7 @@ func TestTenantGet(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&created)
 
 	// Get the tenant
-	req = httptest.NewRequest("GET", "/api/tenants/"+created.ID, nil)
+	req = httptest.NewRequest("GET", "/api/v1/tenants/"+created.ID, nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -316,7 +316,7 @@ func TestTenantGet(t *testing.T) {
 func TestTenantGet_NotFound(t *testing.T) {
 	_, mux := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/tenants/nonexistent", nil)
+	req := httptest.NewRequest("GET", "/api/v1/tenants/nonexistent", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -331,7 +331,7 @@ func TestTenantUpdate(t *testing.T) {
 
 	// Create a tenant first
 	body := `{"name": "Original Name", "description": "Original desc"}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(body))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -341,7 +341,7 @@ func TestTenantUpdate(t *testing.T) {
 
 	// Update the tenant
 	updateBody := `{"name": "New Name", "description": "New description", "contact": "new@example.com"}`
-	req = httptest.NewRequest("PUT", "/api/tenants/"+created.ID, bytes.NewBufferString(updateBody))
+	req = httptest.NewRequest("PUT", "/api/v1/tenants/"+created.ID, bytes.NewBufferString(updateBody))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -369,7 +369,7 @@ func TestTenantDelete(t *testing.T) {
 
 	// Create a tenant first
 	body := `{"name": "To Delete"}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(body))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -378,7 +378,7 @@ func TestTenantDelete(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&created)
 
 	// Delete the tenant
-	req = httptest.NewRequest("DELETE", "/api/tenants/"+created.ID, nil)
+	req = httptest.NewRequest("DELETE", "/api/v1/tenants/"+created.ID, nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -387,7 +387,7 @@ func TestTenantDelete(t *testing.T) {
 	}
 
 	// Verify it's gone
-	req = httptest.NewRequest("GET", "/api/tenants/"+created.ID, nil)
+	req = httptest.NewRequest("GET", "/api/v1/tenants/"+created.ID, nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -400,7 +400,7 @@ func TestTenantDelete(t *testing.T) {
 func TestTenantDelete_NotFound(t *testing.T) {
 	_, mux := setupTestServer(t)
 
-	req := httptest.NewRequest("DELETE", "/api/tenants/nonexistent", nil)
+	req := httptest.NewRequest("DELETE", "/api/v1/tenants/nonexistent", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -415,7 +415,7 @@ func TestTenantDPUAssignment(t *testing.T) {
 
 	// Create a tenant
 	tenantBody := `{"name": "Test Tenant"}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(tenantBody))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(tenantBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -428,7 +428,7 @@ func TestTenantDPUAssignment(t *testing.T) {
 
 	// Assign DPU to tenant
 	assignBody := `{"dpuId": "dpu1"}`
-	req = httptest.NewRequest("POST", "/api/tenants/"+tenant.ID+"/dpus", bytes.NewBufferString(assignBody))
+	req = httptest.NewRequest("POST", "/api/v1/tenants/"+tenant.ID+"/dpus", bytes.NewBufferString(assignBody))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -438,7 +438,7 @@ func TestTenantDPUAssignment(t *testing.T) {
 	}
 
 	// List DPUs for tenant
-	req = httptest.NewRequest("GET", "/api/tenants/"+tenant.ID+"/dpus", nil)
+	req = httptest.NewRequest("GET", "/api/v1/tenants/"+tenant.ID+"/dpus", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -456,7 +456,7 @@ func TestTenantDPUAssignment(t *testing.T) {
 	}
 
 	// Unassign DPU
-	req = httptest.NewRequest("DELETE", "/api/tenants/"+tenant.ID+"/dpus/dpu1", nil)
+	req = httptest.NewRequest("DELETE", "/api/v1/tenants/"+tenant.ID+"/dpus/dpu1", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -465,7 +465,7 @@ func TestTenantDPUAssignment(t *testing.T) {
 	}
 
 	// Verify DPU is unassigned
-	req = httptest.NewRequest("GET", "/api/tenants/"+tenant.ID+"/dpus", nil)
+	req = httptest.NewRequest("GET", "/api/v1/tenants/"+tenant.ID+"/dpus", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -481,7 +481,7 @@ func TestTenantDelete_WithDPUs(t *testing.T) {
 
 	// Create a tenant
 	tenantBody := `{"name": "Tenant With DPU"}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(tenantBody))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(tenantBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -494,7 +494,7 @@ func TestTenantDelete_WithDPUs(t *testing.T) {
 	server.store.AssignDPUToTenant("dpu1", tenant.ID)
 
 	// Try to delete tenant
-	req = httptest.NewRequest("DELETE", "/api/tenants/"+tenant.ID, nil)
+	req = httptest.NewRequest("DELETE", "/api/v1/tenants/"+tenant.ID, nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -509,7 +509,7 @@ func TestTenantDelete_WithInvites(t *testing.T) {
 
 	// Create a tenant
 	tenantBody := `{"name": "Tenant With Invites"}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(tenantBody))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(tenantBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -533,7 +533,7 @@ func TestTenantDelete_WithInvites(t *testing.T) {
 	}
 
 	// Try to delete tenant
-	req = httptest.NewRequest("DELETE", "/api/tenants/"+tenant.ID, nil)
+	req = httptest.NewRequest("DELETE", "/api/v1/tenants/"+tenant.ID, nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -554,7 +554,7 @@ func TestTenantListWithDPUCount(t *testing.T) {
 
 	// Create a tenant
 	tenantBody := `{"name": "Tenant With DPUs"}`
-	req := httptest.NewRequest("POST", "/api/tenants", bytes.NewBufferString(tenantBody))
+	req := httptest.NewRequest("POST", "/api/v1/tenants", bytes.NewBufferString(tenantBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -569,7 +569,7 @@ func TestTenantListWithDPUCount(t *testing.T) {
 	server.store.AssignDPUToTenant("dpu2", tenant.ID)
 
 	// List tenants
-	req = httptest.NewRequest("GET", "/api/tenants", nil)
+	req = httptest.NewRequest("GET", "/api/v1/tenants", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 

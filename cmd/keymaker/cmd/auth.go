@@ -59,7 +59,7 @@ func checkAuthorization(caName, deviceName string) error {
 	}
 
 	// Look up CA ID by name
-	caReq, err := http.NewRequest("GET", config.ServerURL+"/api/credentials/ssh-cas/"+url.QueryEscape(caName), nil)
+	caReq, err := http.NewRequest("GET", config.ServerURL+"/api/v1/credentials/ssh-cas/"+url.QueryEscape(caName), nil)
 	if err != nil {
 		return clierror.InternalError(fmt.Errorf("failed to create CA lookup request: %w", err))
 	}
@@ -91,7 +91,7 @@ func checkAuthorization(caName, deviceName string) error {
 	// Look up device ID by name if a device is specified
 	var deviceID string
 	if deviceName != "" {
-		dpuReq, err := http.NewRequest("GET", config.ServerURL+"/api/dpus/"+url.QueryEscape(deviceName), nil)
+		dpuReq, err := http.NewRequest("GET", config.ServerURL+"/api/v1/dpus/"+url.QueryEscape(deviceName), nil)
 		if err != nil {
 			return clierror.InternalError(fmt.Errorf("failed to create device lookup request: %w", err))
 		}

@@ -63,7 +63,7 @@ func TestNexusClient_AddDPU(t *testing.T) {
 				if r.Method != http.MethodPost {
 					t.Errorf("expected POST, got %s", r.Method)
 				}
-				if r.URL.Path != "/api/dpus" {
+				if r.URL.Path != "/api/v1/dpus" {
 					t.Errorf("expected /api/dpus, got %s", r.URL.Path)
 				}
 
@@ -148,7 +148,7 @@ func TestNexusClient_ListDPUs(t *testing.T) {
 				if r.Method != http.MethodGet {
 					t.Errorf("expected GET, got %s", r.Method)
 				}
-				if r.URL.Path != "/api/dpus" {
+				if r.URL.Path != "/api/v1/dpus" {
 					t.Errorf("expected /api/dpus, got %s", r.URL.Path)
 				}
 
@@ -210,7 +210,7 @@ func TestNexusClient_RemoveDPU(t *testing.T) {
 				if r.Method != http.MethodDelete {
 					t.Errorf("expected DELETE, got %s", r.Method)
 				}
-				expectedPath := "/api/dpus/" + tt.dpuID
+				expectedPath := "/api/v1/dpus/" + tt.dpuID
 				if r.URL.Path != expectedPath {
 					t.Errorf("expected %s, got %s", expectedPath, r.URL.Path)
 				}
@@ -285,7 +285,7 @@ func TestNexusClient_ListTenants(t *testing.T) {
 				if r.Method != http.MethodGet {
 					t.Errorf("expected GET, got %s", r.Method)
 				}
-				if r.URL.Path != "/api/tenants" {
+				if r.URL.Path != "/api/v1/tenants" {
 					t.Errorf("expected /api/tenants, got %s", r.URL.Path)
 				}
 
@@ -370,7 +370,7 @@ func TestNexusClient_CreateTenant(t *testing.T) {
 				if r.Method != http.MethodPost {
 					t.Errorf("expected POST, got %s", r.Method)
 				}
-				if r.URL.Path != "/api/tenants" {
+				if r.URL.Path != "/api/v1/tenants" {
 					t.Errorf("expected /api/tenants, got %s", r.URL.Path)
 				}
 
@@ -461,7 +461,7 @@ func TestNexusClient_GetTenant(t *testing.T) {
 				if r.Method != http.MethodGet {
 					t.Errorf("expected GET, got %s", r.Method)
 				}
-				expectedPath := "/api/tenants/" + tt.tenantID
+				expectedPath := "/api/v1/tenants/" + tt.tenantID
 				if r.URL.Path != expectedPath {
 					t.Errorf("expected %s, got %s", expectedPath, r.URL.Path)
 				}
@@ -554,7 +554,7 @@ func TestNexusClient_UpdateTenant(t *testing.T) {
 				if r.Method != http.MethodPut {
 					t.Errorf("expected PUT, got %s", r.Method)
 				}
-				expectedPath := "/api/tenants/" + tt.tenantID
+				expectedPath := "/api/v1/tenants/" + tt.tenantID
 				if r.URL.Path != expectedPath {
 					t.Errorf("expected %s, got %s", expectedPath, r.URL.Path)
 				}
@@ -635,7 +635,7 @@ func TestNexusClient_DeleteTenant(t *testing.T) {
 				if r.Method != http.MethodDelete {
 					t.Errorf("expected DELETE, got %s", r.Method)
 				}
-				expectedPath := "/api/tenants/" + tt.tenantID
+				expectedPath := "/api/v1/tenants/" + tt.tenantID
 				if r.URL.Path != expectedPath {
 					t.Errorf("expected %s, got %s", expectedPath, r.URL.Path)
 				}
@@ -699,7 +699,7 @@ func TestNexusClient_AssignDPUToTenant(t *testing.T) {
 				if r.Method != http.MethodPost {
 					t.Errorf("expected POST, got %s", r.Method)
 				}
-				expectedPath := "/api/tenants/" + tt.tenantID + "/dpus"
+				expectedPath := "/api/v1/tenants/" + tt.tenantID + "/dpus"
 				if r.URL.Path != expectedPath {
 					t.Errorf("expected %s, got %s", expectedPath, r.URL.Path)
 				}
@@ -802,7 +802,7 @@ func TestAssignDPURemote_ResolvesNames(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
-				case r.Method == http.MethodGet && r.URL.Path == "/api/tenants":
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tenants":
 					// Return list of tenants for name resolution
 					tenants := []tenantResponse{
 						{ID: tenantID, Name: tenantName, Description: "Prod env"},
@@ -811,7 +811,7 @@ func TestAssignDPURemote_ResolvesNames(t *testing.T) {
 					w.WriteHeader(http.StatusOK)
 					json.NewEncoder(w).Encode(tenants)
 
-				case r.Method == http.MethodGet && r.URL.Path == "/api/dpus":
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/dpus":
 					// Return list of DPUs for name resolution
 					dpus := []dpuResponse{
 						{ID: dpuID, Name: dpuName, Host: "192.168.1.204", Port: 18051},
@@ -820,12 +820,12 @@ func TestAssignDPURemote_ResolvesNames(t *testing.T) {
 					w.WriteHeader(http.StatusOK)
 					json.NewEncoder(w).Encode(dpus)
 
-				case r.Method == http.MethodPost && len(r.URL.Path) > len("/api/tenants/") && r.URL.Path[len(r.URL.Path)-5:] == "/dpus":
+				case r.Method == http.MethodPost && len(r.URL.Path) > len("/api/v1/tenants/") && r.URL.Path[len(r.URL.Path)-5:] == "/dpus":
 					// This is the assign call: POST /api/tenants/{tenantID}/dpus
 					assignCalled = true
 					// Extract tenant ID from path: /api/tenants/{tenantID}/dpus
 					path := r.URL.Path
-					path = path[len("/api/tenants/"):] // Remove prefix
+					path = path[len("/api/v1/tenants/"):] // Remove prefix
 					path = path[:len(path)-5]          // Remove "/dpus" suffix
 					receivedTenantID = path
 
@@ -935,7 +935,7 @@ func TestNexusClient_UnassignDPUFromTenant(t *testing.T) {
 				if r.Method != http.MethodDelete {
 					t.Errorf("expected DELETE, got %s", r.Method)
 				}
-				expectedPath := "/api/tenants/" + tt.tenantID + "/dpus/" + tt.dpuID
+				expectedPath := "/api/v1/tenants/" + tt.tenantID + "/dpus/" + tt.dpuID
 				if r.URL.Path != expectedPath {
 					t.Errorf("expected %s, got %s", expectedPath, r.URL.Path)
 				}
