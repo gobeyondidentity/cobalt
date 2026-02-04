@@ -30,7 +30,7 @@ func (s *Store) CreateOperator(id, email, displayName string) error {
 // GetOperator retrieves an operator by ID or email.
 func (s *Store) GetOperator(idOrEmail string) (*Operator, error) {
 	row := s.db.QueryRow(
-		`SELECT id, email, display_name, status, created_at, last_login FROM operators WHERE id = ? OR email = ?`,
+		`SELECT id, email, display_name, status, created_at, last_login, suspended_at, suspended_by, suspended_reason FROM operators WHERE id = ? OR email = ?`,
 		idOrEmail, idOrEmail,
 	)
 	return s.scanOperator(row)
@@ -39,7 +39,7 @@ func (s *Store) GetOperator(idOrEmail string) (*Operator, error) {
 // GetOperatorByEmail retrieves an operator by email address.
 func (s *Store) GetOperatorByEmail(email string) (*Operator, error) {
 	row := s.db.QueryRow(
-		`SELECT id, email, display_name, status, created_at, last_login FROM operators WHERE email = ?`,
+		`SELECT id, email, display_name, status, created_at, last_login, suspended_at, suspended_by, suspended_reason FROM operators WHERE email = ?`,
 		email,
 	)
 	return s.scanOperator(row)
@@ -48,7 +48,7 @@ func (s *Store) GetOperatorByEmail(email string) (*Operator, error) {
 // ListOperators returns all operators.
 func (s *Store) ListOperators() ([]*Operator, error) {
 	rows, err := s.db.Query(
-		`SELECT id, email, display_name, status, created_at, last_login FROM operators ORDER BY email`,
+		`SELECT id, email, display_name, status, created_at, last_login, suspended_at, suspended_by, suspended_reason FROM operators ORDER BY email`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list operators: %w", err)
@@ -69,7 +69,7 @@ func (s *Store) ListOperators() ([]*Operator, error) {
 // ListOperatorsByTenant returns all operators for a specific tenant.
 func (s *Store) ListOperatorsByTenant(tenantID string) ([]*Operator, error) {
 	rows, err := s.db.Query(
-		`SELECT o.id, o.email, o.display_name, o.status, o.created_at, o.last_login
+		`SELECT o.id, o.email, o.display_name, o.status, o.created_at, o.last_login, o.suspended_at, o.suspended_by, o.suspended_reason
 		 FROM operators o
 		 INNER JOIN operator_tenants ot ON o.id = ot.operator_id
 		 WHERE ot.tenant_id = ?
@@ -127,13 +127,54 @@ func (s *Store) UpdateOperatorLastLogin(id string) error {
 	return nil
 }
 
+// SuspendOperator suspends an operator, blocking all their KeyMakers.
+// Records who performed the suspension and why for audit compliance.
+func (s *Store) SuspendOperator(id, suspendedBy, reason string) error {
+	now := time.Now().Unix()
+	result, err := s.db.Exec(
+		`UPDATE operators SET status = 'suspended', suspended_at = ?, suspended_by = ?, suspended_reason = ? WHERE id = ?`,
+		now, suspendedBy, reason, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to suspend operator: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("operator not found: %s", id)
+	}
+	return nil
+}
+
+// UnsuspendOperator restores a suspended operator to active status.
+// Clears the suspension tracking fields.
+func (s *Store) UnsuspendOperator(id string) error {
+	result, err := s.db.Exec(
+		`UPDATE operators SET status = 'active', suspended_at = NULL, suspended_by = NULL, suspended_reason = NULL WHERE id = ?`,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to unsuspend operator: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("operator not found: %s", id)
+	}
+	return nil
+}
+
 func (s *Store) scanOperator(row *sql.Row) (*Operator, error) {
 	var op Operator
 	var displayName sql.NullString
 	var lastLogin sql.NullInt64
 	var createdAt int64
+	var suspendedAt sql.NullInt64
+	var suspendedBy sql.NullString
+	var suspendedReason sql.NullString
 
-	err := row.Scan(&op.ID, &op.Email, &displayName, &op.Status, &createdAt, &lastLogin)
+	err := row.Scan(&op.ID, &op.Email, &displayName, &op.Status, &createdAt, &lastLogin,
+		&suspendedAt, &suspendedBy, &suspendedReason)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("operator not found")
 	}
@@ -149,6 +190,16 @@ func (s *Store) scanOperator(row *sql.Row) (*Operator, error) {
 		op.LastLogin = &t
 	}
 	op.CreatedAt = time.Unix(createdAt, 0)
+	if suspendedAt.Valid {
+		t := time.Unix(suspendedAt.Int64, 0)
+		op.SuspendedAt = &t
+	}
+	if suspendedBy.Valid {
+		op.SuspendedBy = &suspendedBy.String
+	}
+	if suspendedReason.Valid {
+		op.SuspendedReason = &suspendedReason.String
+	}
 
 	return &op, nil
 }
@@ -158,8 +209,12 @@ func (s *Store) scanOperatorRows(rows *sql.Rows) (*Operator, error) {
 	var displayName sql.NullString
 	var lastLogin sql.NullInt64
 	var createdAt int64
+	var suspendedAt sql.NullInt64
+	var suspendedBy sql.NullString
+	var suspendedReason sql.NullString
 
-	err := rows.Scan(&op.ID, &op.Email, &displayName, &op.Status, &createdAt, &lastLogin)
+	err := rows.Scan(&op.ID, &op.Email, &displayName, &op.Status, &createdAt, &lastLogin,
+		&suspendedAt, &suspendedBy, &suspendedReason)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan operator: %w", err)
 	}
@@ -172,6 +227,16 @@ func (s *Store) scanOperatorRows(rows *sql.Rows) (*Operator, error) {
 		op.LastLogin = &t
 	}
 	op.CreatedAt = time.Unix(createdAt, 0)
+	if suspendedAt.Valid {
+		t := time.Unix(suspendedAt.Int64, 0)
+		op.SuspendedAt = &t
+	}
+	if suspendedBy.Valid {
+		op.SuspendedBy = &suspendedBy.String
+	}
+	if suspendedReason.Valid {
+		op.SuspendedReason = &suspendedReason.String
+	}
 
 	return &op, nil
 }
@@ -295,7 +360,7 @@ func (s *Store) CreateKeyMaker(km *KeyMaker) error {
 // GetKeyMaker retrieves a KeyMaker by ID.
 func (s *Store) GetKeyMaker(id string) (*KeyMaker, error) {
 	row := s.db.QueryRow(
-		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, revoked_at, revoked_by, revoked_reason
 		 FROM keymakers WHERE id = ?`,
 		id,
 	)
@@ -305,7 +370,7 @@ func (s *Store) GetKeyMaker(id string) (*KeyMaker, error) {
 // GetKeyMakerByPublicKey retrieves a KeyMaker by its public key.
 func (s *Store) GetKeyMakerByPublicKey(pubKey string) (*KeyMaker, error) {
 	row := s.db.QueryRow(
-		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, revoked_at, revoked_by, revoked_reason
 		 FROM keymakers WHERE public_key = ?`,
 		pubKey,
 	)
@@ -316,7 +381,7 @@ func (s *Store) GetKeyMakerByPublicKey(pubKey string) (*KeyMaker, error) {
 // Used for duplicate key detection during enrollment.
 func (s *Store) GetKeyMakerByFingerprint(fingerprint string) (*KeyMaker, error) {
 	row := s.db.QueryRow(
-		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, kid, key_fingerprint
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, kid, key_fingerprint, revoked_at, revoked_by, revoked_reason
 		 FROM keymakers WHERE key_fingerprint = ?`,
 		fingerprint,
 	)
@@ -326,7 +391,7 @@ func (s *Store) GetKeyMakerByFingerprint(fingerprint string) (*KeyMaker, error) 
 // ListKeyMakersByOperator returns all KeyMakers for an operator.
 func (s *Store) ListKeyMakersByOperator(operatorID string) ([]*KeyMaker, error) {
 	rows, err := s.db.Query(
-		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, revoked_at, revoked_by, revoked_reason
 		 FROM keymakers WHERE operator_id = ? ORDER BY bound_at DESC`,
 		operatorID,
 	)
@@ -349,7 +414,7 @@ func (s *Store) ListKeyMakersByOperator(operatorID string) ([]*KeyMaker, error) 
 // ListAllKeyMakers returns all KeyMakers regardless of status, ordered by bound_at DESC.
 func (s *Store) ListAllKeyMakers() ([]*KeyMaker, error) {
 	rows, err := s.db.Query(
-		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, revoked_at, revoked_by, revoked_reason
 		 FROM keymakers ORDER BY bound_at DESC`,
 	)
 	if err != nil {
@@ -387,6 +452,7 @@ func (s *Store) UpdateKeyMakerLastSeen(id string) error {
 }
 
 // RevokeKeyMaker marks a KeyMaker as revoked.
+// Deprecated: Use RevokeKeyMakerWithReason for proper audit tracking.
 func (s *Store) RevokeKeyMaker(id string) error {
 	result, err := s.db.Exec(
 		`UPDATE keymakers SET status = 'revoked' WHERE id = ?`,
@@ -403,13 +469,36 @@ func (s *Store) RevokeKeyMaker(id string) error {
 	return nil
 }
 
+// RevokeKeyMakerWithReason marks a KeyMaker as revoked with full audit tracking.
+// Records who performed the revocation and why for audit compliance.
+func (s *Store) RevokeKeyMakerWithReason(id, revokedBy, reason string) error {
+	now := time.Now().Unix()
+	result, err := s.db.Exec(
+		`UPDATE keymakers SET status = 'revoked', revoked_at = ?, revoked_by = ?, revoked_reason = ? WHERE id = ?`,
+		now, revokedBy, reason, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to revoke keymaker: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("keymaker not found: %s", id)
+	}
+	return nil
+}
+
 func (s *Store) scanKeyMaker(row *sql.Row) (*KeyMaker, error) {
 	var km KeyMaker
 	var boundAt int64
 	var lastSeen sql.NullInt64
+	var revokedAt sql.NullInt64
+	var revokedBy sql.NullString
+	var revokedReason sql.NullString
 
 	err := row.Scan(&km.ID, &km.OperatorID, &km.Name, &km.Platform, &km.SecureElement,
-		&km.DeviceFingerprint, &km.PublicKey, &boundAt, &lastSeen, &km.Status)
+		&km.DeviceFingerprint, &km.PublicKey, &boundAt, &lastSeen, &km.Status,
+		&revokedAt, &revokedBy, &revokedReason)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("keymaker not found")
 	}
@@ -422,6 +511,16 @@ func (s *Store) scanKeyMaker(row *sql.Row) (*KeyMaker, error) {
 		t := time.Unix(lastSeen.Int64, 0)
 		km.LastSeen = &t
 	}
+	if revokedAt.Valid {
+		t := time.Unix(revokedAt.Int64, 0)
+		km.RevokedAt = &t
+	}
+	if revokedBy.Valid {
+		km.RevokedBy = &revokedBy.String
+	}
+	if revokedReason.Valid {
+		km.RevokedReason = &revokedReason.String
+	}
 
 	return &km, nil
 }
@@ -430,9 +529,13 @@ func (s *Store) scanKeyMakerRows(rows *sql.Rows) (*KeyMaker, error) {
 	var km KeyMaker
 	var boundAt int64
 	var lastSeen sql.NullInt64
+	var revokedAt sql.NullInt64
+	var revokedBy sql.NullString
+	var revokedReason sql.NullString
 
 	err := rows.Scan(&km.ID, &km.OperatorID, &km.Name, &km.Platform, &km.SecureElement,
-		&km.DeviceFingerprint, &km.PublicKey, &boundAt, &lastSeen, &km.Status)
+		&km.DeviceFingerprint, &km.PublicKey, &boundAt, &lastSeen, &km.Status,
+		&revokedAt, &revokedBy, &revokedReason)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan keymaker: %w", err)
 	}
@@ -441,6 +544,16 @@ func (s *Store) scanKeyMakerRows(rows *sql.Rows) (*KeyMaker, error) {
 	if lastSeen.Valid {
 		t := time.Unix(lastSeen.Int64, 0)
 		km.LastSeen = &t
+	}
+	if revokedAt.Valid {
+		t := time.Unix(revokedAt.Int64, 0)
+		km.RevokedAt = &t
+	}
+	if revokedBy.Valid {
+		km.RevokedBy = &revokedBy.String
+	}
+	if revokedReason.Valid {
+		km.RevokedReason = &revokedReason.String
 	}
 
 	return &km, nil
@@ -762,7 +875,7 @@ func (s *Store) CreateAdminKey(ak *AdminKey) error {
 // GetAdminKey retrieves an admin key by ID.
 func (s *Store) GetAdminKey(id string) (*AdminKey, error) {
 	row := s.db.QueryRow(
-		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
+		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen, revoked_at, revoked_by, revoked_reason
 		 FROM admin_keys WHERE id = ?`,
 		id,
 	)
@@ -773,7 +886,7 @@ func (s *Store) GetAdminKey(id string) (*AdminKey, error) {
 // Used for O(1) lookup during DPoP token validation.
 func (s *Store) GetAdminKeyByKid(kid string) (*AdminKey, error) {
 	row := s.db.QueryRow(
-		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
+		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen, revoked_at, revoked_by, revoked_reason
 		 FROM admin_keys WHERE kid = ?`,
 		kid,
 	)
@@ -784,7 +897,7 @@ func (s *Store) GetAdminKeyByKid(kid string) (*AdminKey, error) {
 // Used for duplicate key detection during enrollment.
 func (s *Store) GetAdminKeyByFingerprint(fingerprint string) (*AdminKey, error) {
 	row := s.db.QueryRow(
-		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
+		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen, revoked_at, revoked_by, revoked_reason
 		 FROM admin_keys WHERE key_fingerprint = ?`,
 		fingerprint,
 	)
@@ -794,7 +907,7 @@ func (s *Store) GetAdminKeyByFingerprint(fingerprint string) (*AdminKey, error) 
 // ListAdminKeysByOperator returns all admin keys for an operator.
 func (s *Store) ListAdminKeysByOperator(operatorID string) ([]*AdminKey, error) {
 	rows, err := s.db.Query(
-		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen
+		`SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen, revoked_at, revoked_by, revoked_reason
 		 FROM admin_keys WHERE operator_id = ? ORDER BY bound_at DESC`,
 		operatorID,
 	)
@@ -833,10 +946,30 @@ func (s *Store) UpdateAdminKeyLastSeen(id string) error {
 }
 
 // RevokeAdminKey marks an admin key as revoked.
+// Deprecated: Use RevokeAdminKeyWithReason for proper audit tracking.
 func (s *Store) RevokeAdminKey(id string) error {
 	result, err := s.db.Exec(
 		`UPDATE admin_keys SET status = 'revoked' WHERE id = ?`,
 		id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to revoke admin key: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("admin key not found: %s", id)
+	}
+	return nil
+}
+
+// RevokeAdminKeyWithReason marks an admin key as revoked with full audit tracking.
+// Records who performed the revocation and why for audit compliance.
+func (s *Store) RevokeAdminKeyWithReason(id, revokedBy, reason string) error {
+	now := time.Now().Unix()
+	result, err := s.db.Exec(
+		`UPDATE admin_keys SET status = 'revoked', revoked_at = ?, revoked_by = ?, revoked_reason = ? WHERE id = ?`,
+		now, revokedBy, reason, id,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to revoke admin key: %w", err)
@@ -854,9 +987,13 @@ func (s *Store) scanAdminKey(row *sql.Row) (*AdminKey, error) {
 	var boundAt int64
 	var lastSeen sql.NullInt64
 	var name sql.NullString
+	var revokedAt sql.NullInt64
+	var revokedBy sql.NullString
+	var revokedReason sql.NullString
 
 	err := row.Scan(&ak.ID, &ak.OperatorID, &name, &ak.PublicKey, &ak.Kid,
-		&ak.KeyFingerprint, &ak.Status, &boundAt, &lastSeen)
+		&ak.KeyFingerprint, &ak.Status, &boundAt, &lastSeen,
+		&revokedAt, &revokedBy, &revokedReason)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("admin key not found")
 	}
@@ -872,6 +1009,16 @@ func (s *Store) scanAdminKey(row *sql.Row) (*AdminKey, error) {
 		t := time.Unix(lastSeen.Int64, 0)
 		ak.LastSeen = &t
 	}
+	if revokedAt.Valid {
+		t := time.Unix(revokedAt.Int64, 0)
+		ak.RevokedAt = &t
+	}
+	if revokedBy.Valid {
+		ak.RevokedBy = &revokedBy.String
+	}
+	if revokedReason.Valid {
+		ak.RevokedReason = &revokedReason.String
+	}
 
 	return &ak, nil
 }
@@ -881,9 +1028,13 @@ func (s *Store) scanAdminKeyRows(rows *sql.Rows) (*AdminKey, error) {
 	var boundAt int64
 	var lastSeen sql.NullInt64
 	var name sql.NullString
+	var revokedAt sql.NullInt64
+	var revokedBy sql.NullString
+	var revokedReason sql.NullString
 
 	err := rows.Scan(&ak.ID, &ak.OperatorID, &name, &ak.PublicKey, &ak.Kid,
-		&ak.KeyFingerprint, &ak.Status, &boundAt, &lastSeen)
+		&ak.KeyFingerprint, &ak.Status, &boundAt, &lastSeen,
+		&revokedAt, &revokedBy, &revokedReason)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan admin key: %w", err)
 	}
@@ -896,6 +1047,16 @@ func (s *Store) scanAdminKeyRows(rows *sql.Rows) (*AdminKey, error) {
 		t := time.Unix(lastSeen.Int64, 0)
 		ak.LastSeen = &t
 	}
+	if revokedAt.Valid {
+		t := time.Unix(revokedAt.Int64, 0)
+		ak.RevokedAt = &t
+	}
+	if revokedBy.Valid {
+		ak.RevokedBy = &revokedBy.String
+	}
+	if revokedReason.Valid {
+		ak.RevokedReason = &revokedReason.String
+	}
 
 	return &ak, nil
 }
@@ -906,7 +1067,7 @@ func (s *Store) scanAdminKeyRows(rows *sql.Rows) (*AdminKey, error) {
 // Used for O(1) lookup during DPoP token validation.
 func (s *Store) GetKeyMakerByKid(kid string) (*KeyMaker, error) {
 	row := s.db.QueryRow(
-		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, kid, key_fingerprint
+		`SELECT id, operator_id, name, platform, secure_element, device_fingerprint, public_key, bound_at, last_seen, status, kid, key_fingerprint, revoked_at, revoked_by, revoked_reason
 		 FROM keymakers WHERE kid = ?`,
 		kid,
 	)
@@ -919,9 +1080,13 @@ func (s *Store) scanKeyMakerWithDPoP(row *sql.Row) (*KeyMaker, error) {
 	var lastSeen sql.NullInt64
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
+	var revokedAt sql.NullInt64
+	var revokedBy sql.NullString
+	var revokedReason sql.NullString
 
 	err := row.Scan(&km.ID, &km.OperatorID, &km.Name, &km.Platform, &km.SecureElement,
-		&km.DeviceFingerprint, &km.PublicKey, &boundAt, &lastSeen, &km.Status, &kid, &keyFingerprint)
+		&km.DeviceFingerprint, &km.PublicKey, &boundAt, &lastSeen, &km.Status, &kid, &keyFingerprint,
+		&revokedAt, &revokedBy, &revokedReason)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("keymaker not found")
 	}
@@ -940,6 +1105,16 @@ func (s *Store) scanKeyMakerWithDPoP(row *sql.Row) (*KeyMaker, error) {
 	if keyFingerprint.Valid {
 		km.KeyFingerprint = keyFingerprint.String
 	}
+	if revokedAt.Valid {
+		t := time.Unix(revokedAt.Int64, 0)
+		km.RevokedAt = &t
+	}
+	if revokedBy.Valid {
+		km.RevokedBy = &revokedBy.String
+	}
+	if revokedReason.Valid {
+		km.RevokedReason = &revokedReason.String
+	}
 
 	return &km, nil
 }
@@ -950,7 +1125,7 @@ func (s *Store) scanKeyMakerWithDPoP(row *sql.Row) (*KeyMaker, error) {
 // Used for O(1) lookup during DPoP token validation.
 func (s *Store) GetDPUByKid(kid string) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, decommissioned_at, decommissioned_by, decommissioned_reason
 		 FROM dpus WHERE kid = ?`,
 		kid,
 	)
@@ -962,7 +1137,7 @@ func (s *Store) GetDPUByKid(kid string) (*DPU, error) {
 // Returns nil, nil if not found (does not return error for not-found case).
 func (s *Store) GetDPUByFingerprint(fingerprint string) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, decommissioned_at, decommissioned_by, decommissioned_reason
 		 FROM dpus WHERE key_fingerprint = ?`,
 		fingerprint,
 	)
@@ -983,9 +1158,13 @@ func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
 	var kid sql.NullString
 	var keyFingerprint sql.NullString
 	var enrollmentExpiresAt sql.NullInt64
+	var decommissionedAt sql.NullInt64
+	var decommissionedBy sql.NullString
+	var decommissionedReason sql.NullString
 
 	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen,
-		&createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt)
+		&createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt,
+		&decommissionedAt, &decommissionedBy, &decommissionedReason)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("DPU not found")
 	}
@@ -1015,6 +1194,16 @@ func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
 	if enrollmentExpiresAt.Valid {
 		t := time.Unix(enrollmentExpiresAt.Int64, 0)
 		dpu.EnrollmentExpiresAt = &t
+	}
+	if decommissionedAt.Valid {
+		t := time.Unix(decommissionedAt.Int64, 0)
+		dpu.DecommissionedAt = &t
+	}
+	if decommissionedBy.Valid {
+		dpu.DecommissionedBy = &decommissionedBy.String
+	}
+	if decommissionedReason.Valid {
+		dpu.DecommissionedReason = &decommissionedReason.String
 	}
 
 	return &dpu, nil
