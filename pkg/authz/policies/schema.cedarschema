@@ -44,6 +44,11 @@ namespace Cobalt {
         tenant: String,
     };
 
+    // SSHCA: SSH Certificate Authority managed by km
+    type SSHCA = {
+        tenant: String,
+    };
+
     // Authorization: Links operator to CAs and devices within a tenant
     type Authorization = {
         tenant: String,
@@ -68,6 +73,7 @@ namespace Cobalt {
     entity DPU in [Tenant] = DPU;
     entity Tenant = Tenant;
     entity CertificateAuthority in [Tenant] = CertificateAuthority;
+    entity SSHCA in [Tenant] = SSHCA;
     entity Authorization in [Tenant] = Authorization;
     entity IssuedCredential in [Tenant] = IssuedCredential;
     entity Cobalt = Cobalt;
@@ -181,6 +187,20 @@ namespace Cobalt {
     action "dpu:read_own_config" appliesTo {
         principal: [DPU],
         resource: [DPU],
+    };
+
+    // ----- SSH CA Management (km) -----
+    action "ssh-ca:create" appliesTo {
+        principal: [Operator],
+        resource: [SSHCA, Tenant],
+    };
+    action "ssh-ca:list" appliesTo {
+        principal: [Operator],
+        resource: [SSHCA, Tenant],
+    };
+    action "ssh-ca:read" appliesTo {
+        principal: [Operator],
+        resource: [SSHCA],
     };
 
     // ----- Tenant Management (bluectl only) -----

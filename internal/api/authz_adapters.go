@@ -187,6 +187,8 @@ func actionToResourceType(action string) string {
 		return "Audit"
 	case strings.HasPrefix(action, "trust:"):
 		return "TrustRelationship"
+	case strings.HasPrefix(action, "ssh-ca:"):
+		return "SSHCA"
 	default:
 		return "Unknown"
 	}

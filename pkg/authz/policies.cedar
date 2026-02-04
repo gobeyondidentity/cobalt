@@ -52,6 +52,26 @@ permit(
 };
 
 // ============================================================================
+// SSH CA MANAGEMENT: Operators can create and manage SSH CAs
+// ============================================================================
+
+// Any operator can create SSH CAs (they will own what they create)
+permit(
+    principal is Operator,
+    action == Action::"ssh-ca:create",
+    resource
+);
+
+// Operators can list and read SSH CAs in their tenant
+permit(
+    principal is Operator,
+    action in [Action::"ssh-ca:list", Action::"ssh-ca:read"],
+    resource is SSHCA
+) when {
+    principal.tenant_ids.contains(resource.tenant)
+};
+
+// ============================================================================
 // DPU SELF-ACCESS: Devices can access their own resources
 // ============================================================================
 
