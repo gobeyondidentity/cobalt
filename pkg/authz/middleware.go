@@ -296,28 +296,29 @@ func (m *AuthzMiddleware) writeDeniedResponse(
 	resource *Resource,
 	action string,
 ) {
-	// Determine error based on reason
-	reason := strings.ToLower(decision.Reason)
-
+	// Determine error based on structured reason type (not string matching)
 	var authzErr *AuthzError
 
-	switch {
-	case strings.Contains(reason, "attestation failed"):
+	switch decision.StructuredReason.Type {
+	case ReasonAttestationFailed:
 		authzErr = ErrAttestationFailed(resource.UID)
-	case strings.Contains(reason, "attestation") && strings.Contains(reason, "stale"):
+
+	case ReasonAttestationStale:
 		// For super:admin with stale attestation, indicate bypass is available
 		if decision.RequiresForceBypass && principal.Role == RoleSuperAdmin {
 			m.writeBypassAvailableResponse(w, resource.UID, "stale")
 			return
 		}
 		authzErr = ErrAttestationStale(resource.UID)
-	case strings.Contains(reason, "attestation") && strings.Contains(reason, "unavailable"):
+
+	case ReasonAttestationUnavailable:
 		// For super:admin with unavailable attestation, indicate bypass is available
 		if decision.RequiresForceBypass && principal.Role == RoleSuperAdmin {
 			m.writeBypassAvailableResponse(w, resource.UID, "unavailable")
 			return
 		}
 		authzErr = ErrAttestationUnavailable(resource.UID)
+
 	default:
 		authzErr = ErrForbidden(decision.Reason)
 	}

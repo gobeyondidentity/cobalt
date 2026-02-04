@@ -12,6 +12,27 @@ const (
 	AttestationFailed      AttestationStatus = "failed"
 )
 
+// ReasonType classifies authorization decision reasons for HTTP status mapping.
+// Middleware uses this type (not free-form strings) to determine response codes.
+type ReasonType string
+
+const (
+	ReasonAllowed                ReasonType = "allowed"
+	ReasonAttestationFailed      ReasonType = "attestation_failed"
+	ReasonAttestationStale       ReasonType = "attestation_stale"
+	ReasonAttestationUnavailable ReasonType = "attestation_unavailable"
+	ReasonPolicyDenied           ReasonType = "policy_denied"
+)
+
+// DecisionReason provides structured authorization decision metadata.
+// Type field determines HTTP status code mapping in middleware.
+// Details provides human-readable explanation for logging and debugging.
+type DecisionReason struct {
+	Type    ReasonType // Primary classification for status code mapping
+	SubType string     // Optional qualifier (e.g., "force_bypass_available")
+	Details string     // Human-readable explanation
+}
+
 // Role represents a principal's role in the system.
 // Per ADR-011: three-tier model with cross-tenant support.
 type Role string
@@ -55,9 +76,10 @@ type AuthzRequest struct {
 
 // AuthzDecision contains the result of an authorization check.
 type AuthzDecision struct {
-	Allowed             bool          // True if access is permitted
-	Reason              string        // Human-readable explanation of the decision
-	PolicyID            string        // ID of the policy that determined the outcome (for audit)
-	RequiresForceBypass bool          // True if denied due to stale/unavailable and super:admin can bypass
-	Duration            time.Duration // How long the authorization check took
+	Allowed             bool           // True if access is permitted
+	Reason              string         // Human-readable explanation (for logging/audit)
+	StructuredReason    DecisionReason // Structured reason for HTTP status mapping
+	PolicyID            string         // ID of the policy that determined the outcome (for audit)
+	RequiresForceBypass bool           // True if denied due to stale/unavailable and super:admin can bypass
+	Duration            time.Duration  // How long the authorization check took
 }

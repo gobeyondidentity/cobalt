@@ -111,11 +111,12 @@ func (a *Authorizer) Authorize(ctx context.Context, req AuthzRequest) AuthzDecis
 	}
 
 	// Determine reason and RequiresForceBypass
-	reason, requiresForceBypass := a.buildReasonAndBypass(req, allowed, diagnostic)
+	reason, structuredReason, requiresForceBypass := a.buildReasonAndBypass(req, allowed, diagnostic)
 
 	result := AuthzDecision{
 		Allowed:             allowed,
 		Reason:              reason,
+		StructuredReason:    structuredReason,
 		PolicyID:            policyID,
 		RequiresForceBypass: requiresForceBypass,
 		Duration:            duration,
@@ -127,13 +128,16 @@ func (a *Authorizer) Authorize(ctx context.Context, req AuthzRequest) AuthzDecis
 	return result
 }
 
-// buildReasonAndBypass determines the human-readable reason and bypass eligibility.
+// buildReasonAndBypass determines the structured reason, human-readable text, and bypass eligibility.
 // RequiresForceBypass is true only when:
 // - Denied due to stale or unavailable attestation (not failed)
 // - Principal is super:admin (only they can bypass)
-func (a *Authorizer) buildReasonAndBypass(req AuthzRequest, allowed bool, diag cedar.Diagnostic) (string, bool) {
+func (a *Authorizer) buildReasonAndBypass(req AuthzRequest, allowed bool, diag cedar.Diagnostic) (string, DecisionReason, bool) {
 	if allowed {
-		return "access permitted", false
+		return "access permitted", DecisionReason{
+			Type:    ReasonAllowed,
+			Details: "access permitted",
+		}, false
 	}
 
 	// Check if denial was due to attestation status
@@ -142,30 +146,54 @@ func (a *Authorizer) buildReasonAndBypass(req AuthzRequest, allowed bool, diag c
 	switch attestationStatus {
 	case AttestationFailed:
 		// Hard deny, no bypass possible for anyone
-		return "attestation failed - access permanently blocked", false
+		return "attestation failed - access permanently blocked", DecisionReason{
+			Type:    ReasonAttestationFailed,
+			Details: "attestation failed - access permanently blocked",
+		}, false
 
 	case AttestationStale:
 		// Super:admin can bypass stale attestation
 		if req.Principal.Role == RoleSuperAdmin {
-			return "attestation stale - force bypass available", true
+			return "attestation stale - force bypass available", DecisionReason{
+				Type:    ReasonAttestationStale,
+				SubType: "force_bypass_available",
+				Details: "attestation stale - force bypass available",
+			}, true
 		}
-		return "attestation stale - access denied", false
+		return "attestation stale - access denied", DecisionReason{
+			Type:    ReasonAttestationStale,
+			Details: "attestation stale - access denied",
+		}, false
 
 	case AttestationUnavailable:
 		// Super:admin can bypass unavailable attestation
 		if req.Principal.Role == RoleSuperAdmin {
-			return "attestation unavailable - force bypass available", true
+			return "attestation unavailable - force bypass available", DecisionReason{
+				Type:    ReasonAttestationUnavailable,
+				SubType: "force_bypass_available",
+				Details: "attestation unavailable - force bypass available",
+			}, true
 		}
-		return "attestation unavailable - access denied", false
+		return "attestation unavailable - access denied", DecisionReason{
+			Type:    ReasonAttestationUnavailable,
+			Details: "attestation unavailable - access denied",
+		}, false
 	}
 
 	// Generic policy denial
 	if len(diag.Reasons) > 0 {
-		return fmt.Sprintf("denied by policy %s", diag.Reasons[0].PolicyID), false
+		details := fmt.Sprintf("denied by policy %s", diag.Reasons[0].PolicyID)
+		return details, DecisionReason{
+			Type:    ReasonPolicyDenied,
+			Details: details,
+		}, false
 	}
 
 	// Default deny (no permit matched)
-	return "access denied - no matching permit policy", false
+	return "access denied - no matching permit policy", DecisionReason{
+		Type:    ReasonPolicyDenied,
+		Details: "access denied - no matching permit policy",
+	}, false
 }
 
 // getAttestationStatus extracts attestation status from context.
