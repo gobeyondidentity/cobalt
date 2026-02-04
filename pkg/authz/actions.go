@@ -20,6 +20,7 @@ const (
 	ActionAuthorizationList   = "authorization:list"
 	ActionAuthorizationCreate = "authorization:create"
 	ActionAuthorizationDelete = "authorization:delete"
+	ActionAuthorizationCheck  = "authorization:check"
 
 	// DPU management
 	ActionDPUList            = "dpu:list"
@@ -32,6 +33,11 @@ const (
 	ActionCredentialPush   = "credential:push"
 	ActionCredentialPull   = "credential:pull"
 	ActionDistributionList = "distribution:list"
+
+	// SSH CA management
+	ActionSSHCACreate = "ssh-ca:create"
+	ActionSSHCAList   = "ssh-ca:list"
+	ActionSSHCARead   = "ssh-ca:read"
 
 	// DPU self-access (Aegis agent operations)
 	ActionDPUReportAttestation = "dpu:report_attestation"
@@ -76,6 +82,7 @@ var validActions = map[string]bool{
 	ActionAuthorizationList:    true,
 	ActionAuthorizationCreate:  true,
 	ActionAuthorizationDelete:  true,
+	ActionAuthorizationCheck:   true,
 	ActionDPUList:              true,
 	ActionDPURead:              true,
 	ActionDPURegister:          true,
@@ -84,6 +91,9 @@ var validActions = map[string]bool{
 	ActionCredentialPush:       true,
 	ActionCredentialPull:       true,
 	ActionDistributionList:     true,
+	ActionSSHCACreate:          true,
+	ActionSSHCAList:            true,
+	ActionSSHCARead:            true,
 	ActionDPUReportAttestation: true,
 	ActionDPUReadOwnConfig:     true,
 	ActionTenantCreate:         true,
@@ -185,6 +195,7 @@ func NewActionRegistry() *ActionRegistry {
 	r.register("GET", "/api/v1/authorizations", Action(ActionAuthorizationList))
 	r.register("POST", "/api/v1/authorizations", Action(ActionAuthorizationCreate))
 	r.register("DELETE", "/api/v1/authorizations/{id}", Action(ActionAuthorizationDelete))
+	r.register("POST", "/api/v1/authorizations/check", Action(ActionAuthorizationCheck))
 
 	// ----- DPU Management Endpoints -----
 	r.register("GET", "/api/v1/dpus", Action(ActionDPUList))
@@ -196,6 +207,11 @@ func NewActionRegistry() *ActionRegistry {
 	// ----- Credential Distribution Endpoints -----
 	r.register("POST", "/api/v1/push", Action(ActionCredentialPush))
 	r.register("GET", "/api/v1/distributions", Action(ActionDistributionList))
+
+	// ----- SSH CA Endpoints -----
+	r.register("POST", "/api/v1/ssh-cas", Action(ActionSSHCACreate))
+	r.register("GET", "/api/v1/credentials/ssh-cas", Action(ActionSSHCAList))
+	r.register("GET", "/api/v1/credentials/ssh-cas/{name}", Action(ActionSSHCARead))
 
 	// ----- DPU Agent Endpoints (Aegis) -----
 	r.register("GET", "/api/v1/dpus/{id}/credentials", Action(ActionCredentialPull))

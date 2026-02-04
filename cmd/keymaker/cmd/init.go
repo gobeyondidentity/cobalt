@@ -170,6 +170,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	config := KMConfig{
 		KID:           enrollResult.ID,
 		ServerURL:     serverURL,
+		OperatorID:    enrollResult.OperatorID,
 		OperatorEmail: enrollResult.OperatorEmail,
 	}
 
@@ -210,6 +211,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 type enrollmentResult struct {
 	ID            string
 	Fingerprint   string
+	OperatorID    string
 	OperatorEmail string
 	TenantName    string
 	TenantRole    string
@@ -293,6 +295,7 @@ func doEnrollment(inviteCode, serverURL string) (*enrollmentResult, error) {
 	var completeResp struct {
 		ID            string `json:"id"`
 		Fingerprint   string `json:"fingerprint"`
+		OperatorID    string `json:"operator_id"`
 		OperatorEmail string `json:"operator_email"`
 		TenantName    string `json:"tenant_name"`
 		TenantRole    string `json:"tenant_role"`
@@ -309,6 +312,7 @@ func doEnrollment(inviteCode, serverURL string) (*enrollmentResult, error) {
 	return &enrollmentResult{
 		ID:            completeResp.ID,
 		Fingerprint:   completeResp.Fingerprint,
+		OperatorID:    completeResp.OperatorID,
 		OperatorEmail: completeResp.OperatorEmail,
 		TenantName:    completeResp.TenantName,
 		TenantRole:    completeResp.TenantRole,

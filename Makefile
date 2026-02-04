@@ -24,7 +24,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 # ldflags for embedding version
 LDFLAGS := -X github.com/gobeyondidentity/cobalt/internal/version.Version=$(VERSION)
 
-.PHONY: all aegis bluectl nexus km sentry dpuemu test clean release-clean \
+.PHONY: all aegis bluectl nexus km sentry dpuemu test clean release-clean install \
 	packages package-aegis package-sentry-doca \
 	docker-sentry docker-nexus docker-aegis
 
@@ -48,6 +48,24 @@ all: $(BIN_DIR)
 # Create bin directory if needed
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
+
+# Install binaries to system location (requires sudo on macOS)
+# Detects platform and installs to appropriate location
+install:
+	@if [ "$$(uname -s)" = "Darwin" ]; then \
+		echo "Installing binaries to /opt/homebrew/bin/ (macOS)..."; \
+		INSTALL_DIR=/opt/homebrew/bin; \
+	else \
+		echo "Installing binaries to /usr/local/bin/ (Linux)..."; \
+		INSTALL_DIR=/usr/local/bin; \
+	fi; \
+	sudo cp $(AEGIS) $$INSTALL_DIR/aegis && echo "  $$INSTALL_DIR/aegis"; \
+	sudo cp $(BLUECTL) $$INSTALL_DIR/bluectl && echo "  $$INSTALL_DIR/bluectl"; \
+	sudo cp $(KM) $$INSTALL_DIR/km && echo "  $$INSTALL_DIR/km"; \
+	sudo cp $(NEXUS) $$INSTALL_DIR/nexus && echo "  $$INSTALL_DIR/nexus"; \
+	sudo cp $(SENTRY) $$INSTALL_DIR/sentry && echo "  $$INSTALL_DIR/sentry"; \
+	sudo cp $(DPUEMU) $$INSTALL_DIR/dpuemu && echo "  $$INSTALL_DIR/dpuemu"; \
+	echo "Done."
 
 # Build aegis for local platform and cross-compile for BlueField (ARM64)
 aegis: $(BIN_DIR)

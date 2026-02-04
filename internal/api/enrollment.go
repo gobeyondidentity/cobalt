@@ -235,6 +235,7 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 	resp := EnrollCompleteResponse{
 		ID:            keymakerID,
 		Fingerprint:   fingerprint,
+		OperatorID:    operator.ID,
 		OperatorEmail: inviteCode.OperatorEmail,
 		TenantName:    tenantName,
 		TenantRole:    inviteCode.Role,

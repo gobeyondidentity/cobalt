@@ -249,8 +249,19 @@ cleanup() {
     rm -f ~/.local/share/bluectl/dpus.db 2>/dev/null || true
     rm -f ~/.local/share/bluectl/key 2>/dev/null || true
     rm -f ~/.config/bluectl/config.yaml 2>/dev/null || true
+    rm -f ~/.bluectl/key.pem 2>/dev/null || true
+    rm -f ~/.bluectl/kid 2>/dev/null || true
     rm -rf ~/.km 2>/dev/null || true
     rm -rf /tmp/demo_trustedca 2>/dev/null || true
+    # Clean km local database (stores SSH CAs)
+    rm -f ~/.local/share/km/km.db 2>/dev/null || true
+    rm -f ~/.local/share/km/km.db-wal 2>/dev/null || true
+    rm -f ~/.local/share/km/km.db-shm 2>/dev/null || true
+    rm -f ~/.local/share/km/key 2>/dev/null || true
+    # Clean nexus database
+    rm -f ~/.local/share/nexus/nexus.db 2>/dev/null || true
+    rm -f ~/.local/share/nexus/nexus.db-wal 2>/dev/null || true
+    rm -f ~/.local/share/nexus/nexus.db-shm 2>/dev/null || true
 
     echo -e "${DIM}Done.${RESET}"
 }
@@ -321,7 +332,7 @@ step_intro() {
 step_1_infrastructure() {
     print_step 1 "🚀" "Setting Up the Infrastructure"
 
-    print_narrative "Starting the control plane (nexus) and DPU emulator..."
+    print_narrative "Starting the control plane (nexus), enrolling as admin, and starting the DPU emulator..."
 
     # Start nexus in background
     echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
@@ -344,6 +355,18 @@ step_1_infrastructure() {
     print_command "bluectl config set-server http://localhost:18080"
     bluectl config set-server http://localhost:18080 > /dev/null 2>&1
     print_success "  Server configured"
+    echo ""
+
+    # Enroll as first admin (must be within 10 minutes of nexus startup)
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Enroll as first admin..."
+    print_command "bluectl init --force"
+    bluectl init --force > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        print_error "  Failed to initialize bluectl. Bootstrap window may have closed."
+        exit 1
+    fi
+    print_success "  Admin enrolled"
     echo ""
 
     # Start dpuemu in background
@@ -468,8 +491,22 @@ step_6_accept() {
     print_command "km init"
     echo ""
     echo -en "${GREEN}"
-    echo "$INVITE_CODE" | km init 2>&1 || true
+    echo "$INVITE_CODE" | km init 2>&1
+    km_exit=$?
     echo -e "${RESET}"
+
+    if [ $km_exit -ne 0 ]; then
+        echo ""
+        print_error "  km init failed (exit code: $km_exit)"
+        echo ""
+        echo "Debug info:"
+        echo "  Config file: $(ls -la ~/.km/config.json 2>&1 || echo 'not found')"
+        echo "  Key file: $(ls -la ~/.km/key.pem 2>&1 || echo 'not found')"
+        echo "  Kid file: $(ls -la ~/.km/kid 2>&1 || echo 'not found')"
+        exit 1
+    fi
+    print_success "  Operator enrolled"
+    echo ""
 
     print_why \
         "New team member productive in minutes, not days" \
