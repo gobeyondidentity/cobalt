@@ -253,6 +253,10 @@ cleanup() {
     rm -f ~/.bluectl/kid 2>/dev/null || true
     rm -rf ~/.km 2>/dev/null || true
     rm -rf /tmp/demo_trustedca 2>/dev/null || true
+    # Clean nexus database
+    rm -f ~/.local/share/nexus/nexus.db 2>/dev/null || true
+    rm -f ~/.local/share/nexus/nexus.db-wal 2>/dev/null || true
+    rm -f ~/.local/share/nexus/nexus.db-shm 2>/dev/null || true
 
     echo -e "${DIM}Done.${RESET}"
 }
