@@ -197,10 +197,8 @@ func (a *Authorizer) buildReasonAndBypass(req AuthzRequest, allowed bool, diag c
 }
 
 // getAttestationStatus extracts attestation status from context.
+// Expects string type (converted at middleware entry point).
 func getAttestationStatus(ctx map[string]any) AttestationStatus {
-	if status, ok := ctx["attestation_status"].(AttestationStatus); ok {
-		return status
-	}
 	if statusStr, ok := ctx["attestation_status"].(string); ok {
 		return AttestationStatus(statusStr)
 	}

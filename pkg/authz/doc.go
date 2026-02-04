@@ -38,7 +38,7 @@
 //			TenantID: "tnt_acme",
 //		},
 //		Context: map[string]any{
-//			"attestation_status":  authz.AttestationVerified,
+//			"attestation_status":  "verified", // string, not typed constant
 //			"operator_authorized": true,
 //		},
 //	})

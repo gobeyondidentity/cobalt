@@ -28,7 +28,7 @@ func TestAuthorizer_OperatorWithAuthorization(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status":  AttestationVerified,
+			"attestation_status":  "verified",
 			"operator_authorized": true,
 		},
 	}
@@ -67,7 +67,7 @@ func TestAuthorizer_OperatorWithoutAuthorization(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status":  AttestationVerified,
+			"attestation_status":  "verified",
 			"operator_authorized": false, // No authorization
 		},
 	}
@@ -102,7 +102,7 @@ func TestAuthorizer_TenantAdminOwnTenant(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status": AttestationVerified,
+			"attestation_status": "verified",
 		},
 	}
 
@@ -136,7 +136,7 @@ func TestAuthorizer_SuperAdminGlobalAccess(t *testing.T) {
 			TenantID: "tnt_other", // Different tenant
 		},
 		Context: map[string]any{
-			"attestation_status": AttestationVerified,
+			"attestation_status": "verified",
 		},
 	}
 
@@ -171,7 +171,7 @@ func TestAuthorizer_AttestationFailed_HardBlock(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status": AttestationFailed,
+			"attestation_status": "failed",
 		},
 	}
 
@@ -208,7 +208,7 @@ func TestAuthorizer_AttestationStale_OperatorDenied(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status":  AttestationStale,
+			"attestation_status":  "stale",
 			"operator_authorized": true,
 		},
 	}
@@ -246,7 +246,7 @@ func TestAuthorizer_AttestationStale_SuperAdminBypass(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status": AttestationStale,
+			"attestation_status": "stale",
 		},
 	}
 
@@ -287,7 +287,7 @@ func TestAuthorizer_AttestationUnavailable_SuperAdminBypass(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status": AttestationUnavailable,
+			"attestation_status": "unavailable",
 		},
 	}
 
@@ -323,7 +323,7 @@ func TestAuthorizer_DPUSelfAccess_Pull(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status": AttestationVerified,
+			"attestation_status": "verified",
 		},
 	}
 
@@ -357,7 +357,7 @@ func TestAuthorizer_DPUCrossAccess_Denied(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status": AttestationVerified,
+			"attestation_status": "verified",
 		},
 	}
 
@@ -475,7 +475,7 @@ func TestAuthorizer_DecisionLogging(t *testing.T) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status":  AttestationVerified,
+			"attestation_status":  "verified",
 			"operator_authorized": true,
 		},
 	}
@@ -608,7 +608,7 @@ func BenchmarkAuthorize(b *testing.B) {
 			TenantID: "tnt_acme",
 		},
 		Context: map[string]any{
-			"attestation_status":  AttestationVerified,
+			"attestation_status":  "verified",
 			"operator_authorized": true,
 		},
 	}
