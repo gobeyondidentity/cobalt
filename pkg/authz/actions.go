@@ -46,6 +46,16 @@ const (
 	// Trust management [POST-MVP]
 	ActionTrustCreate = "trust:create"
 	ActionTrustDelete = "trust:delete"
+
+	// Host management (Phase 5)
+	ActionHostRegister      = "host:register"
+	ActionHostReportPosture = "host:report_posture"
+	ActionHostList          = "host:list"
+	ActionHostRead          = "host:read"
+	ActionHostDelete        = "host:delete"
+	ActionHostReadPosture   = "host:read_posture"
+	ActionHostRequestCert   = "host:request_cert"
+	ActionHostScan          = "host:scan"
 )
 
 // validActions is the set of all valid action strings.
@@ -77,6 +87,14 @@ var validActions = map[string]bool{
 	ActionAuditExport:          true,
 	ActionTrustCreate:          true,
 	ActionTrustDelete:          true,
+	ActionHostRegister:         true,
+	ActionHostReportPosture:    true,
+	ActionHostList:             true,
+	ActionHostRead:             true,
+	ActionHostDelete:           true,
+	ActionHostReadPosture:      true,
+	ActionHostRequestCert:      true,
+	ActionHostScan:             true,
 }
 
 // attestationGatedActions require valid attestation status.
@@ -187,6 +205,16 @@ func NewActionRegistry() *ActionRegistry {
 	// ----- Trust Management [POST-MVP] -----
 	r.register("POST", "/api/v1/trust-relationships", Action(ActionTrustCreate))
 	r.register("DELETE", "/api/v1/trust-relationships/{id}", Action(ActionTrustDelete))
+
+	// ----- Host Management Endpoints (Phase 5) -----
+	r.register("POST", "/api/v1/hosts/register", Action(ActionHostRegister))
+	r.register("POST", "/api/v1/hosts/{id}/posture", Action(ActionHostReportPosture))
+	r.register("GET", "/api/v1/hosts", Action(ActionHostList))
+	r.register("GET", "/api/v1/hosts/{id}", Action(ActionHostRead))
+	r.register("DELETE", "/api/v1/hosts/{id}", Action(ActionHostDelete))
+	r.register("GET", "/api/v1/hosts/{dpuName}/posture", Action(ActionHostReadPosture))
+	r.register("POST", "/api/v1/hosts/{hostname}/cert", Action(ActionHostRequestCert))
+	r.register("POST", "/api/v1/hosts/{hostname}/scan", Action(ActionHostScan))
 
 	return r
 }
