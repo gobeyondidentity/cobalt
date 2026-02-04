@@ -31,10 +31,52 @@ func TestDetectInstallMethod_Homebrew_HomePath(t *testing.T) {
 }
 
 func TestDetectInstallMethod_DirectDownload(t *testing.T) {
+	// Mock statFunc to return "not found" for all filesystem checks
+	// This ensures the test passes regardless of host system state
+	origStat := statFunc
+	statFunc = func(name string) (os.FileInfo, error) {
+		return nil, os.ErrNotExist
+	}
+	defer func() { statFunc = origStat }()
+
 	// Default fallback when no detection matches
 	method := DetectInstallMethodFromPath("/usr/local/bin/bluectl")
 	if method != DirectDownload {
 		t.Errorf("expected DirectDownload, got %v", method)
+	}
+}
+
+func TestDetectInstallMethod_Apt(t *testing.T) {
+	// Mock statFunc to simulate apt package installed
+	origStat := statFunc
+	statFunc = func(name string) (os.FileInfo, error) {
+		if name == "/var/lib/dpkg/info/bluectl.list" {
+			return nil, nil // File exists
+		}
+		return nil, os.ErrNotExist
+	}
+	defer func() { statFunc = origStat }()
+
+	method := DetectInstallMethodFromPath("/usr/bin/bluectl")
+	if method != Apt {
+		t.Errorf("expected Apt, got %v", method)
+	}
+}
+
+func TestDetectInstallMethod_Docker(t *testing.T) {
+	// Mock statFunc to simulate Docker environment
+	origStat := statFunc
+	statFunc = func(name string) (os.FileInfo, error) {
+		if name == "/.dockerenv" {
+			return nil, nil // File exists
+		}
+		return nil, os.ErrNotExist
+	}
+	defer func() { statFunc = origStat }()
+
+	method := DetectInstallMethodFromPath("/app/bluectl")
+	if method != Docker {
+		t.Errorf("expected Docker, got %v", method)
 	}
 }
 
