@@ -482,8 +482,22 @@ step_6_accept() {
     print_command "km init"
     echo ""
     echo -en "${GREEN}"
-    echo "$INVITE_CODE" | km init 2>&1 || true
+    echo "$INVITE_CODE" | km init 2>&1
+    km_exit=$?
     echo -e "${RESET}"
+
+    if [ $km_exit -ne 0 ]; then
+        echo ""
+        print_error "  km init failed (exit code: $km_exit)"
+        echo ""
+        echo "Debug info:"
+        echo "  Config file: $(ls -la ~/.km/config.json 2>&1 || echo 'not found')"
+        echo "  Key file: $(ls -la ~/.km/key.pem 2>&1 || echo 'not found')"
+        echo "  Kid file: $(ls -la ~/.km/kid 2>&1 || echo 'not found')"
+        exit 1
+    fi
+    print_success "  Operator enrolled"
+    echo ""
 
     print_why \
         "New team member productive in minutes, not days" \
