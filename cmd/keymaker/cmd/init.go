@@ -13,8 +13,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/gobeyondidentity/secure-infra/internal/version"
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/spf13/cobra"
 )
 

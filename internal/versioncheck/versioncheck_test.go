@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/internal/testutil/mockhttp"
+	"github.com/gobeyondidentity/cobalt/internal/testutil/mockhttp"
 )
 
 // ----- InstallMethod Detection Tests -----
@@ -81,7 +81,7 @@ func TestCacheReadWrite(t *testing.T) {
 
 	entry := &CacheEntry{
 		LatestVersion: "0.5.2",
-		ReleaseURL:    "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2",
+		ReleaseURL:    "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.2",
 		CheckedAt:     time.Now().UTC(),
 	}
 
@@ -191,11 +191,11 @@ func TestGetUpgradeCommand(t *testing.T) {
 		},
 		{
 			DirectDownload, "bluectl", "0.5.2",
-			"Download from https://github.com/gobeyondidentity/secure-infra/releases",
+			"Download from https://github.com/gobeyondidentity/cobalt/releases",
 		},
 		{
 			DirectDownload, "km", "0.5.2",
-			"Download from https://github.com/gobeyondidentity/secure-infra/releases",
+			"Download from https://github.com/gobeyondidentity/cobalt/releases",
 		},
 	}
 
@@ -237,7 +237,7 @@ func TestInstallMethodString(t *testing.T) {
 func TestParseGitHubRelease(t *testing.T) {
 	responseJSON := `{
 		"tag_name": "v0.5.2",
-		"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2",
+		"html_url": "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.2",
 		"name": "Release 0.5.2"
 	}`
 
@@ -250,7 +250,7 @@ func TestParseGitHubRelease(t *testing.T) {
 	if release.TagName != "v0.5.2" {
 		t.Errorf("expected tag_name v0.5.2, got %s", release.TagName)
 	}
-	if release.HTMLURL != "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2" {
+	if release.HTMLURL != "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.2" {
 		t.Errorf("unexpected html_url: %s", release.HTMLURL)
 	}
 }
@@ -260,7 +260,7 @@ func TestFetchLatestVersion_Success(t *testing.T) {
 	url, close := mockhttp.New().
 		JSON("/repos/gobeyondidentity/secure-infra/releases/latest", map[string]string{
 			"tag_name": "v0.5.2",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2",
+			"html_url": "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.2",
 		}).
 		BuildURL()
 	defer close()
@@ -312,7 +312,7 @@ func TestCheck_WithMockServer(t *testing.T) {
 	url, close := mockhttp.New().
 		JSON("/repos/gobeyondidentity/secure-infra/releases/latest", map[string]string{
 			"tag_name": "v0.5.3",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.3",
+			"html_url": "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.3",
 		}).
 		BuildURL()
 	defer close()
@@ -352,7 +352,7 @@ func TestCheck_UsesCache(t *testing.T) {
 	// Pre-populate cache
 	entry := &CacheEntry{
 		LatestVersion: "0.5.5",
-		ReleaseURL:    "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.5",
+		ReleaseURL:    "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.5",
 		CheckedAt:     time.Now().Add(-1 * time.Hour), // 1 hour ago, still valid
 	}
 	if err := WriteCacheFile(cacheFile, entry); err != nil {
@@ -396,7 +396,7 @@ func TestCheck_ExpiredCacheFetchesFresh(t *testing.T) {
 	// Pre-populate expired cache
 	entry := &CacheEntry{
 		LatestVersion: "0.5.3",
-		ReleaseURL:    "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.3",
+		ReleaseURL:    "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.3",
 		CheckedAt:     time.Now().Add(-25 * time.Hour), // 25 hours ago, expired
 	}
 	if err := WriteCacheFile(cacheFile, entry); err != nil {
@@ -409,7 +409,7 @@ func TestCheck_ExpiredCacheFetchesFresh(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
 			"tag_name": "v0.5.6",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.6"
+			"html_url": "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.6"
 		}`))
 	}))
 	defer server.Close()
@@ -440,7 +440,7 @@ func TestCheck_FetchFailsUsesStaleCache(t *testing.T) {
 	// Pre-populate expired cache
 	entry := &CacheEntry{
 		LatestVersion: "0.5.4",
-		ReleaseURL:    "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.4",
+		ReleaseURL:    "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.4",
 		CheckedAt:     time.Now().Add(-25 * time.Hour), // expired
 	}
 	if err := WriteCacheFile(cacheFile, entry); err != nil {
@@ -505,7 +505,7 @@ func TestCheck_NoUpdateAvailable(t *testing.T) {
 	url, close := mockhttp.New().
 		JSON("/repos/gobeyondidentity/secure-infra/releases/latest", map[string]string{
 			"tag_name": "v0.5.2",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v0.5.2",
+			"html_url": "https://github.com/gobeyondidentity/cobalt/releases/tag/v0.5.2",
 		}).
 		BuildURL()
 	defer close()

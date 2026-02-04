@@ -1,8 +1,9 @@
-module github.com/gobeyondidentity/secure-infra
+module github.com/gobeyondidentity/cobalt
 
 go 1.25.5
 
 require (
+	github.com/cedar-policy/cedar-go v1.4.1
 	github.com/fatih/color v1.18.0
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/go-jose/go-jose/v4 v4.1.3
@@ -20,7 +21,6 @@ require (
 )
 
 require (
-	github.com/cedar-policy/cedar-go v1.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

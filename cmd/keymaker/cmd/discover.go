@@ -12,8 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
-	"github.com/gobeyondidentity/secure-infra/pkg/sshscan"
+	"github.com/gobeyondidentity/cobalt/pkg/clierror"
+	"github.com/gobeyondidentity/cobalt/pkg/sshscan"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

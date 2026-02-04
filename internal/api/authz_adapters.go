@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/authz"
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/authz"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // StorePrincipalLookup resolves DPoP identities to authorization principals using the store.

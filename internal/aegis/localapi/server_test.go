@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // mockControlPlane is a test server that mocks the Control Plane API.

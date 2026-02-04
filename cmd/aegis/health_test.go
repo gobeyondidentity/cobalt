@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/cobalt/internal/version"
 )
 
 func TestHealthEndpoint(t *testing.T) {

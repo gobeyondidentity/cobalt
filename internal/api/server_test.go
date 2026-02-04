@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/internal/version"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // setupTestServer creates a test server with a temporary database.

@@ -10,13 +10,13 @@ import (
 	"log"
 	"time"
 
-	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
-	"github.com/gobeyondidentity/secure-infra/internal/aegis/localapi"
-	"github.com/gobeyondidentity/secure-infra/internal/version"
-	"github.com/gobeyondidentity/secure-infra/pkg/attestation"
-	"github.com/gobeyondidentity/secure-infra/pkg/doca"
-	"github.com/gobeyondidentity/secure-infra/pkg/ovs"
-	"github.com/gobeyondidentity/secure-infra/pkg/transport"
+	agentv1 "github.com/gobeyondidentity/cobalt/gen/go/agent/v1"
+	"github.com/gobeyondidentity/cobalt/internal/aegis/localapi"
+	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/attestation"
+	"github.com/gobeyondidentity/cobalt/pkg/doca"
+	"github.com/gobeyondidentity/cobalt/pkg/ovs"
+	"github.com/gobeyondidentity/cobalt/pkg/transport"
 )
 
 var (

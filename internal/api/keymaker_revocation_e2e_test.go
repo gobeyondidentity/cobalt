@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // TestKeyMakerRevocation_BlocksAuthorization tests that revoking a KeyMaker

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/attestation"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/attestation"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // ----- Trust Types -----

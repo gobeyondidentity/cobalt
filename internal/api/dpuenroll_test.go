@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // TestDPUEnrollInit_Success tests that DPU enrollment init returns a challenge.

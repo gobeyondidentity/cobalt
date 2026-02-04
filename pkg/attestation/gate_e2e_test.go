@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/audit"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // TestAttestationGating_FreshAttestationAllows verifies that a fresh verified

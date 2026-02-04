@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 )
 
 // PrincipalLookup resolves a DPoP identity to an authorization principal.

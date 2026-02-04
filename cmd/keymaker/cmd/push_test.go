@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
+	"github.com/gobeyondidentity/cobalt/pkg/clierror"
 )
 
 // mockHTTPClient implements HTTPClient for testing.

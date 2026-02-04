@@ -198,7 +198,7 @@ func GetUpgradeCommand(method InstallMethod, toolName string, newVersion string)
 	case DirectDownload:
 		fallthrough
 	default:
-		return "Download from https://github.com/gobeyondidentity/secure-infra/releases"
+		return "Download from https://github.com/gobeyondidentity/cobalt/releases"
 	}
 }
 

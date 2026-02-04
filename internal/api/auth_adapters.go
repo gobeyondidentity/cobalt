@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // StoreProofValidator adapts the dpop.Validator to the dpop.ProofValidator interface

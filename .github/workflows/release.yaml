@@ -116,7 +116,7 @@ jobs:
           export PATH=/usr/local/go/bin:$PATH
           export CGO_ENABLED=1
           go build -tags doca \
-            -ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
+            -ldflags "-s -w -X github.com/gobeyondidentity/cobalt/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
             -o aegis ./cmd/aegis
 
       - name: Generate checksum
@@ -202,7 +202,7 @@ jobs:
           export CGO_ENABLED=1
           export CGO_LDFLAGS="-L/opt/mellanox/doca/lib/x86_64-linux-gnu"
           go build -tags doca \
-            -ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
+            -ldflags "-s -w -X github.com/gobeyondidentity/cobalt/internal/version.Version=${{ steps.version.outputs.VERSION }}" \
             -o sentry ./cmd/sentry
 
       - name: Generate checksum

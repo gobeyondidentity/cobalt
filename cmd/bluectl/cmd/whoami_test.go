@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 )
 
 func TestWhoami_NotAuthenticated(t *testing.T) {

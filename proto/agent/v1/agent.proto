@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package agent.v1;
 
-option go_package = "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1;agentv1";
+option go_package = "github.com/gobeyondidentity/cobalt/gen/go/agent/v1;agentv1";
 
 // DPUAgentService provides read-only introspection of BlueField DPU state.
 service DPUAgentService {

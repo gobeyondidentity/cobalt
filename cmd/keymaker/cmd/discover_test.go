@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/sshscan"
+	"github.com/gobeyondidentity/cobalt/pkg/sshscan"
 )
 
 func TestTruncate(t *testing.T) {

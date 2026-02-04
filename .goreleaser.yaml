@@ -25,7 +25,7 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/gobeyondidentity/secure-infra/internal/version.Version={{.Version}}
+      - -X github.com/gobeyondidentity/cobalt/internal/version.Version={{.Version}}
 
   - id: km
     main: ./cmd/keymaker
@@ -44,7 +44,7 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/gobeyondidentity/secure-infra/internal/version.Version={{.Version}}
+      - -X github.com/gobeyondidentity/cobalt/internal/version.Version={{.Version}}
 
   - id: host-agent
     main: ./cmd/sentry
@@ -59,7 +59,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/gobeyondidentity/secure-infra/internal/version.Version={{.Version}}
+      - -X github.com/gobeyondidentity/cobalt/internal/version.Version={{.Version}}
 
   - id: control-plane
     main: ./cmd/nexus
@@ -74,7 +74,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/gobeyondidentity/secure-infra/internal/version.Version={{.Version}}
+      - -X github.com/gobeyondidentity/cobalt/internal/version.Version={{.Version}}
 
   - id: dpuemu
     main: ./dpuemu/cmd/dpuemu
@@ -89,7 +89,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/gobeyondidentity/secure-infra/internal/version.Version={{.Version}}
+      - -X github.com/gobeyondidentity/cobalt/internal/version.Version={{.Version}}
 
 archives:
   - id: bluectl-archive

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
+	"github.com/gobeyondidentity/cobalt/pkg/clierror"
 	"github.com/spf13/cobra"
 )
 

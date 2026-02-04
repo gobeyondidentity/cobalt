@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/cedar-policy/cedar-go"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 func TestNewOperatorEntity_SingleTenant(t *testing.T) {

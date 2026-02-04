@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // DPUChallengeTTL is the duration a DPU enrollment challenge is valid.

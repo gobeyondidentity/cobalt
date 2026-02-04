@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/netutil"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 )
 
 var (

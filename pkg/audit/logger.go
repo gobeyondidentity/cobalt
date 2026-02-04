@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // AuditEntry represents a single audit log record.

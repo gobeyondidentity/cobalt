@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
-	"github.com/gobeyondidentity/secure-infra/pkg/sshca"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/clierror"
+	"github.com/gobeyondidentity/cobalt/pkg/sshca"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 	"github.com/spf13/cobra"
 )
 

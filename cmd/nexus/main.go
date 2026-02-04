@@ -15,11 +15,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/internal/api"
-	"github.com/gobeyondidentity/secure-infra/internal/version"
-	"github.com/gobeyondidentity/secure-infra/pkg/authz"
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/internal/api"
+	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/authz"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 var (

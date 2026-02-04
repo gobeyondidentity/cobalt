@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // DefaultFreshnessWindow is the default maximum age for attestations.

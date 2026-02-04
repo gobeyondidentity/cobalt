@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
+	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
