@@ -528,10 +528,16 @@ Examples:
 	},
 }
 
-func setRoleRemote(ctx context.Context, serverURL, email, tenantName, role string) error {
-	client, err := NewNexusClientWithDPoP(serverURL)
-	if err != nil {
-		return err
+func setRoleRemote(ctx context.Context, serverURL, email, tenantName, role string, optClient ...*NexusClient) error {
+	var client *NexusClient
+	var err error
+	if len(optClient) > 0 && optClient[0] != nil {
+		client = optClient[0]
+	} else {
+		client, err = NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Resolve operator email to ID
@@ -595,10 +601,16 @@ Examples:
 	},
 }
 
-func removeRoleRemote(ctx context.Context, serverURL, email, tenantName string) error {
-	client, err := NewNexusClientWithDPoP(serverURL)
-	if err != nil {
-		return err
+func removeRoleRemote(ctx context.Context, serverURL, email, tenantName string, optClient ...*NexusClient) error {
+	var client *NexusClient
+	var err error
+	if len(optClient) > 0 && optClient[0] != nil {
+		client = optClient[0]
+	} else {
+		client, err = NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Resolve operator email to ID

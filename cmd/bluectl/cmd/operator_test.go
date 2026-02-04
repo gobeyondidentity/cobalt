@@ -113,7 +113,8 @@ func TestSetRoleRemote(t *testing.T) {
 			}))
 			defer server.Close()
 
-			err := setRoleRemote(context.Background(), server.URL, tt.email, tt.tenant, tt.role)
+			client := NewNexusClient(server.URL)
+			err := setRoleRemote(context.Background(), server.URL, tt.email, tt.tenant, tt.role, client)
 
 			if tt.wantErr {
 				if err == nil {
@@ -243,7 +244,8 @@ func TestRemoveRoleRemote(t *testing.T) {
 			}))
 			defer server.Close()
 
-			err := removeRoleRemote(context.Background(), server.URL, tt.email, tt.tenant)
+			client := NewNexusClient(server.URL)
+			err := removeRoleRemote(context.Background(), server.URL, tt.email, tt.tenant, client)
 
 			if tt.wantErr {
 				if err == nil {
@@ -308,7 +310,8 @@ func TestSetRoleRemote_PermissionDenied(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := setRoleRemote(context.Background(), server.URL, operatorEmail, tenantName, "super:admin")
+	client := NewNexusClient(server.URL)
+	err := setRoleRemote(context.Background(), server.URL, operatorEmail, tenantName, "super:admin", client)
 
 	if err == nil {
 		t.Error("expected permission denied error, got nil")
