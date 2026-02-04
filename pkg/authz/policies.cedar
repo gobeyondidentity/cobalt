@@ -55,12 +55,14 @@ permit(
 // SSH CA MANAGEMENT: Operators can create and manage SSH CAs
 // ============================================================================
 
-// Any operator can create SSH CAs (they will own what they create)
+// Any operator can create SSH CAs in their own tenant
 permit(
     principal is Operator,
     action == Action::"ssh-ca:create",
     resource
-);
+) when {
+    principal.tenant_ids.contains(resource.tenant)
+};
 
 // Operators can list and read SSH CAs in their tenant
 permit(
