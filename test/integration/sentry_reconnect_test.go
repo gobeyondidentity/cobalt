@@ -93,6 +93,11 @@ func TestAegisRestartSentryReconnection(t *testing.T) {
 	}
 	logOK(t, "Nexus started")
 
+	// Initialize bluectl (required for DPoP auth in Phase 3)
+	if err := initBluectl(cfg, ctx, t); err != nil {
+		t.Fatalf("Failed to initialize bluectl: %v", err)
+	}
+
 	// Step 2: Start aegis with local API (listens on TCP port 9444 for tmfifo transport)
 	logStep(t, 2, "Starting aegis (initial)...")
 	cfg.killProcess(ctx, cfg.DPUVM, "aegis")

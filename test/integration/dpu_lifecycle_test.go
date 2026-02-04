@@ -88,6 +88,11 @@ func TestDPURegistrationFlows(t *testing.T) {
 	}
 	logOK(t, "Nexus started")
 
+	// Initialize bluectl (required for DPoP auth in Phase 3)
+	if err := initBluectl(cfg, ctx, t); err != nil {
+		t.Fatalf("Failed to initialize bluectl: %v", err)
+	}
+
 	// Step 2: Create tenants for later use
 	logStep(t, 2, "Creating tenants for testing...")
 	_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", tenantA, "--server", "http://localhost:18080")

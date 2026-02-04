@@ -149,3 +149,23 @@ func countJSONArrayEntries(jsonStr string) int {
 	return count
 }
 
+// initBluectl initializes bluectl on qa-server by enrolling as admin.
+// This must be called after nexus starts and before any bluectl API operations.
+// Phase 3 authorization layer requires DPoP authentication on all API endpoints.
+func initBluectl(cfg *TestConfig, ctx context.Context, t *testing.T) error {
+	t.Helper()
+	logInfo(t, "Initializing bluectl (enrolling as admin)...")
+
+	// Clear existing bluectl config to force fresh enrollment
+	cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-rf", "/home/ubuntu/.config/bluectl")
+
+	output, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+		"init", "--server", "http://localhost:18080", "--force")
+	if err != nil {
+		return fmt.Errorf("bluectl init failed: %w\nOutput: %s", err, output)
+	}
+
+	logOK(t, "bluectl initialized (admin enrolled)")
+	return nil
+}
+

@@ -109,6 +109,11 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		}
 		logOK(t, "Nexus started")
 
+		// Initialize bluectl (required for DPoP auth in Phase 3)
+		if err := initBluectl(cfg, ctx, t); err != nil {
+			t.Fatalf("Failed to initialize bluectl: %v", err)
+		}
+
 		// Step 2: Start aegis on qa-dpu
 		logStep(t, 2, "Starting aegis on qa-dpu...")
 		cfg.killProcess(ctx, cfg.DPUVM, "aegis")

@@ -94,6 +94,11 @@ func TestCALifecycleE2E(t *testing.T) {
 	}
 	logOK(t, "Nexus started")
 
+	// Initialize bluectl (required for DPoP auth in Phase 3)
+	if err := initBluectl(cfg, ctx, t); err != nil {
+		t.Fatalf("Failed to initialize bluectl: %v", err)
+	}
+
 	// Create tenant
 	logStep(t, 2, "Creating tenant...")
 	_, _ = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl", "tenant", "add", tenantName, "--server", "http://localhost:18080")

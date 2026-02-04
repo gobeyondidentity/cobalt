@@ -89,6 +89,11 @@ func TestStateSyncConsistency(t *testing.T) {
 	}
 	logOK(t, "Nexus started with fresh database")
 
+	// Initialize bluectl (required for DPoP auth in Phase 3)
+	if err := initBluectl(cfg, ctx, t); err != nil {
+		t.Fatalf("Failed to initialize bluectl: %v", err)
+	}
+
 	// Step 2: Create tenant and IMMEDIATELY verify it in list (no delay)
 	logStep(t, 2, "Creating tenant and verifying IMMEDIATE visibility...")
 	t.Log("Creating tenant via bluectl tenant add")
