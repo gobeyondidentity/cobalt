@@ -249,6 +249,8 @@ cleanup() {
     rm -f ~/.local/share/bluectl/dpus.db 2>/dev/null || true
     rm -f ~/.local/share/bluectl/key 2>/dev/null || true
     rm -f ~/.config/bluectl/config.yaml 2>/dev/null || true
+    rm -f ~/.bluectl/key.pem 2>/dev/null || true
+    rm -f ~/.bluectl/kid 2>/dev/null || true
     rm -rf ~/.km 2>/dev/null || true
     rm -rf /tmp/demo_trustedca 2>/dev/null || true
 
@@ -321,7 +323,7 @@ step_intro() {
 step_1_infrastructure() {
     print_step 1 "🚀" "Setting Up the Infrastructure"
 
-    print_narrative "Starting the control plane (nexus) and DPU emulator..."
+    print_narrative "Starting the control plane (nexus), enrolling as admin, and starting the DPU emulator..."
 
     # Start nexus in background
     echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
@@ -344,6 +346,18 @@ step_1_infrastructure() {
     print_command "bluectl config set-server http://localhost:18080"
     bluectl config set-server http://localhost:18080 > /dev/null 2>&1
     print_success "  Server configured"
+    echo ""
+
+    # Enroll as first admin (must be within 10 minutes of nexus startup)
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────────────────────────────────────────────${RESET}"
+    print_comment "Enroll as first admin..."
+    print_command "bluectl init --force"
+    bluectl init --force > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        print_error "  Failed to initialize bluectl. Bootstrap window may have closed."
+        exit 1
+    fi
+    print_success "  Admin enrolled"
     echo ""
 
     # Start dpuemu in background
