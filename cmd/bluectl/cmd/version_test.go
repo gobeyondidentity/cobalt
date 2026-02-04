@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/internal/testutil/cli"
-	"github.com/gobeyondidentity/secure-infra/internal/testutil/mockhttp"
-	"github.com/gobeyondidentity/secure-infra/internal/version"
-	"github.com/gobeyondidentity/secure-infra/internal/versioncheck"
+	"github.com/gobeyondidentity/cobalt/internal/testutil/cli"
+	"github.com/gobeyondidentity/cobalt/internal/testutil/mockhttp"
+	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/internal/versioncheck"
 )
 
 func TestVersionCommand_BasicOutput(t *testing.T) {
@@ -39,7 +39,7 @@ func TestVersionCommand_CheckFlag_UpdateAvailable(t *testing.T) {
 	url, close := mockhttp.New().
 		JSON("/repos/gobeyondidentity/secure-infra/releases/latest", map[string]string{
 			"tag_name": "v99.99.99",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v99.99.99",
+			"html_url": "https://github.com/gobeyondidentity/cobalt/releases/tag/v99.99.99",
 		}).
 		BuildURL()
 	defer close()
@@ -83,7 +83,7 @@ func TestVersionCommand_CheckFlag_NoUpdate(t *testing.T) {
 		// Return the same version as current
 		_, _ = w.Write([]byte(`{
 			"tag_name": "v` + version.Version + `",
-			"html_url": "https://github.com/gobeyondidentity/secure-infra/releases/tag/v` + version.Version + `"
+			"html_url": "https://github.com/gobeyondidentity/cobalt/releases/tag/v` + version.Version + `"
 		}`))
 	}))
 	defer server.Close()

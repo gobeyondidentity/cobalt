@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/internal/testutil/mockhttp"
+	"github.com/gobeyondidentity/cobalt/internal/testutil/mockhttp"
 )
 
 func TestParsePrometheusText(t *testing.T) {

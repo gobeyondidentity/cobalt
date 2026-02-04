@@ -11,19 +11,22 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/internal/api"
-	"github.com/gobeyondidentity/secure-infra/internal/version"
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/internal/api"
+	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/authz"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 var (
-	listenAddr  = flag.String("listen", ":18080", "HTTP listen address")
-	dbPath      = flag.String("db", "", "Database path (default: ~/.local/share/bluectl/dpus.db)")
-	showVersion = flag.Bool("version", false, "Show version and exit")
+	listenAddr             = flag.String("listen", ":18080", "HTTP listen address")
+	dbPath                 = flag.String("db", "", "Database path (default: ~/.local/share/nexus/nexus.db)")
+	showVersion            = flag.Bool("version", false, "Show version and exit")
+	attestationStaleAfter  = flag.String("attestation-stale-after", "1h", "Duration after which attestation is considered stale (e.g., 1h, 30m, 2h30m)")
 )
 
 func main() {
@@ -37,11 +40,32 @@ func main() {
 
 	log.Printf("Fabric Console API %s starting...", version.String())
 
+	// Parse and validate attestation staleness threshold
+	staleAfter, err := time.ParseDuration(*attestationStaleAfter)
+	if err != nil {
+		log.Fatalf("Invalid --attestation-stale-after value: %v", err)
+	}
+	const minStaleAfter = 5 * time.Minute
+	if staleAfter < minStaleAfter {
+		log.Fatalf("--attestation-stale-after must be at least %v (got %v)", minStaleAfter, staleAfter)
+	}
+	log.Printf("Attestation staleness threshold: %v", staleAfter)
+
+	// Set CLI name for state directory isolation
+	store.SetCLIName("nexus")
+
 	// Open database
 	path := *dbPath
 	if path == "" {
 		path = store.DefaultPath()
 	}
+
+	// Resolve to absolute path for logging
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path // Fall back to original if resolution fails
+	}
+	log.Printf("Database: %s", absPath)
 
 	db, err := store.Open(path)
 	if err != nil {
@@ -55,8 +79,10 @@ func main() {
 		log.Fatalf("Failed to initialize bootstrap: %v", err)
 	}
 
-	// Create API server
-	server := api.NewServer(db)
+	// Create API server with configuration
+	server := api.NewServerWithConfig(db, api.ServerConfig{
+		AttestationStaleAfter: staleAfter,
+	})
 
 	// Set up HTTP server
 	mux := http.NewServeMux()
@@ -76,12 +102,33 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpop.WithLogger(logger))
 
-	// Apply middleware: logging -> CORS -> auth -> routes
+	// Initialize Cedar authorization middleware
+	authorizer, err := authz.NewAuthorizer(authz.Config{Logger: logger})
+	if err != nil {
+		log.Fatalf("Failed to initialize authorizer: %v", err)
+	}
+	log.Printf("Cedar authorizer initialized with %d policies", authorizer.PolicyCount())
+
+	actionRegistry := authz.NewActionRegistry()
+	principalLookup := api.NewStorePrincipalLookup(db)
+	resourceExtractor := api.NewStoreResourceExtractor(db)
+	attestationLookup := api.NewStoreAttestationLookup(db)
+
+	authzMiddleware := authz.NewAuthzMiddleware(
+		authorizer,
+		actionRegistry,
+		principalLookup,
+		resourceExtractor,
+		authz.WithLogger(logger),
+		authz.WithAttestationLookup(attestationLookup),
+	)
+
+	// Apply middleware: logging -> CORS -> DPoP auth -> Cedar authz -> routes
 	// CORS wraps auth so that CORS headers (including DPoP) are set even on auth failures
 	// and OPTIONS preflight requests bypass authentication
 	httpServer := &http.Server{
 		Addr:    *listenAddr,
-		Handler: loggingMiddleware(corsMiddleware(authMiddleware.Wrap(mux))),
+		Handler: loggingMiddleware(corsMiddleware(authMiddleware.Wrap(authzMiddleware.Wrap(mux)))),
 	}
 
 	// Handle shutdown

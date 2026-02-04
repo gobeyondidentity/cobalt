@@ -352,7 +352,7 @@ var tenantAssignCmd = &cobra.Command{
 Examples:
   bluectl tenant assign "Production" bf3-lab
   bluectl tenant assign acme123 dpu456`,
-	Args: cobra.ExactArgs(2),
+	Args: ExactArgsWithUsage(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		serverURL, err := requireServer()
 		if err != nil {

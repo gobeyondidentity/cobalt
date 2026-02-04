@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
+	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
 )
 
 // TestRunEnrollment_Success tests the full enrollment flow with a mock server.

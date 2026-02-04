@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/gobeyondidentity/secure-infra/cmd/keymaker/cmd"
+	"github.com/gobeyondidentity/cobalt/cmd/keymaker/cmd"
 )
 
 func main() {

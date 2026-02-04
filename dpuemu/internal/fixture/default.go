@@ -2,7 +2,7 @@
 package fixture
 
 import (
-	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
+	agentv1 "github.com/gobeyondidentity/cobalt/gen/go/agent/v1"
 )
 
 // DefaultFixture returns a minimal fixture with reasonable defaults for local development.

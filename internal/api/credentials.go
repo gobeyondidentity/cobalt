@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // ----- SSH CA Types -----

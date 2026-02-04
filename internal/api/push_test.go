@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // setupPushTestStore creates a test store with the necessary fixtures for push tests.

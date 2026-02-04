@@ -226,7 +226,7 @@ func TestMultiTenantIsolation_ResourceListingIsolation(t *testing.T) {
 
 	// Test: List DPUs for Tenant-A only
 	t.Log("Listing DPUs for Tenant-A only")
-	req := httptest.NewRequest("GET", "/api/tenants/"+tenantAID+"/dpus", nil)
+	req := httptest.NewRequest("GET", "/api/v1/tenants/"+tenantAID+"/dpus", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 

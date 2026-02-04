@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/transport"
+	"github.com/gobeyondidentity/cobalt/pkg/transport"
 )
 
 // DPU connection settings (tmfifo_net)

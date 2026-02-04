@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 	"github.com/google/uuid"
 )
 

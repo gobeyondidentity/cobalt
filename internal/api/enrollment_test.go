@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // TestEnrollInit_ValidCode tests that a valid invite code returns a challenge.

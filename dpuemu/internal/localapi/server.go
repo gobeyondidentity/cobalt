@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/dpuemu/internal/fixture"
-	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/cobalt/dpuemu/internal/fixture"
+	"github.com/gobeyondidentity/cobalt/internal/version"
 )
 
 // Server is the HTTP server for the local API.

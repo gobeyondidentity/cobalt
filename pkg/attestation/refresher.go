@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
-	"github.com/gobeyondidentity/secure-infra/pkg/grpcclient"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	agentv1 "github.com/gobeyondidentity/cobalt/gen/go/agent/v1"
+	"github.com/gobeyondidentity/cobalt/pkg/grpcclient"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // AttestationClient defines the interface for fetching attestation from DPUs.

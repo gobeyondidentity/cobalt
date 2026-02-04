@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	hostv1 "github.com/gobeyondidentity/secure-infra/gen/go/host/v1"
+	hostv1 "github.com/gobeyondidentity/cobalt/gen/go/host/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"

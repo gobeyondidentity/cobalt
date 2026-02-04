@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/spf13/cobra"
 )
 
@@ -66,7 +66,7 @@ func runAuthStatus(cmd *cobra.Command, args []string) error {
 	// Try to load config for server URL
 	config, err := loadConfig()
 	if err == nil && config != nil {
-		status.ServerURL = config.ControlPlaneURL
+		status.ServerURL = config.ServerURL
 	}
 
 	// Check server connectivity if we have a URL

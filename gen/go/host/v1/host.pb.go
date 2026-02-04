@@ -1032,7 +1032,7 @@ const file_host_v1_host_proto_rawDesc = "" +
 	"\x0fGetSecurityInfo\x12\x1f.host.v1.GetSecurityInfoRequest\x1a .host.v1.GetSecurityInfoResponse\x12Z\n" +
 	"\x11GetDPUConnections\x12!.host.v1.GetDPUConnectionsRequest\x1a\".host.v1.GetDPUConnectionsResponse\x12H\n" +
 	"\vHealthCheck\x12\x1b.host.v1.HealthCheckRequest\x1a\x1c.host.v1.HealthCheckResponse\x12H\n" +
-	"\vScanSSHKeys\x12\x1b.host.v1.ScanSSHKeysRequest\x1a\x1c.host.v1.ScanSSHKeysResponseB@Z>github.com/gobeyondidentity/secure-infra/gen/go/host/v1;hostv1b\x06proto3"
+	"\vScanSSHKeys\x12\x1b.host.v1.ScanSSHKeysRequest\x1a\x1c.host.v1.ScanSSHKeysResponseB:Z8github.com/gobeyondidentity/cobalt/gen/go/host/v1;hostv1b\x06proto3"
 
 var (
 	file_host_v1_host_proto_rawDescOnce sync.Once

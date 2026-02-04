@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 )
 
 // ControlPlaneClient handles communication with the Control Plane.

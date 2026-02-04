@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gobeyondidentity/secure-infra/internal/testutil/cli"
+	"github.com/gobeyondidentity/cobalt/internal/testutil/cli"
 )
 
 func TestRootCmd_ShortContainsEmoji(t *testing.T) {

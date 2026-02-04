@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
-	"github.com/gobeyondidentity/secure-infra/pkg/doca"
-	"github.com/gobeyondidentity/secure-infra/pkg/ovs"
+	agentv1 "github.com/gobeyondidentity/cobalt/gen/go/agent/v1"
+	"github.com/gobeyondidentity/cobalt/pkg/doca"
+	"github.com/gobeyondidentity/cobalt/pkg/ovs"
 )
 
 // newTestServer creates a server configured for testing (no sudo, no real hardware).

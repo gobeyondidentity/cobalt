@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gobeyondidentity/secure-infra/pkg/enrollment"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // Constants for bootstrap enrollment.
@@ -279,6 +279,16 @@ func (s *Server) handleBootstrapEnrollComplete(w http.ResponseWriter, r *http.Re
 	// Mark bootstrap complete
 	if err := s.store.CompleteBootstrap(adminID); err != nil {
 		writeInternalError(w, r, err, "Failed to complete bootstrap")
+		return
+	}
+
+	// Create system tenant for bootstrap admin (ignore error if already exists)
+	const systemTenantID = "tnt_system"
+	_ = s.store.AddTenant(systemTenantID, "System", "System tenant for bootstrap admin", "", nil)
+
+	// Assign bootstrap admin as super:admin in system tenant
+	if err := s.store.AddOperatorToTenant(adminID, systemTenantID, "super:admin"); err != nil {
+		writeInternalError(w, r, err, "Failed to assign admin role")
 		return
 	}
 

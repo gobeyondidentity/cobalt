@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 )
 
 func TestMapDPUStatus(t *testing.T) {

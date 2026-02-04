@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // TrustCheckResult summarizes what changed when checking trust for a DPU.

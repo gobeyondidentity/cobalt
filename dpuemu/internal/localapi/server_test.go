@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/dpuemu/internal/fixture"
-	agentv1 "github.com/gobeyondidentity/secure-infra/gen/go/agent/v1"
+	"github.com/gobeyondidentity/cobalt/dpuemu/internal/fixture"
+	agentv1 "github.com/gobeyondidentity/cobalt/gen/go/agent/v1"
 )
 
 func TestRegister_NewHost(t *testing.T) {

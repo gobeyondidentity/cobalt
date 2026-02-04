@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // ----- SSH CA Tests -----
@@ -16,7 +16,7 @@ import (
 func TestSSHCAListEmpty(t *testing.T) {
 	_, mux := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/credentials/ssh-cas", nil)
+	req := httptest.NewRequest("GET", "/api/v1/credentials/ssh-cas", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -48,7 +48,7 @@ func TestSSHCAList(t *testing.T) {
 		t.Fatalf("failed to create SSH CA: %v", err)
 	}
 
-	req := httptest.NewRequest("GET", "/api/credentials/ssh-cas", nil)
+	req := httptest.NewRequest("GET", "/api/v1/credentials/ssh-cas", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -93,7 +93,7 @@ func TestSSHCAGet(t *testing.T) {
 		t.Fatalf("failed to create SSH CA: %v", err)
 	}
 
-	req := httptest.NewRequest("GET", "/api/credentials/ssh-cas/production-ca", nil)
+	req := httptest.NewRequest("GET", "/api/v1/credentials/ssh-cas/production-ca", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -124,7 +124,7 @@ func TestSSHCAGet(t *testing.T) {
 func TestSSHCAGet_NotFound(t *testing.T) {
 	_, mux := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/credentials/ssh-cas/nonexistent", nil)
+	req := httptest.NewRequest("GET", "/api/v1/credentials/ssh-cas/nonexistent", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -162,7 +162,7 @@ func TestSSHCAListWithDistributionCount(t *testing.T) {
 		}
 	}
 
-	req := httptest.NewRequest("GET", "/api/credentials/ssh-cas", nil)
+	req := httptest.NewRequest("GET", "/api/v1/credentials/ssh-cas", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -190,7 +190,7 @@ func TestSSHCAListWithDistributionCount(t *testing.T) {
 func TestDistributionHistoryEmpty(t *testing.T) {
 	_, mux := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/distribution/history", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -232,7 +232,7 @@ func TestDistributionHistoryList(t *testing.T) {
 		t.Fatalf("failed to record distribution: %v", err)
 	}
 
-	req := httptest.NewRequest("GET", "/api/distribution/history", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -289,7 +289,7 @@ func TestDistributionHistoryFilterByTarget(t *testing.T) {
 		}
 	}
 
-	req := httptest.NewRequest("GET", "/api/distribution/history?target=bf3-prod-1", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?target=bf3-prod-1", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -333,7 +333,7 @@ func TestDistributionHistoryFilterByOperator(t *testing.T) {
 		}
 	}
 
-	req := httptest.NewRequest("GET", "/api/distribution/history?operator=nelson@acme.com", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?operator=nelson@acme.com", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -376,7 +376,7 @@ func TestDistributionHistoryFilterByTenant(t *testing.T) {
 		}
 	}
 
-	req := httptest.NewRequest("GET", "/api/distribution/history?tenant=tenant-a", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?tenant=tenant-a", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -423,7 +423,7 @@ func TestDistributionHistoryFilterByOutcome(t *testing.T) {
 		}
 	}
 
-	req := httptest.NewRequest("GET", "/api/distribution/history?result=success", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?result=success", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -470,7 +470,7 @@ func TestDistributionHistoryFilterByBlockedOutcome(t *testing.T) {
 	}
 
 	// 'blocked' should match 'blocked-stale'
-	req := httptest.NewRequest("GET", "/api/distribution/history?result=blocked", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?result=blocked", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -512,7 +512,7 @@ func TestDistributionHistoryFilterByTimeRange(t *testing.T) {
 	from := now.Add(-1 * time.Hour).Format(time.RFC3339)
 	to := now.Add(1 * time.Hour).Format(time.RFC3339)
 
-	req := httptest.NewRequest("GET", "/api/distribution/history?from="+from+"&to="+to, nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?from="+from+"&to="+to, nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -533,7 +533,7 @@ func TestDistributionHistoryFilterByTimeRange(t *testing.T) {
 	oldFrom := now.Add(-2 * time.Hour).Format(time.RFC3339)
 	oldTo := now.Add(-1 * time.Hour).Format(time.RFC3339)
 
-	req = httptest.NewRequest("GET", "/api/distribution/history?from="+oldFrom+"&to="+oldTo, nil)
+	req = httptest.NewRequest("GET", "/api/v1/distribution/history?from="+oldFrom+"&to="+oldTo, nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -567,7 +567,7 @@ func TestDistributionHistoryFilterByDateFormat(t *testing.T) {
 
 	// Query with today's date
 	today := time.Now().Format("2006-01-02")
-	req := httptest.NewRequest("GET", "/api/distribution/history?from="+today+"&to="+today, nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?from="+today+"&to="+today, nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -586,7 +586,7 @@ func TestDistributionHistoryFilterByDateFormat(t *testing.T) {
 
 	// Query with yesterday's date (should exclude today's record)
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	req = httptest.NewRequest("GET", "/api/distribution/history?from="+yesterday+"&to="+yesterday, nil)
+	req = httptest.NewRequest("GET", "/api/v1/distribution/history?from="+yesterday+"&to="+yesterday, nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -620,7 +620,7 @@ func TestDistributionHistoryLimit(t *testing.T) {
 		}
 	}
 
-	req := httptest.NewRequest("GET", "/api/distribution/history?limit=5", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?limit=5", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -669,7 +669,7 @@ func TestDistributionHistoryMultipleFilters(t *testing.T) {
 	}
 
 	// Filter by operator AND result AND limit
-	req := httptest.NewRequest("GET", "/api/distribution/history?operator=nelson@acme.com&result=success&limit=50", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?operator=nelson@acme.com&result=success&limit=50", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -701,7 +701,7 @@ func TestDistributionHistoryMultipleFilters(t *testing.T) {
 func TestDistributionHistoryInvalidTimeFormat(t *testing.T) {
 	_, mux := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/distribution/history?from=invalid-time", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?from=invalid-time", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -714,7 +714,7 @@ func TestDistributionHistoryInvalidTimeFormat(t *testing.T) {
 func TestDistributionHistoryInvalidResultFilter(t *testing.T) {
 	_, mux := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/distribution/history?result=invalid-outcome", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?result=invalid-outcome", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -744,7 +744,7 @@ func TestDistributionHistoryBlockedWithReason(t *testing.T) {
 		t.Fatalf("failed to record distribution: %v", err)
 	}
 
-	req := httptest.NewRequest("GET", "/api/distribution/history", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -797,7 +797,7 @@ func TestDistributionHistoryForcedWithBy(t *testing.T) {
 		t.Fatalf("failed to record distribution: %v", err)
 	}
 
-	req := httptest.NewRequest("GET", "/api/distribution/history?result=forced", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history?result=forced", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -847,7 +847,7 @@ func TestDistributionHistoryVerboseMode(t *testing.T) {
 	}
 
 	// Without verbose, snapshot should be nil
-	req := httptest.NewRequest("GET", "/api/distribution/history", nil)
+	req := httptest.NewRequest("GET", "/api/v1/distribution/history", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -859,7 +859,7 @@ func TestDistributionHistoryVerboseMode(t *testing.T) {
 	}
 
 	// With verbose, snapshot should be present
-	req = httptest.NewRequest("GET", "/api/distribution/history?verbose=true", nil)
+	req = httptest.NewRequest("GET", "/api/v1/distribution/history?verbose=true", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 

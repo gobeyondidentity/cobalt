@@ -9,7 +9,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/transport"
+	"github.com/gobeyondidentity/cobalt/pkg/transport"
 )
 
 // TmfifoTransport implements transport.Transport using the tmfifo device.

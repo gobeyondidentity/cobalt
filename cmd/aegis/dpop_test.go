@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gobeyondidentity/secure-infra/internal/aegis/localapi"
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/internal/aegis/localapi"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 )
 
 func TestDPoPHeaderPresentOnRequests(t *testing.T) {

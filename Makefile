@@ -22,7 +22,7 @@ DPUEMU := $(BIN_DIR)/dpuemu
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 # ldflags for embedding version
-LDFLAGS := -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)
+LDFLAGS := -X github.com/gobeyondidentity/cobalt/internal/version.Version=$(VERSION)
 
 .PHONY: all aegis bluectl nexus km sentry dpuemu test clean release-clean \
 	packages package-aegis package-sentry-doca \
@@ -176,7 +176,7 @@ package-aegis:
 	fi
 	@echo "Building aegis with DOCA (static linking)..."
 	CGO_ENABLED=1 $(GO) build -tags doca \
-		-ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)" \
+		-ldflags "-s -w -X github.com/gobeyondidentity/cobalt/internal/version.Version=$(VERSION)" \
 		-o aegis ./cmd/aegis
 	@echo "Building packages..."
 	VERSION=$(VERSION) nfpm package -p deb -f packaging/nfpm-aegis.yaml
@@ -198,7 +198,7 @@ package-sentry-doca:
 	@echo "Building sentry with DOCA (static linking)..."
 	CGO_ENABLED=1 CGO_LDFLAGS="-L/opt/mellanox/doca/lib/x86_64-linux-gnu" \
 		$(GO) build -tags doca \
-		-ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)" \
+		-ldflags "-s -w -X github.com/gobeyondidentity/cobalt/internal/version.Version=$(VERSION)" \
 		-o sentry ./cmd/sentry
 	@echo "Building packages..."
 	VERSION=$(VERSION) nfpm package -p deb -f packaging/nfpm-sentry-doca.yaml
@@ -230,7 +230,7 @@ docker-aegis:
 	fi
 	@echo "Building aegis binary with DOCA (static linking)..."
 	CGO_ENABLED=1 $(GO) build -tags doca \
-		-ldflags "-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=$(VERSION)" \
+		-ldflags "-s -w -X github.com/gobeyondidentity/cobalt/internal/version.Version=$(VERSION)" \
 		-o aegis ./cmd/aegis
 	@echo "Building aegis container..."
 	docker build --provenance=false -f Dockerfile.aegis -t aegis:dev .

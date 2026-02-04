@@ -157,13 +157,14 @@ type Store struct {
 
 // DefaultPath returns the default database path following XDG spec.
 // Uses the CLI name set via SetCLIName (defaults to "bluectl").
+// Each CLI gets its own distinctly named database file: km.db, bluectl.db, nexus.db.
 func DefaultPath() string {
 	dataHome := os.Getenv("XDG_DATA_HOME")
 	if dataHome == "" {
 		home, _ := os.UserHomeDir()
 		dataHome = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(dataHome, cliName, "dpus.db")
+	return filepath.Join(dataHome, cliName, cliName+".db")
 }
 
 // Open opens or creates a SQLite database at the given path.

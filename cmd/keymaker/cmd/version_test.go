@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gobeyondidentity/secure-infra/internal/testutil/cli"
-	"github.com/gobeyondidentity/secure-infra/internal/version"
+	"github.com/gobeyondidentity/cobalt/internal/testutil/cli"
+	"github.com/gobeyondidentity/cobalt/internal/version"
 )
 
 func TestVersionCommand_BasicOutput(t *testing.T) {

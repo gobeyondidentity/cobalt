@@ -11,16 +11,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gobeyondidentity/secure-infra/internal/version"
-	"github.com/gobeyondidentity/secure-infra/pkg/attestation"
-	"github.com/gobeyondidentity/secure-infra/pkg/grpcclient"
-	"github.com/gobeyondidentity/secure-infra/pkg/hostclient"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/attestation"
+	"github.com/gobeyondidentity/cobalt/pkg/grpcclient"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // UUIDShortLength is the number of characters used when truncating UUIDs for IDs.
 // Example: "enroll_" + uuid.New().String()[:UUIDShortLength] produces "enroll_abc12345"
 const UUIDShortLength = 8
+
+// ServerConfig holds configuration options for the API server.
+type ServerConfig struct {
+	// AttestationStaleAfter is the duration after which attestation is considered stale.
+	// Defaults to 1 hour if zero.
+	AttestationStaleAfter time.Duration
+}
 
 // Server is the HTTP API server.
 type Server struct {
@@ -28,11 +34,23 @@ type Server struct {
 	gate  *attestation.Gate
 }
 
-// NewServer creates a new API server.
+// NewServer creates a new API server with default configuration.
 func NewServer(s *store.Store) *Server {
+	return NewServerWithConfig(s, ServerConfig{})
+}
+
+// NewServerWithConfig creates a new API server with the given configuration.
+func NewServerWithConfig(s *store.Store, cfg ServerConfig) *Server {
+	gate := attestation.NewGate(s)
+
+	// Apply attestation staleness configuration
+	if cfg.AttestationStaleAfter > 0 {
+		gate.FreshnessWindow = cfg.AttestationStaleAfter
+	}
+
 	return &Server{
 		store: s,
-		gate:  attestation.NewGate(s),
+		gate:  gate,
 	}
 }
 
@@ -44,53 +62,39 @@ func (s *Server) Gate() *attestation.Gate {
 // RegisterRoutes registers all API routes.
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// DPU routes
-	mux.HandleFunc("GET /api/dpus", s.handleListDPUs)
-	mux.HandleFunc("POST /api/dpus", s.handleAddDPU)
-	mux.HandleFunc("GET /api/dpus/{id}", s.handleGetDPU)
-	mux.HandleFunc("DELETE /api/dpus/{id}", s.handleDeleteDPU)
-	mux.HandleFunc("GET /api/dpus/{id}/info", s.handleGetSystemInfo)
-	mux.HandleFunc("GET /api/dpus/{id}/flows", s.handleGetFlows)
-	mux.HandleFunc("GET /api/dpus/{id}/attestation", s.handleGetAttestation)
-	mux.HandleFunc("GET /api/dpus/{id}/attestation/chains", s.handleGetAttestationChains)
-	mux.HandleFunc("GET /api/dpus/{id}/inventory", s.handleGetInventory)
-	mux.HandleFunc("GET /api/dpus/{id}/health", s.handleHealthCheck)
-	mux.HandleFunc("GET /api/dpus/{id}/measurements", s.handleGetMeasurements)
-	mux.HandleFunc("GET /api/dpus/{id}/corim/validate", s.handleValidateCoRIM)
+	mux.HandleFunc("GET /api/v1/dpus", s.handleListDPUs)
+	mux.HandleFunc("POST /api/v1/dpus", s.handleAddDPU)
+	mux.HandleFunc("GET /api/v1/dpus/{id}", s.handleGetDPU)
+	mux.HandleFunc("DELETE /api/v1/dpus/{id}", s.handleDeleteDPU)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/info", s.handleGetSystemInfo)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/flows", s.handleGetFlows)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/attestation", s.handleGetAttestation)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/attestation/chains", s.handleGetAttestationChains)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/inventory", s.handleGetInventory)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/health", s.handleHealthCheck)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/measurements", s.handleGetMeasurements)
+	mux.HandleFunc("GET /api/v1/dpus/{id}/corim/validate", s.handleValidateCoRIM)
 
 	// Tenant routes
-	mux.HandleFunc("GET /api/tenants", s.handleListTenants)
-	mux.HandleFunc("POST /api/tenants", s.handleCreateTenant)
-	mux.HandleFunc("GET /api/tenants/{id}", s.handleGetTenant)
-	mux.HandleFunc("PUT /api/tenants/{id}", s.handleUpdateTenant)
-	mux.HandleFunc("DELETE /api/tenants/{id}", s.handleDeleteTenant)
-	mux.HandleFunc("GET /api/tenants/{id}/dpus", s.handleListTenantDPUs)
-	mux.HandleFunc("POST /api/tenants/{id}/dpus", s.handleAssignDPUToTenant)
-	mux.HandleFunc("DELETE /api/tenants/{id}/dpus/{dpuId}", s.handleUnassignDPUFromTenant)
+	mux.HandleFunc("GET /api/v1/tenants", s.handleListTenants)
+	mux.HandleFunc("POST /api/v1/tenants", s.handleCreateTenant)
+	mux.HandleFunc("GET /api/v1/tenants/{id}", s.handleGetTenant)
+	mux.HandleFunc("PUT /api/v1/tenants/{id}", s.handleUpdateTenant)
+	mux.HandleFunc("DELETE /api/v1/tenants/{id}", s.handleDeleteTenant)
+	mux.HandleFunc("GET /api/v1/tenants/{id}/dpus", s.handleListTenantDPUs)
+	mux.HandleFunc("POST /api/v1/tenants/{id}/dpus", s.handleAssignDPUToTenant)
+	mux.HandleFunc("DELETE /api/v1/tenants/{id}/dpus/{dpuId}", s.handleUnassignDPUFromTenant)
 
-	// Host routes
-	mux.HandleFunc("GET /api/hosts", s.handleListHosts)
-	mux.HandleFunc("POST /api/hosts", s.handleAddHost)
-	mux.HandleFunc("GET /api/hosts/{id}", s.handleGetHost)
-	mux.HandleFunc("DELETE /api/hosts/{id}", s.handleDeleteHost)
-	mux.HandleFunc("GET /api/hosts/{id}/info", s.handleGetHostInfo)
-	mux.HandleFunc("GET /api/hosts/{id}/gpus", s.handleGetHostGPUs)
-	mux.HandleFunc("GET /api/hosts/{id}/security", s.handleGetHostSecurity)
-	mux.HandleFunc("GET /api/hosts/{id}/health", s.handleHostHealthCheck)
-	mux.HandleFunc("POST /api/hosts/{id}/link/{dpuId}", s.handleLinkHostToDPU)
-	mux.HandleFunc("DELETE /api/hosts/{id}/link", s.handleUnlinkHostFromDPU)
-
-	// DPU host info (get host info for a DPU)
-	mux.HandleFunc("GET /api/dpus/{id}/host", s.handleGetDPUHost)
 
 	// CoRIM routes
-	mux.HandleFunc("GET /api/corim/list", s.handleListCoRIMs)
+	mux.HandleFunc("GET /api/v1/corim/list", s.handleListCoRIMs)
 
 	// Credential routes
-	mux.HandleFunc("GET /api/credentials/ssh-cas", s.handleListSSHCAs)
-	mux.HandleFunc("GET /api/credentials/ssh-cas/{name}", s.handleGetSSHCA)
+	mux.HandleFunc("GET /api/v1/credentials/ssh-cas", s.handleListSSHCAs)
+	mux.HandleFunc("GET /api/v1/credentials/ssh-cas/{name}", s.handleGetSSHCA)
 
 	// Distribution routes
-	mux.HandleFunc("GET /api/distribution/history", s.handleDistributionHistory)
+	mux.HandleFunc("GET /api/v1/distribution/history", s.handleDistributionHistory)
 
 	// Health routes (no auth required - bypassed in middleware)
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -108,6 +112,10 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/operators/{email}", s.handleGetOperator)
 	mux.HandleFunc("PATCH /api/v1/operators/{email}/status", s.handleUpdateOperatorStatus)
 	mux.HandleFunc("DELETE /api/v1/operators/{email}", s.handleDeleteOperator)
+
+	// Role management routes
+	mux.HandleFunc("POST /api/v1/operators/{id}/roles", s.handleAssignRole)
+	mux.HandleFunc("DELETE /api/v1/operators/{id}/roles/{tenant_id}", s.handleRemoveRole)
 
 	// Invite routes
 	mux.HandleFunc("DELETE /api/v1/invites/{code}", s.handleDeleteInvite)
@@ -1203,432 +1211,6 @@ func (s *Server) handleUnassignDPUFromTenant(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// ----- Host Types -----
-
-type addHostRequest struct {
-	Name    string `json:"name"`
-	Address string `json:"address"`
-	Port    int    `json:"port"`
-}
-
-type hostResponse struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Address  string  `json:"address"`
-	Port     int     `json:"port"`
-	Status   string  `json:"status"`
-	LastSeen *string `json:"lastSeen,omitempty"`
-	DPUID    *string `json:"dpuId,omitempty"`
-}
-
-func hostToResponse(h *store.Host) hostResponse {
-	resp := hostResponse{
-		ID:      h.ID,
-		Name:    h.Name,
-		Address: h.Address,
-		Port:    h.Port,
-		Status:  h.Status,
-		DPUID:   h.DPUID,
-	}
-	if h.LastSeen != nil {
-		t := h.LastSeen.Format(time.RFC3339)
-		resp.LastSeen = &t
-	}
-	return resp
-}
-
-// ----- Host Handlers -----
-
-func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
-	hosts, err := s.store.ListHosts()
-	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to list hosts: "+err.Error())
-		return
-	}
-
-	result := make([]hostResponse, 0, len(hosts))
-	for _, h := range hosts {
-		result = append(result, hostToResponse(h))
-	}
-
-	writeJSON(w, http.StatusOK, result)
-}
-
-func (s *Server) handleAddHost(w http.ResponseWriter, r *http.Request) {
-	var req addHostRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "Invalid JSON: "+err.Error())
-		return
-	}
-
-	if req.Name == "" || req.Address == "" {
-		writeError(w, r, http.StatusBadRequest, "Name and address are required")
-		return
-	}
-
-	if req.Port == 0 {
-		req.Port = 50052
-	}
-
-	id := uuid.New().String()[:UUIDShortLength]
-
-	if err := s.store.AddHost(id, req.Name, req.Address, req.Port); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint") {
-			writeError(w, r, http.StatusConflict, "Host with this name already exists")
-			return
-		}
-		writeError(w, r, http.StatusInternalServerError, "Failed to add host: "+err.Error())
-		return
-	}
-
-	// Check connectivity
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	client, err := hostclient.NewClient(fmt.Sprintf("%s:%d", req.Address, req.Port))
-	if err != nil {
-		s.store.UpdateHostStatus(id, "offline")
-	} else {
-		defer client.Close()
-		if _, err := client.HealthCheck(ctx); err != nil {
-			s.store.UpdateHostStatus(id, "unhealthy")
-		} else {
-			s.store.UpdateHostStatus(id, "healthy")
-		}
-	}
-
-	host, _ := s.store.GetHost(id)
-	writeJSON(w, http.StatusCreated, hostToResponse(host))
-}
-
-func (s *Server) handleGetHost(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	host, err := s.store.GetHost(id)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "Host not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, hostToResponse(host))
-}
-
-func (s *Server) handleDeleteHost(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if err := s.store.RemoveHost(id); err != nil {
-		writeError(w, r, http.StatusNotFound, "Host not found")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) handleGetHostInfo(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	host, err := s.store.GetHost(id)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "Host not found")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	client, err := hostclient.NewClient(host.GRPCAddress())
-	if err != nil {
-		s.store.UpdateHostStatus(id, "offline")
-		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
-		return
-	}
-	defer client.Close()
-
-	info, err := client.GetHostInfo(ctx)
-	if err != nil {
-		s.store.UpdateHostStatus(id, "unhealthy")
-		writeError(w, r, http.StatusServiceUnavailable, "Failed to get host info: "+err.Error())
-		return
-	}
-
-	s.store.UpdateHostStatus(id, "healthy")
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"hostname":      info.Hostname,
-		"osName":        info.OsName,
-		"osVersion":     info.OsVersion,
-		"kernelVersion": info.KernelVersion,
-		"architecture":  info.Architecture,
-		"cpuCores":      info.CpuCores,
-		"memoryGb":      info.MemoryGb,
-		"uptimeSeconds": info.UptimeSeconds,
-	})
-}
-
-func (s *Server) handleGetHostGPUs(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	host, err := s.store.GetHost(id)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "Host not found")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	client, err := hostclient.NewClient(host.GRPCAddress())
-	if err != nil {
-		s.store.UpdateHostStatus(id, "offline")
-		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
-		return
-	}
-	defer client.Close()
-
-	resp, err := client.GetGPUInfo(ctx)
-	if err != nil {
-		s.store.UpdateHostStatus(id, "unhealthy")
-		writeError(w, r, http.StatusServiceUnavailable, "Failed to get GPU info: "+err.Error())
-		return
-	}
-
-	s.store.UpdateHostStatus(id, "healthy")
-
-	gpus := make([]map[string]interface{}, 0, len(resp.Gpus))
-	for _, g := range resp.Gpus {
-		gpus = append(gpus, map[string]interface{}{
-			"index":          g.Index,
-			"name":           g.Name,
-			"uuid":           g.Uuid,
-			"driverVersion":  g.DriverVersion,
-			"cudaVersion":    g.CudaVersion,
-			"memoryMb":       g.MemoryMb,
-			"temperatureC":   g.TemperatureC,
-			"powerUsageW":    g.PowerUsageW,
-			"utilizationPct": g.UtilizationPct,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"gpus": gpus,
-	})
-}
-
-func (s *Server) handleGetHostSecurity(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	host, err := s.store.GetHost(id)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "Host not found")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	client, err := hostclient.NewClient(host.GRPCAddress())
-	if err != nil {
-		s.store.UpdateHostStatus(id, "offline")
-		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
-		return
-	}
-	defer client.Close()
-
-	info, err := client.GetSecurityInfo(ctx)
-	if err != nil {
-		s.store.UpdateHostStatus(id, "unhealthy")
-		writeError(w, r, http.StatusServiceUnavailable, "Failed to get security info: "+err.Error())
-		return
-	}
-
-	s.store.UpdateHostStatus(id, "healthy")
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"secureBootEnabled": info.SecureBootEnabled,
-		"tpmPresent":        info.TpmPresent,
-		"tpmVersion":        info.TpmVersion,
-		"uefiMode":          info.UefiMode,
-		"firewallStatus":    info.FirewallStatus,
-		"selinuxStatus":     info.SelinuxStatus,
-	})
-}
-
-func (s *Server) handleHostHealthCheck(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	host, err := s.store.GetHost(id)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "Host not found")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	client, err := hostclient.NewClient(host.GRPCAddress())
-	if err != nil {
-		s.store.UpdateHostStatus(id, "offline")
-		writeError(w, r, http.StatusServiceUnavailable, "Failed to connect: "+err.Error())
-		return
-	}
-	defer client.Close()
-
-	resp, err := client.HealthCheck(ctx)
-	if err != nil {
-		s.store.UpdateHostStatus(id, "unhealthy")
-		writeError(w, r, http.StatusServiceUnavailable, "Health check failed: "+err.Error())
-		return
-	}
-
-	if resp.Healthy {
-		s.store.UpdateHostStatus(id, "healthy")
-	} else {
-		s.store.UpdateHostStatus(id, "unhealthy")
-	}
-
-	components := make(map[string]interface{})
-	for name, comp := range resp.Components {
-		components[name] = map[string]interface{}{
-			"healthy": comp.Healthy,
-			"message": comp.Message,
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"healthy":       resp.Healthy,
-		"version":       resp.Version,
-		"uptimeSeconds": resp.UptimeSeconds,
-		"components":    components,
-	})
-}
-
-func (s *Server) handleLinkHostToDPU(w http.ResponseWriter, r *http.Request) {
-	hostID := r.PathValue("id")
-	dpuID := r.PathValue("dpuId")
-
-	// Check host exists
-	_, err := s.store.GetHost(hostID)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "Host not found")
-		return
-	}
-
-	// Check DPU exists
-	_, err = s.store.Get(dpuID)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "DPU not found")
-		return
-	}
-
-	if err := s.store.LinkHostToDPU(hostID, dpuID); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to link host to DPU: "+err.Error())
-		return
-	}
-
-	host, _ := s.store.GetHost(hostID)
-	writeJSON(w, http.StatusOK, hostToResponse(host))
-}
-
-func (s *Server) handleUnlinkHostFromDPU(w http.ResponseWriter, r *http.Request) {
-	hostID := r.PathValue("id")
-
-	// Check host exists
-	host, err := s.store.GetHost(hostID)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "Host not found")
-		return
-	}
-
-	if host.DPUID == nil {
-		writeError(w, r, http.StatusBadRequest, "Host is not linked to any DPU")
-		return
-	}
-
-	if err := s.store.UnlinkHostFromDPU(hostID); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to unlink host from DPU: "+err.Error())
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) handleGetDPUHost(w http.ResponseWriter, r *http.Request) {
-	dpuID := r.PathValue("id")
-
-	// Check DPU exists
-	_, err := s.store.Get(dpuID)
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, "DPU not found")
-		return
-	}
-
-	host, err := s.store.GetHostByDPU(dpuID)
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"host":    nil,
-			"message": "No host agent linked to this DPU",
-		})
-		return
-	}
-
-	// Try to get live host info
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	client, err := hostclient.NewClient(host.GRPCAddress())
-	if err != nil {
-		s.store.UpdateHostStatus(host.ID, "offline")
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"host":   hostToResponse(host),
-			"info":   nil,
-			"status": "offline",
-		})
-		return
-	}
-	defer client.Close()
-
-	info, err := client.GetHostInfo(ctx)
-	if err != nil {
-		s.store.UpdateHostStatus(host.ID, "unhealthy")
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"host":   hostToResponse(host),
-			"info":   nil,
-			"status": "unhealthy",
-		})
-		return
-	}
-
-	security, _ := client.GetSecurityInfo(ctx)
-	gpuInfo, _ := client.GetGPUInfo(ctx)
-
-	s.store.UpdateHostStatus(host.ID, "healthy")
-
-	var gpus []map[string]interface{}
-	if gpuInfo != nil {
-		for _, g := range gpuInfo.Gpus {
-			gpus = append(gpus, map[string]interface{}{
-				"name":          g.Name,
-				"driverVersion": g.DriverVersion,
-				"cudaVersion":   g.CudaVersion,
-			})
-		}
-	}
-
-	var securityInfo map[string]interface{}
-	if security != nil {
-		securityInfo = map[string]interface{}{
-			"secureBootEnabled": security.SecureBootEnabled,
-			"tpmPresent":        security.TpmPresent,
-			"uefiMode":          security.UefiMode,
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"host": hostToResponse(host),
-		"info": map[string]interface{}{
-			"hostname":      info.Hostname,
-			"osName":        info.OsName,
-			"osVersion":     info.OsVersion,
-			"kernelVersion": info.KernelVersion,
-		},
-		"security": securityInfo,
-		"gpus":     gpus,
-		"status":   "healthy",
-	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {

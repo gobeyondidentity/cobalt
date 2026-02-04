@@ -18,7 +18,7 @@ func init() {
 	// Flags for trust create
 	trustCreateCmd.Flags().String("type", "ssh_host", "Trust type: ssh_host, mtls")
 	trustCreateCmd.Flags().Bool("bidirectional", false, "Create bidirectional trust")
-	trustCreateCmd.Flags().Bool("force", false, "Bypass attestation checks (use with caution)")
+	trustCreateCmd.Flags().String("force", "", "Bypass attestation checks (requires reason, audited)")
 
 	// Flags for trust list
 	trustListCmd.Flags().String("tenant", "", "Filter by tenant")
@@ -53,13 +53,18 @@ Examples:
   bluectl trust create compute-01 slurm-head
   bluectl trust create compute-01 slurm-head --type mtls
   bluectl trust create compute-01 slurm-head --bidirectional`,
-	Args: cobra.ExactArgs(2),
+	Args: ExactArgsWithUsage(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sourceHostname := args[0]
 		targetHostname := args[1]
 		trustType, _ := cmd.Flags().GetString("type")
 		bidirectional, _ := cmd.Flags().GetBool("bidirectional")
-		force, _ := cmd.Flags().GetBool("force")
+		forceReason, _ := cmd.Flags().GetString("force")
+
+		// Validate --force flag: if provided, must have a reason
+		if cmd.Flags().Changed("force") && strings.TrimSpace(forceReason) == "" {
+			return fmt.Errorf("--force requires a reason. Usage: --force 'maintenance window'")
+		}
 
 		// Validate trust type
 		if trustType != "ssh_host" && trustType != "mtls" {
@@ -86,10 +91,9 @@ Examples:
 			TargetHost:    targetHostname,
 			TrustType:     trustType,
 			Bidirectional: bidirectional,
-			Force:         force,
 		}
 
-		tr, err := client.CreateTrust(cmd.Context(), req)
+		tr, err := client.CreateTrustWithForceBypass(cmd.Context(), req, forceReason)
 		if err != nil {
 			return fmt.Errorf("failed to create trust: %w", err)
 		}
@@ -191,7 +195,7 @@ Use --yes/-y to skip the confirmation prompt.
 Examples:
   bluectl trust delete tr_a1b2c3d4
   bluectl trust delete tr_a1b2c3d4 --yes`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		trustID := args[0]
 		yes, _ := cmd.Flags().GetBool("yes")

@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
-	"github.com/gobeyondidentity/secure-infra/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/clierror"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 )
 
 // AuthorizationCheckRequest is sent to the server to check authorization.
@@ -53,13 +53,13 @@ func checkAuthorization(caName, deviceName string) error {
 	}
 
 	// Get DPoP-enabled HTTP client
-	httpClient, err := getDPoPHTTPClient(config.ControlPlaneURL)
+	httpClient, err := getDPoPHTTPClient(config.ServerURL)
 	if err != nil {
 		return clierror.InternalError(err)
 	}
 
 	// Look up CA ID by name
-	caReq, err := http.NewRequest("GET", config.ControlPlaneURL+"/api/credentials/ssh-cas/"+url.QueryEscape(caName), nil)
+	caReq, err := http.NewRequest("GET", config.ServerURL+"/api/v1/credentials/ssh-cas/"+url.QueryEscape(caName), nil)
 	if err != nil {
 		return clierror.InternalError(fmt.Errorf("failed to create CA lookup request: %w", err))
 	}
@@ -91,7 +91,7 @@ func checkAuthorization(caName, deviceName string) error {
 	// Look up device ID by name if a device is specified
 	var deviceID string
 	if deviceName != "" {
-		dpuReq, err := http.NewRequest("GET", config.ControlPlaneURL+"/api/dpus/"+url.QueryEscape(deviceName), nil)
+		dpuReq, err := http.NewRequest("GET", config.ServerURL+"/api/v1/dpus/"+url.QueryEscape(deviceName), nil)
 		if err != nil {
 			return clierror.InternalError(fmt.Errorf("failed to create device lookup request: %w", err))
 		}
@@ -123,6 +123,11 @@ func checkAuthorization(caName, deviceName string) error {
 	}
 
 	// Now use caInfo.ID and deviceID for the authorization check
+	// Check if operator_id is available (populated during enrollment)
+	if config.OperatorID == "" {
+		return clierror.ConfigMissing()
+	}
+
 	reqBody := AuthorizationCheckRequest{
 		OperatorID: config.OperatorID,
 		CAID:       caInfo.ID,
@@ -137,7 +142,7 @@ func checkAuthorization(caName, deviceName string) error {
 		return clierror.InternalError(fmt.Errorf("failed to marshal authorization request: %w", err))
 	}
 
-	req, err := http.NewRequest("POST", config.ControlPlaneURL+"/api/v1/authorizations/check", bytes.NewReader(jsonBody))
+	req, err := http.NewRequest("POST", config.ServerURL+"/api/v1/authorizations/check", bytes.NewReader(jsonBody))
 	if err != nil {
 		return clierror.InternalError(fmt.Errorf("failed to create authorization request: %w", err))
 	}
@@ -167,6 +172,10 @@ func checkAuthorization(caName, deviceName string) error {
 			// Handle device revoked error specially
 			if errResp.Error == "device revoked" {
 				return &DeviceRevokedError{}
+			}
+			// Map internal field name errors to user-friendly messages
+			if errResp.Error == "operator_id is required" {
+				return clierror.ConfigMissing()
 			}
 			return clierror.InternalError(fmt.Errorf("authorization check failed: %s", errResp.Error))
 		}
@@ -202,7 +211,7 @@ func getAuthorizations() ([]Authorization, error) {
 	}
 
 	// Get DPoP-enabled HTTP client
-	httpClient, err := getDPoPHTTPClient(config.ControlPlaneURL)
+	httpClient, err := getDPoPHTTPClient(config.ServerURL)
 	if err != nil {
 		return nil, clierror.InternalError(err)
 	}
@@ -214,7 +223,7 @@ func getAuthorizations() ([]Authorization, error) {
 		kid = config.KeyMakerID
 	}
 	reqURL := fmt.Sprintf("%s/api/v1/authorizations?keymaker_id=%s",
-		config.ControlPlaneURL, url.QueryEscape(kid))
+		config.ServerURL, url.QueryEscape(kid))
 
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {

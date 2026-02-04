@@ -190,6 +190,21 @@ func (s *Store) AddOperatorToTenant(operatorID, tenantID, role string) error {
 	return nil
 }
 
+// UpdateOperatorRole updates or creates an operator's role in a tenant.
+// Uses upsert semantics: if the membership exists, updates the role;
+// if it doesn't exist, creates a new membership.
+func (s *Store) UpdateOperatorRole(operatorID, tenantID, role string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO operator_tenants (operator_id, tenant_id, role) VALUES (?, ?, ?)
+		 ON CONFLICT(operator_id, tenant_id) DO UPDATE SET role = excluded.role`,
+		operatorID, tenantID, role,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update operator role: %w", err)
+	}
+	return nil
+}
+
 // RemoveOperatorFromTenant removes an operator from a tenant.
 func (s *Store) RemoveOperatorFromTenant(operatorID, tenantID string) error {
 	result, err := s.db.Exec(
@@ -246,6 +261,20 @@ func (s *Store) GetOperatorRole(operatorID, tenantID string) (string, error) {
 		return "", fmt.Errorf("failed to get operator role: %w", err)
 	}
 	return role, nil
+}
+
+// IsSuperAdmin checks if an operator has super:admin role in any tenant.
+// Per ADR-011, super:admin in any tenant grants global access.
+func (s *Store) IsSuperAdmin(operatorID string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM operator_tenants WHERE operator_id = ? AND role = 'super:admin'`,
+		operatorID,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check super admin status: %w", err)
+	}
+	return count > 0, nil
 }
 
 // ----- KeyMaker Methods -----

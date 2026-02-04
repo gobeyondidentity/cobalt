@@ -12,6 +12,10 @@ import (
 	"golang.org/x/mod/semver"
 )
 
+// statFunc is the function used for file existence checks.
+// Tests can override this to mock filesystem state.
+var statFunc = os.Stat
+
 // InstallMethod indicates how the CLI was installed.
 type InstallMethod int
 
@@ -159,7 +163,7 @@ func DetectInstallMethodFromPath(execPath string) InstallMethod {
 	}
 
 	// Debian/Ubuntu: check for dpkg info file
-	if _, err := os.Stat("/var/lib/dpkg/info/bluectl.list"); err == nil {
+	if _, err := statFunc("/var/lib/dpkg/info/bluectl.list"); err == nil {
 		return Apt
 	}
 
@@ -168,7 +172,7 @@ func DetectInstallMethodFromPath(execPath string) InstallMethod {
 	// actually run `rpm -q bluectl`
 
 	// Docker: check for /.dockerenv marker
-	if _, err := os.Stat("/.dockerenv"); err == nil {
+	if _, err := statFunc("/.dockerenv"); err == nil {
 		return Docker
 	}
 
@@ -198,7 +202,7 @@ func GetUpgradeCommand(method InstallMethod, toolName string, newVersion string)
 	case DirectDownload:
 		fallthrough
 	default:
-		return "Download from https://github.com/gobeyondidentity/secure-infra/releases"
+		return "Download from https://github.com/gobeyondidentity/cobalt/releases"
 	}
 }
 

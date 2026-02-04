@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -96,6 +97,22 @@ func SaveConfig(cfg *Config) error {
 	return nil
 }
 
+// NormalizeServerURL ensures the URL has a scheme (http:// or https://).
+// If no scheme is present, it defaults to http://.
+func NormalizeServerURL(url string) string {
+	if url == "" {
+		return url
+	}
+
+	// If already has a scheme, return as-is
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		return url
+	}
+
+	// Auto-prefix with http://
+	return "http://" + url
+}
+
 // GetServer returns the server URL using the following precedence:
 // 1. --server flag (highest priority)
 // 2. SERVER_URL environment variable
@@ -103,12 +120,12 @@ func SaveConfig(cfg *Config) error {
 func GetServer() string {
 	// 1. Flag takes highest precedence
 	if serverFlag != "" {
-		return serverFlag
+		return NormalizeServerURL(serverFlag)
 	}
 
 	// 2. Check SERVER_URL env var
 	if url := os.Getenv("SERVER_URL"); url != "" {
-		return url
+		return NormalizeServerURL(url)
 	}
 
 	// 3. Fall back to config file
@@ -117,7 +134,7 @@ func GetServer() string {
 		return ""
 	}
 
-	return cfg.Server
+	return NormalizeServerURL(cfg.Server)
 }
 
 var configSetServerCmd = &cobra.Command{
@@ -128,14 +145,17 @@ var configSetServerCmd = &cobra.Command{
 The server URL is saved to ~/.config/bluectl/config.yaml and used
 by all commands that communicate with the control plane.
 
+If no scheme (http:// or https://) is provided, http:// is assumed.
+
 Use the --server flag on any command to temporarily override this setting.
 
 Examples:
+  bluectl config set-server 192.168.1.127:18080
   bluectl config set-server http://nexus.example.com:18080
   bluectl config set-server https://nexus.internal:443`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		serverURL := args[0]
+		serverURL := NormalizeServerURL(args[0])
 
 		cfg, err := LoadConfig()
 		if err != nil {

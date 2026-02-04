@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 // setupTrustCheckerTest creates a test store and returns it along with test data helpers.

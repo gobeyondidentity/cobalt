@@ -23,16 +23,14 @@ brew install bluectl km
 
 **Linux (Debian/Ubuntu):**
 ```bash
-# Add repository (auto-detects your distro)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.deb.sh' | sudo bash
-sudo apt update && sudo apt install bluectl km
+# Set up repository and install packages
+curl -1sLf 'https://raw.githubusercontent.com/gobeyondidentity/cobalt/main/scripts/install.sh' | sudo bash -s bluectl km
 ```
 
 **Linux (RHEL/Fedora):**
 ```bash
-# Add repository (auto-detects your distro)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.rpm.sh' | sudo bash
-sudo yum install bluectl km
+# Set up repository and install packages
+curl -1sLf 'https://raw.githubusercontent.com/gobeyondidentity/cobalt/main/scripts/install.sh' | sudo bash -s bluectl km
 ```
 
 Skip to [Step 1: Start the Server](#step-1-start-the-server) after installing.
@@ -130,11 +128,8 @@ ssh ubuntu@<DPU_IP>
 ### Option A: Install via apt (Recommended)
 
 ```bash
-# Add repository (auto-detects your distro)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.deb.sh' | sudo bash
-
-# Install aegis
-sudo apt update && sudo apt install aegis
+# Set up repository and install aegis (requires arm64/BlueField DPU)
+curl -1sLf 'https://raw.githubusercontent.com/gobeyondidentity/cobalt/main/scripts/install.sh' | sudo bash -s aegis
 ```
 
 ### Option B: Manual Binary (Air-Gapped Environments)
@@ -522,20 +517,14 @@ ssh <user>@<HOST_IP>
 
 **Debian/Ubuntu:**
 ```bash
-# Add repository (auto-detects your distro, skip if already added)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.deb.sh' | sudo bash
-
-# Install sentry
-sudo apt update && sudo apt install sentry
+# Set up repository and install sentry
+curl -1sLf 'https://raw.githubusercontent.com/gobeyondidentity/cobalt/main/scripts/install.sh' | sudo bash -s sentry
 ```
 
 **RHEL/Fedora:**
 ```bash
-# Add repository (auto-detects your distro, skip if already added)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.rpm.sh' | sudo bash
-
-# Install sentry
-sudo yum install sentry
+# Set up repository and install sentry
+curl -1sLf 'https://raw.githubusercontent.com/gobeyondidentity/cobalt/main/scripts/install.sh' | sudo bash -s sentry
 ```
 
 ### Option B: Manual Binary (Air-Gapped Environments)

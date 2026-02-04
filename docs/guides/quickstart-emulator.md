@@ -22,9 +22,8 @@ brew install nmelo/tap/bluectl nmelo/tap/km nmelo/tap/nexus nmelo/tap/dpuemu nme
 
 **Linux (Debian/Ubuntu):**
 ```bash
-# Add repository (auto-detects your distro)
-curl -1sLf 'https://dl.cloudsmith.io/public/beyond-identity/secure-infra/cfg/setup/bash.deb.sh' | sudo bash
-sudo apt update && sudo apt install bluectl km nexus dpuemu sentry
+# Set up repository and install packages
+curl -1sLf 'https://raw.githubusercontent.com/gobeyondidentity/cobalt/main/scripts/install.sh' | sudo bash -s bluectl km nexus dpuemu sentry
 ```
 
 Skip to [Terminal Setup](#terminal-setup) after installing.

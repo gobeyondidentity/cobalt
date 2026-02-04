@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/netutil"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 )
 
 // DefaultPollInterval is the default interval between task status polls.

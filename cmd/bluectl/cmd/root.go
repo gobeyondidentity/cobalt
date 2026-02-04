@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/gobeyondidentity/secure-infra/internal/version"
-	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
+	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/clierror"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

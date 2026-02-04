@@ -7,9 +7,9 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/gobeyondidentity/secure-infra/internal/version"
-	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/clierror"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -123,7 +123,7 @@ func init() {
 
 	rootCmd.SetUsageTemplate(colorizedUsageTemplate)
 	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "Output format: table, json, yaml")
-	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.local/share/km/dpus.db)")
+	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.local/share/km/km.db)")
 	rootCmd.PersistentFlags().BoolVar(&insecure, "insecure", false, "Allow plaintext key storage (INSECURE: use only for development)")
 }
 

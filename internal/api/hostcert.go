@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/sshca"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/sshca"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 	"golang.org/x/crypto/ssh"
 )
 

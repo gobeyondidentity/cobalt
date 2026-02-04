@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
-	"github.com/gobeyondidentity/secure-infra/pkg/store"
+	"github.com/gobeyondidentity/cobalt/pkg/clierror"
+	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
 func TestHandleError_CLIError(t *testing.T) {

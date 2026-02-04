@@ -10,6 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ValidRoles defines the valid role values for operator invites.
+var ValidRoles = []string{"operator", "tenant:admin", "super:admin"}
+
 func init() {
 	rootCmd.AddCommand(operatorCmd)
 	operatorCmd.AddCommand(operatorInviteCmd)
@@ -20,9 +23,10 @@ func init() {
 	operatorCmd.AddCommand(operatorAuthorizationsCmd)
 	operatorCmd.AddCommand(operatorRevokeCmd)
 	operatorCmd.AddCommand(operatorRemoveCmd)
+	operatorCmd.AddCommand(operatorSetRoleCmd)
+	operatorCmd.AddCommand(operatorRemoveRoleCmd)
 
-	// Flags for operator invite
-	operatorInviteCmd.Flags().String("role", "operator", "Role: admin or operator")
+	// No flags for operator invite - role is now a positional argument
 
 	// Flags for operator list
 	operatorListCmd.Flags().String("tenant", "", "Filter by tenant")
@@ -55,25 +59,44 @@ Workflow:
 }
 
 var operatorInviteCmd = &cobra.Command{
-	Use:   "invite <email> <tenant>",
+	Use:   "invite <email> <tenant> [role]",
 	Short: "Invite an operator to a tenant",
 	Long: `Generate an invite code for an operator to join a tenant.
 
 The invite code should be shared with the operator, who will use it
 with 'km init' to bind their KeyMaker to the control plane.
 
+Arguments:
+  email   Operator email address
+  tenant  Tenant name
+  role    Role to assign (optional, default: operator)
+          Valid values: operator, tenant:admin, super:admin
+
 Examples:
   bluectl operator invite nelson@acme.com acme
-  bluectl operator invite marcus@acme.com acme --role admin`,
-	Args: cobra.ExactArgs(2),
+  bluectl operator invite marcus@acme.com acme tenant:admin
+  bluectl operator invite admin@acme.com acme super:admin`,
+	Args: RangeArgsWithUsage(2, 3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		tenantName := args[1]
-		role, _ := cmd.Flags().GetString("role")
+
+		// Default role to "operator" if not provided
+		role := "operator"
+		if len(args) == 3 {
+			role = args[2]
+		}
 
 		// Validate role
-		if role != "admin" && role != "operator" {
-			return fmt.Errorf("invalid role: %s (must be 'admin' or 'operator')", role)
+		validRole := false
+		for _, r := range ValidRoles {
+			if role == r {
+				validRole = true
+				break
+			}
+		}
+		if !validRole {
+			return fmt.Errorf("invalid role: %s (must be one of: %s)", role, strings.Join(ValidRoles, ", "))
 		}
 
 		serverURL, err := requireServer()
@@ -180,7 +203,7 @@ authorization checks will fail until reactivated.
 
 Examples:
   bluectl operator suspend marcus@acme.com`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
@@ -221,7 +244,7 @@ var operatorActivateCmd = &cobra.Command{
 
 Examples:
   bluectl operator activate marcus@acme.com`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
@@ -270,7 +293,7 @@ Examples:
   bluectl operator grant nelson@acme.com acme ops-ca bf3-lab-01
   bluectl operator grant nelson@acme.com acme ops-ca bf3-lab-01,bf3-lab-02
   bluectl operator grant nelson@acme.com acme dev-ca all`,
-	Args: cobra.ExactArgs(4),
+	Args: ExactArgsWithUsage(4),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		tenantName := args[1]
@@ -364,7 +387,7 @@ var operatorAuthorizationsCmd = &cobra.Command{
 
 Examples:
   bluectl operator authorizations nelson@acme.com`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
@@ -389,7 +412,7 @@ var operatorRevokeCmd = &cobra.Command{
 
 Examples:
   bluectl operator revoke nelson@acme.com --tenant acme --ca ops-ca`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		tenantName, _ := cmd.Flags().GetString("tenant")
@@ -423,7 +446,7 @@ Use --yes/-y to skip the confirmation prompt.
 Examples:
   bluectl operator remove marcus@acme.com
   bluectl operator remove marcus@acme.com --yes`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		yes, _ := cmd.Flags().GetBool("yes")
@@ -457,5 +480,155 @@ func removeOperatorRemote(ctx context.Context, serverURL, email string) error {
 		return fmt.Errorf("failed to remove operator: %w", err)
 	}
 	fmt.Printf("Removed operator '%s'\n", email)
+	return nil
+}
+
+var operatorSetRoleCmd = &cobra.Command{
+	Use:   "set-role <email> <tenant> <role>",
+	Short: "Assign or update an operator's role in a tenant",
+	Long: `Assign or update an operator's role in a tenant.
+
+Arguments:
+  email   Operator email address
+  tenant  Tenant name
+  role    Role to assign: operator, tenant:admin, or super:admin
+
+Authorization:
+  - tenant:admin can assign operator or tenant:admin in their own tenant
+  - super:admin can assign any role in any tenant
+  - Cannot assign a role higher than your own
+
+Examples:
+  bluectl operator set-role alice@example.com acme operator
+  bluectl operator set-role alice@example.com acme tenant:admin
+  bluectl operator set-role alice@example.com acme super:admin`,
+	Args: ExactArgsWithUsage(3),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+		tenantName := args[1]
+		role := args[2]
+
+		// Validate role
+		validRole := false
+		for _, r := range ValidRoles {
+			if role == r {
+				validRole = true
+				break
+			}
+		}
+		if !validRole {
+			return fmt.Errorf("invalid role: %s (must be one of: %s)", role, strings.Join(ValidRoles, ", "))
+		}
+
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+		return setRoleRemote(cmd.Context(), serverURL, email, tenantName, role)
+	},
+}
+
+func setRoleRemote(ctx context.Context, serverURL, email, tenantName, role string) error {
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
+
+	// Resolve operator email to ID
+	operator, err := client.GetOperator(ctx, email)
+	if err != nil {
+		return fmt.Errorf("operator not found: %s", email)
+	}
+
+	// Resolve tenant name to ID
+	tenants, err := client.ListTenants(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list tenants: %w", err)
+	}
+
+	var tenantID string
+	for _, t := range tenants {
+		if t.Name == tenantName || t.ID == tenantName {
+			tenantID = t.ID
+			break
+		}
+	}
+	if tenantID == "" {
+		return fmt.Errorf("tenant not found: %s", tenantName)
+	}
+
+	// Assign the role
+	if err := client.AssignRole(ctx, operator.ID, tenantID, role); err != nil {
+		return fmt.Errorf("failed to assign role: %w", err)
+	}
+
+	fmt.Printf("Role assigned: %s -> %s in %s\n", email, role, tenantName)
+	return nil
+}
+
+var operatorRemoveRoleCmd = &cobra.Command{
+	Use:   "remove-role <email> <tenant>",
+	Short: "Remove an operator's role from a tenant",
+	Long: `Remove an operator's role from a tenant.
+
+Arguments:
+  email   Operator email address
+  tenant  Tenant name
+
+Authorization:
+  - tenant:admin can remove operator or tenant:admin in their own tenant
+  - super:admin can remove any role in any tenant
+  - Cannot remove a role equal to or higher than your own
+
+Examples:
+  bluectl operator remove-role alice@example.com acme`,
+	Args: ExactArgsWithUsage(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+		tenantName := args[1]
+
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+		return removeRoleRemote(cmd.Context(), serverURL, email, tenantName)
+	},
+}
+
+func removeRoleRemote(ctx context.Context, serverURL, email, tenantName string) error {
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
+
+	// Resolve operator email to ID
+	operator, err := client.GetOperator(ctx, email)
+	if err != nil {
+		return fmt.Errorf("operator not found: %s", email)
+	}
+
+	// Resolve tenant name to ID
+	tenants, err := client.ListTenants(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list tenants: %w", err)
+	}
+
+	var tenantID string
+	for _, t := range tenants {
+		if t.Name == tenantName || t.ID == tenantName {
+			tenantID = t.ID
+			break
+		}
+	}
+	if tenantID == "" {
+		return fmt.Errorf("tenant not found: %s", tenantName)
+	}
+
+	// Remove the role
+	if err := client.RemoveRole(ctx, operator.ID, tenantID); err != nil {
+		return fmt.Errorf("failed to remove role: %w", err)
+	}
+
+	fmt.Printf("Role removed: %s from %s\n", email, tenantName)
 	return nil
 }

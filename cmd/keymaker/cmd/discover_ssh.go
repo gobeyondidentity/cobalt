@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/sshscan"
+	"github.com/gobeyondidentity/cobalt/pkg/sshscan"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )

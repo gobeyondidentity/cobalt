@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	hostv1 "github.com/gobeyondidentity/secure-infra/gen/go/host/v1"
+	hostv1 "github.com/gobeyondidentity/cobalt/gen/go/host/v1"
 )
 
 // Test SSH keys (real format, generated for testing)

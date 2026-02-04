@@ -11,7 +11,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w -X github.com/gobeyondidentity/secure-infra/internal/version.Version=${VERSION}" \
+    -ldflags="-s -w -X github.com/gobeyondidentity/cobalt/internal/version.Version=${VERSION}" \
     -o sentry ./cmd/sentry
 
 # Runtime image

@@ -12,8 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/pkg/clierror"
-	"github.com/gobeyondidentity/secure-infra/pkg/sshscan"
+	"github.com/gobeyondidentity/cobalt/pkg/clierror"
+	"github.com/gobeyondidentity/cobalt/pkg/sshscan"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -334,7 +334,7 @@ func findHost(config *KMConfig, nameOrHostname string) (*Host, error) {
 }
 
 func listHosts(config *KMConfig) ([]Host, error) {
-	resp, err := http.Get(config.ControlPlaneURL + "/api/v1/hosts")
+	resp, err := http.Get(config.ServerURL + "/api/v1/hosts")
 	if err != nil {
 		return nil, clierror.ConnectionFailed("server")
 	}
@@ -368,7 +368,7 @@ func listHosts(config *KMConfig) ([]Host, error) {
 
 func scanHost(config *KMConfig, host *Host, timeout int) (*ScanResult, error) {
 	// Build scan request URL
-	scanURL := fmt.Sprintf("%s/api/v1/hosts/%s/scan", config.ControlPlaneURL, url.PathEscape(host.Name))
+	scanURL := fmt.Sprintf("%s/api/v1/hosts/%s/scan", config.ServerURL, url.PathEscape(host.Name))
 
 	// Create request with method specification
 	reqBody := map[string]string{"method": "agent"}

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gobeyondidentity/secure-infra/internal/aegis/tmfifo"
+	"github.com/gobeyondidentity/cobalt/internal/aegis/tmfifo"
 )
 
 const (
