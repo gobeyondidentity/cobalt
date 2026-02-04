@@ -282,6 +282,16 @@ func (s *Server) handleBootstrapEnrollComplete(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Create system tenant for bootstrap admin (ignore error if already exists)
+	const systemTenantID = "tnt_system"
+	_ = s.store.AddTenant(systemTenantID, "System", "System tenant for bootstrap admin", "", nil)
+
+	// Assign bootstrap admin as super:admin in system tenant
+	if err := s.store.AddOperatorToTenant(adminID, systemTenantID, "super:admin"); err != nil {
+		writeInternalError(w, r, err, "Failed to assign admin role")
+		return
+	}
+
 	// Delete enrollment session
 	if err := s.store.DeleteEnrollmentSession(session.ID); err != nil {
 		// Log but don't fail - enrollment succeeded
