@@ -20,6 +20,7 @@ const (
 	ActionAuthorizationList   = "authorization:list"
 	ActionAuthorizationCreate = "authorization:create"
 	ActionAuthorizationDelete = "authorization:delete"
+	ActionAuthorizationCheck  = "authorization:check"
 
 	// DPU management
 	ActionDPUList            = "dpu:list"
@@ -81,6 +82,7 @@ var validActions = map[string]bool{
 	ActionAuthorizationList:    true,
 	ActionAuthorizationCreate:  true,
 	ActionAuthorizationDelete:  true,
+	ActionAuthorizationCheck:   true,
 	ActionDPUList:              true,
 	ActionDPURead:              true,
 	ActionDPURegister:          true,
@@ -193,6 +195,7 @@ func NewActionRegistry() *ActionRegistry {
 	r.register("GET", "/api/v1/authorizations", Action(ActionAuthorizationList))
 	r.register("POST", "/api/v1/authorizations", Action(ActionAuthorizationCreate))
 	r.register("DELETE", "/api/v1/authorizations/{id}", Action(ActionAuthorizationDelete))
+	r.register("POST", "/api/v1/authorizations/check", Action(ActionAuthorizationCheck))
 
 	// ----- DPU Management Endpoints -----
 	r.register("GET", "/api/v1/dpus", Action(ActionDPUList))

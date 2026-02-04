@@ -71,6 +71,13 @@ permit(
     principal.tenant_ids.contains(resource.tenant)
 };
 
+// Operators can check their own authorizations
+permit(
+    principal is Operator,
+    action == Action::"authorization:check",
+    resource
+);
+
 // ============================================================================
 // DPU SELF-ACCESS: Devices can access their own resources
 // ============================================================================

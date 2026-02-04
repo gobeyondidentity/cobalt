@@ -133,6 +133,10 @@ namespace Cobalt {
         principal: [Operator],
         resource: [Authorization],
     };
+    action "authorization:check" appliesTo {
+        principal: [Operator],
+        resource: [Authorization],
+    };
 
     // ----- DPU Management -----
     action "dpu:list" appliesTo {
