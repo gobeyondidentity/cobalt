@@ -298,7 +298,7 @@ func TestInitCmd_AlreadyEnrolled(t *testing.T) {
 		t.Fatal("Expected error for already enrolled, got nil")
 	}
 
-	if err.Error() != "server already has an admin enrolled. Use --force to re-enroll" {
+	if err.Error() != "server already has an admin enrolled" {
 		t.Errorf("Unexpected error message: %v", err)
 	}
 

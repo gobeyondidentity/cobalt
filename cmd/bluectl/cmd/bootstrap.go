@@ -105,18 +105,25 @@ func runInit(cmd *cobra.Command, args []string) error {
 		ServerURL: serverURL,
 	}
 
-	if dpop.IsEnrolled(idCfg) {
-		if !force {
-			return fmt.Errorf("local identity already exists. Use --force to re-enroll")
-		}
+	if force {
+		// --force: unconditionally clear ALL local state for clean initialization
 		fmt.Println("Removing existing identity (--force)...")
-		// Remove existing key and kid files
+		// Remove key and kid files
 		if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove existing key: %w", err)
 		}
 		if err := os.Remove(kidPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove existing kid: %w", err)
 		}
+		// Remove config file
+		configPath := ConfigPath()
+		if configPath != "" {
+			if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("failed to remove existing config: %w", err)
+			}
+		}
+	} else if dpop.IsEnrolled(idCfg) {
+		return fmt.Errorf("local identity already exists. Use --force to re-enroll")
 	}
 
 	fmt.Println("Generating keypair...")
@@ -168,9 +175,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 		case "bootstrap.already_enrolled":
 			fmt.Fprintln(os.Stderr, "Error: Server already has an admin enrolled.")
 			fmt.Fprintln(os.Stderr)
-			fmt.Fprintln(os.Stderr, "Use --force to re-enroll, or ask an existing admin to invite you:")
-			fmt.Fprintln(os.Stderr, "  bluectl operator invite --email you@example.com")
-			return fmt.Errorf("server already has an admin enrolled. Use --force to re-enroll")
+			fmt.Fprintln(os.Stderr, "The server was already initialized by another admin.")
+			fmt.Fprintln(os.Stderr, "Ask an existing admin to invite you as an operator:")
+			fmt.Fprintln(os.Stderr, "  bluectl operator invite your@email.com <tenant>")
+			return fmt.Errorf("server already has an admin enrolled")
 		}
 
 		return fmt.Errorf("bootstrap failed: %s", errResp.Error)
