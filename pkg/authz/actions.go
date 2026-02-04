@@ -1,5 +1,7 @@
 package authz
 
+import "strings"
+
 // Action constants for all API endpoints.
 // These map 1:1 with API endpoints per ADR-011.
 const (
@@ -237,6 +239,12 @@ func (r *ActionRegistry) register(method, pattern string, action Action) {
 // Returns an error for unknown routes (fail-secure design).
 // SECURITY: Middleware ONLY bypasses auth for NoAuthRequired, never for errors.
 func (r *ActionRegistry) Lookup(method, path string) (Action, error) {
+	// Validate path format before matching
+	// SECURITY: Reject malformed paths (e.g., double slashes) to prevent path confusion attacks
+	if err := validatePath(path); err != nil {
+		return "", err
+	}
+
 	// Try exact match first
 	if action, ok := r.routes[routeKey{method: method, pattern: path}]; ok {
 		return action, nil
@@ -286,6 +294,24 @@ func (r *ActionRegistry) AllRoutes() []string {
 		routes = append(routes, k.method+" "+k.pattern)
 	}
 	return routes
+}
+
+// validatePath checks if a path is well-formed.
+// SECURITY: Rejects paths that could cause confusion or bypass issues.
+// Returns an error for malformed paths, nil if valid.
+func validatePath(path string) error {
+	// Reject empty paths
+	if path == "" {
+		return ErrMalformedPath(path, "empty path")
+	}
+
+	// Reject paths with double slashes (e.g., /api/v1//dpus)
+	// These could be used to confuse path matching or bypass security checks
+	if strings.Contains(path, "//") {
+		return ErrMalformedPath(path, "contains double slashes")
+	}
+
+	return nil
 }
 
 // matchPattern checks if a path matches a pattern with {param} placeholders.

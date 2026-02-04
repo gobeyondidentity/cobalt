@@ -278,7 +278,6 @@ func TestActionRegistry_UnknownRoute_ReturnsError(t *testing.T) {
 		{"PUT", "/api/v1/dpus/dpu_xyz"},      // Wrong method
 		{"GET", "/api/v1/dpus/a/b/c/d"},      // Too many segments
 		{"POST", "/malicious/path"},          // Random path
-		{"GET", ""},                          // Empty path
 		{"GET", "/"},                         // Root path
 		{"GET", "/api/v1/operators/me/evil"}, // Extra path segment
 	}
@@ -446,4 +445,98 @@ func TestActionRegistry_AllActionsHaveEndpoints(t *testing.T) {
 	}
 
 	t.Logf("Registry routes: %d, Mapped actions: %d", len(routes), len(mappedActions))
+}
+
+func TestActionRegistry_MalformedPath_RejectsDoubleSlashes(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing: Paths with double slashes are rejected (security hardening)")
+	t.Log("SEC NOTE: Double slashes could be used to bypass path-based security checks")
+
+	r := NewActionRegistry()
+
+	malformedPaths := []struct {
+		method string
+		path   string
+		reason string
+	}{
+		{"GET", "/api/v1//dpus", "double slash in middle"},
+		{"GET", "//api/v1/dpus", "double slash at start"},
+		{"GET", "/api/v1/dpus//dpu_xyz", "double slash before param"},
+		{"POST", "/api//v1/push", "double slash in version"},
+		{"GET", "/api/v1/dpus/dpu_xyz//attestation", "double slash before action"},
+		{"GET", "/api/v1/operators///me", "triple slash"},
+	}
+
+	for _, mp := range malformedPaths {
+		t.Run(mp.method+" "+mp.path, func(t *testing.T) {
+			t.Logf("Testing rejection of malformed path: %s (%s)", mp.path, mp.reason)
+
+			action, err := r.Lookup(mp.method, mp.path)
+			if err == nil {
+				t.Errorf("Expected error for malformed path %q, got action %v", mp.path, action)
+			}
+			if ErrorCode(err) != ErrCodeMalformedPath {
+				t.Errorf("Expected ErrCodeMalformedPath for %q, got %v: %v", mp.path, ErrorCode(err), err)
+			}
+			t.Logf("Correctly rejected malformed path with error: %v", err)
+		})
+	}
+}
+
+func TestActionRegistry_MalformedPath_RejectsEmptyPath(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing: Empty paths are rejected")
+
+	r := NewActionRegistry()
+
+	action, err := r.Lookup("GET", "")
+	if err == nil {
+		t.Errorf("Expected error for empty path, got action %v", action)
+	}
+	if ErrorCode(err) != ErrCodeMalformedPath {
+		t.Errorf("Expected ErrCodeMalformedPath, got %v: %v", ErrorCode(err), err)
+	}
+	t.Logf("Correctly rejected empty path with error: %v", err)
+}
+
+func TestValidatePath(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing: validatePath function")
+
+	tests := []struct {
+		path      string
+		expectErr bool
+		errReason string
+	}{
+		// Valid paths
+		{"/api/v1/dpus", false, ""},
+		{"/health", false, ""},
+		{"/api/v1/dpus/dpu_xyz", false, ""},
+		{"/api/v1/operators/km_alice/roles/tnt_acme", false, ""},
+
+		// Invalid: double slashes
+		{"/api/v1//dpus", true, "contains double slashes"},
+		{"//api", true, "contains double slashes"},
+		{"/api//", true, "contains double slashes"},
+
+		// Invalid: empty
+		{"", true, "empty path"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			err := validatePath(tc.path)
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("Expected error for path %q, got nil", tc.path)
+				} else {
+					t.Logf("Correctly rejected %q: %v", tc.path, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error for valid path %q: %v", tc.path, err)
+				}
+			}
+		})
+	}
 }
