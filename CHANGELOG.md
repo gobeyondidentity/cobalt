@@ -7,117 +7,140 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.6.13] - 2026-02-02
+## [0.7.0] - 2026-02-05 "Bender"
+
+This release delivers the full si-d2y epic: five phases of authentication, enrollment,
+authorization, lifecycle management, and audit logging for Project Cobalt.
 
 ### Added
-- **`make release-clean` Target**: QA validation utility that cleans local state, service user files, config files, nexus DB, and kills manually-started processes
 
-### Changed
-- **Aegis Deferred Local API** (si-d2y.5.1): Local HTTP API now initializes after service startup instead of blocking. Enables aegis to start and establish ComCh connection before local API is ready.
-
-### Fixed
-- **DOCA Static Linking**: Complete library dependencies added to CGO LDFLAGS (`libm`, `libnl3`, `libstdc++`) for proper static builds
-- **Aegis Service File**: Shell wrapper added to aegis.service for correct bash variable expansion
-- **Sentry Service File**: Added `/etc/secureinfra` to ReadWritePaths
-- **Version String Format**: Fixed inconsistency across CLIs (nexus now uses `version.String()`)
-- **Documentation URLs**: Updated from secure-infra to cobalt
-
-## [0.6.12] - 2026-02-02
-
-### Added
-- **Enrollment System** for secure onboarding (si-d2y.2):
-  - Bootstrap endpoint for first admin enrollment (si-d2y.2.5)
-  - Operator enrollment endpoints with invite codes (si-d2y.2.4)
-  - DPU enrollment with DICE binding (si-d2y.2.6)
-  - Client enrollment integration (si-d2y.2.7)
-  - Invite code management service (si-d2y.2.3)
-  - Enrollment tables schema (si-d2y.2.1)
-  - Core enrollment library with types, errors, and challenge utilities
-  - Comprehensive enrollment security test suite (si-d2y.2.8)
-- **CLI Enhancements**:
-  - `--output/-o` flag for `km ssh-ca sign` to write certificate to file (si-d2y.2.18)
-  - `--yes/-y` flag for destructive CLI commands to skip confirmation (si-d2y.2.13)
-  - MVP warning shown once per terminal session (si-d2y.2.19)
+- **DPoP Authentication** (Phase 1, si-d2y.1):
+  - Ed25519-based DPoP proof system (RFC 9449) for all client-to-server authentication
+  - Proof generator, validator, and JTI replay cache
+  - HTTP middleware for nexus API authentication
+  - DB schema for DPoP key lookup
+  - KeyStore and DPoP Client for CLI integration
+  - Security test suite with comprehensive attack vector coverage
+  - Platform-specific file permission checks (Windows and Unix)
+- **Enrollment System** (Phase 2, si-d2y.2):
+  - Bootstrap endpoint for first admin enrollment
+  - Operator enrollment with invite codes
+  - DPU enrollment with DICE binding
+  - Client enrollment integration across bluectl and km
+  - Invite code management service with expiration and revocation
+  - Enrollment tables schema and core library
+  - Comprehensive enrollment security test suite
+- **Cedar Authorization** (Phase 3, si-d2y.3):
+  - Authorization layer with Cedar policy evaluation
+  - SSH CA authorization support with tenant-scoped CA creation policy
+  - Authorization:check endpoint in ActionRegistry
+- **Lifecycle Management** (Phase 4, si-d2y.4):
+  - AdminKey revocation endpoint with last-admin protection
+  - KeyMaker revocation endpoint with authorization enforcement
+  - Operator suspension (`bluectl operator suspend`) and unsuspend endpoints
+  - DPU decommissioning (`bluectl dpu decommission`) with mandatory credential scrubbing
+  - DPU re-activation (`bluectl dpu reactivate`) endpoint
+  - Cedar policies for all lifecycle actions
+  - Admin list endpoints with lifecycle status visibility
+  - DPoP middleware status checks for suspended/revoked identities
+  - Lifecycle tracking columns in database schema
+- **Audit Logging** (Phase 5, si-d2y.5):
+  - RFC 5424 syslog writer with UDP/TCP/Unix socket transport
+  - Structured audit event types for auth, enrollment, lifecycle, and attestation
+  - Audit event emission in DPoP middleware (auth success/failure)
+  - Audit events in enrollment, lifecycle, and attestation bypass handlers
+  - DPoP AuditEmitter wired to syslog in main.go
+  - Syslog socket reconnection with exponential backoff
+  - No-secrets regression test to prevent PII/credential leakage in logs
+  - Client IP extraction via `netutil.ClientIP` utility
+- **CLI Commands**:
+  - `bluectl admin list` and `bluectl admin revoke` for AdminKey management
+  - `bluectl operator revoke`, `bluectl operator suspend`, `bluectl operator unsuspend`
+  - `bluectl operator authorizations` to view operator grants
+  - `--status` filter on list commands
+  - `--yes/-y` flag for destructive commands to skip confirmation prompts
+  - `--output/-o` flag for `km ssh-ca sign` to write certificate to file
+  - MVP warning shown once per terminal session
   - Operator email and tenant context in `km init` output
 - **Health & Readiness**:
-  - `/health` endpoint for dpuemu (consistency with nexus) (si-d2y.2.17)
+  - `/health` endpoint for aegis, sentry, and dpuemu (consistent with nexus)
   - `/ready` endpoint for Kubernetes readiness probes
-  - Consolidated health endpoints across services
 - **Testing Infrastructure**:
-  - Shared CLI test utilities package (si-61z.6)
+  - Shared CLI test utilities package
   - mockhttp package for reusable mock HTTP test servers
-  - Tests for attestation security-critical functions
-  - Tests for pkg/doca with bluefield build tag
-  - Unit tests for zero-coverage packages
-  - `t.Parallel()` for independent tests (si-61z.4)
-  - `t.Log` statements for transport test observability
-  - `t.Helper()` annotations for test utilities
-  - Server config step in demo script (si-d2y.2.16)
+  - Attestation and DOCA package test coverage
+  - Unit tests for previously zero-coverage packages
+  - Integration test for suspended operator KeyMaker blocking
+  - Windows CI runner for cross-platform verification
+  - `t.Parallel()`, `t.Log()`, and `t.Helper()` across test suite
+- **Developer Experience**:
+  - `make install` target for local development
+  - `make release-clean` target for QA validation state cleanup
+  - Aegis deferred local API initialization (non-blocking startup)
 
 ### Changed
-- **Project Rename**: Secure Infrastructure renamed to Project Cobalt
-- **CLI Flags**:
-  - `km init --control-plane` migrated to `--server` (si-dct.2)
-  - `aegis --control-plane` renamed to `--server`
-  - `SERVER_URL` env var standardized across all CLIs (si-dct.3)
-- **Operator Management**: Operator invite now idempotent with audit logging (si-d2y.2.12)
-- **Module Path**: Changed from `nmelo` to `gobeyondidentity`
-- **Test Refactoring**: Monolithic integration test split into focused modules (si-61z.5)
-- **Error Messages**: Clearer bluectl init errors for local vs server state
+
+- **Project Rename**: Secure Infrastructure renamed to Project Cobalt (module path, docs, URLs)
+- **CLI Flags**: `--control-plane` migrated to `--server` across aegis and km; `SERVER_URL` env var standardized
+- **DPoP JWT Primitives**: Refactored to use go-jose library instead of manual JWT handling
+- **`operator activate` renamed to `unsuspend`** for clarity
+- **Credential scrubbing now mandatory** on DPU decommission
+- **Operator invite** now idempotent with audit logging
+- **Module path** changed from `nmelo` to `gobeyondidentity`
+- **CLI consistency polish** across lifecycle commands
+- **Large handler files split** for maintainability
 
 ### Removed
-- **`aegis --local-api` flag**: Local API mode removed; aegis now always runs in server mode
+
+- **`aegis --local-api` flag**: Local API mode removed; aegis always runs in server mode
 - **`BLUECTL_SERVER` env var**: Use `--server` flag or `SERVER_URL` instead
 - **Makefile targets**: Deprecated `demo-*`, `hw-*`, `qa-*`, and `release` targets removed
 
+### Security
+
+- **Identity enumeration via invite codes**: Error messages no longer reveal whether invite codes exist
+- **km HTTP fallback**: Fixed silent fallback from HTTPS to HTTP (credentials sent in clear)
+- **TOCTOU race in last-admin revocation**: Atomic check-and-revoke prevents two admins from revoking each other simultaneously
+- **TOCTOU race in QueueCredential**: Prevented credential queue to unknown/decommissioned DPUs
+
 ### Fixed
-- **km push**: Extract operator_id from DPoP context correctly (si-d2y.2.15)
-- **km ssh-ca create**: Server registration now works properly (si-d2y.15)
+
+- **SQLite SQLITE_BUSY races**: `SetMaxOpenConns(1)` prevents concurrent pool connections from losing per-connection PRAGMAs
+- **Race condition in AdminKey revocation**: Concurrent revocation requests now handled atomically
+- **Race condition in operator suspension**: Atomic suspend/unsuspend prevents concurrent state corruption
+- **Race on store.insecureModeAllowed**: Test fixture isolation fixed for concurrent tests
+- **N+1 query in list operators**: Batch query replaces per-operator lookups
+- **Operator suspend/unsuspend client-server mismatch**: CLI and server routes now use consistent endpoints
+- **DPU list and operator list JSON format**: Response structure unified across list endpoints
+- **Attestation chicken-and-egg for new DPUs**: New DPUs can attest without prior key registration
+- **`bluectl init --force`**: Now properly clears all local state
+- **`operator_id` missing in enrollment response**: Enrollment now returns complete operator context
+- **Force flag in `km push`**: Request body now correctly includes force parameter
+- **GET /api/v1/keymakers missing from authz actions**: Route registered in authorization action registry
+- **km push**: Extract operator_id from DPoP context correctly
+- **km ssh-ca create**: Server registration now works properly
 - **km state directory**: No longer cross-contaminates with bluectl config
-- **km error messages**: Distinguish config missing from auth failures
-- **km HTTP fallback**: Fixed silent fallback security bug (si-d2y.9)
-- **bluectl dpu add**: Shows connectivity check and device identity
-- **bluectl operator list**: Fixed empty TENANT column
 - **/api/health**: Now bypasses DPoP authentication
 - **DPoP UX**: 4 targeted fixes for better error handling
-- **ComCh cleanup**: Drain events before stop, check actual ctx state
-- **DOCA build tags**: Fixed conflicts for host-side testing
-- **sync.Mutex**: Use Lock instead of RLock (correctness fix)
-- **TestDPU_LargeMessage**: Respects DOCA negotiated limits
-- **DPU tests**: Fixed SSH blocking, process detach, and sudo env issues
-- **Enrollment routes**: Fixed mismatch blocking all enrollment
-- **Unknown DPU status**: Now defaults to Revoked (si-d2y.2.10)
-
-## [0.6.11] - 2026-01-30
-
-### Added
-- **DPoP Authentication System** for client-to-server authentication (si-d2y):
-  - Core library with types, errors, and key utilities (si-d2y.1.5)
-  - Proof generator for client authentication (si-d2y.1.6)
-  - Proof validator with security-focused validation (si-d2y.1.7)
-  - JTI replay cache for proof validation (si-d2y.1.8)
-  - HTTP middleware for nexus API authentication (si-d2y.1.9)
-  - DB schema for DPoP key lookup (si-d2y.1.4)
-  - KeyStore and DPoP Client for client integration (si-d2y.1.10)
-  - Security test suite with comprehensive attack vector coverage (si-d2y.1.11)
-- **Windows CI Support**: Added Windows runner for cross-platform test verification (si-l80)
-- **Platform-Specific Permission Checks**: File permission validation adapted for Windows vs Unix (si-d2y.1.15)
-
-### Changed
-- **DPoP JWT Primitives**: Refactored to use go-jose library instead of manual JWT handling (si-d2y.1.12)
-- **KeyStore Simplification**: Load only what we save, removing unnecessary complexity (si-d2y.1.13)
-- **URL Normalization**: Consolidated into single NormalizeURI function for consistency
-- **CLI DPoP Integration**: bluectl and km now use DPoP authentication when configured (si-d2y.1.10)
-
-### Fixed
-- **Windows Test Compatibility**: Multiple fixes for cross-platform test execution (si-d2y.1.15):
-  - Format tests with Linux-only build tags
-  - Mode().Perm() checks wrapped for Windows
-  - Unix socket and credential tests guarded with build constraints
 - **PKCS8 Parsing**: Now uses x509.ParsePKCS8PrivateKey for correct key deserialization
 - **JTI Cache Key**: Uses actual jti claim instead of full proof for replay detection
-- **IAT Validation**: Added ErrIATNonPositive for clearer zero/negative timestamp errors
-- **Panic Recovery**: Stack traces now included for debugging
+- **ComCh cleanup**: Drain events before stop, check actual ctx state
+- **DOCA build tags**: Fixed conflicts for host-side testing
+- **DOCA Static Linking**: Complete library dependencies added to CGO LDFLAGS
+- **Enrollment routes**: Fixed mismatch blocking all enrollment
+- **Unknown DPU status**: Now defaults to Revoked
+- **Aegis and sentry service files**: Correct paths, variable expansion, and ReadWritePaths
+- **Version string format**: Fixed inconsistency across CLIs
+- **Windows test compatibility**: Multiple fixes for cross-platform test execution
+- **Flaky CI tests**: Fixed `TestBootstrap_ConcurrentExactlyOneSucceeds` and `TestSuspendOperatorAtomicConcurrent`
+
+### Patch Releases Included
+
+This release consolidates the following intermediate releases:
+- v0.6.11 (DPoP Authentication)
+- v0.6.12 (Enrollment System, Project Rename)
+- v0.6.13 (Packaging Fixes, Deferred Local API)
+- v0.6.14 (Authorization Layer)
 
 ## [0.6.10] - 2026-01-29
 
