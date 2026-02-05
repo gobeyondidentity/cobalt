@@ -164,6 +164,7 @@ changelog:
 
 brews:
   - name: bluectl
+    skip_upload: true  # TODO: Remove once HOMEBREW_TAP_TOKEN PAT is approved
     ids:
       - bluectl-archive
     repository:
@@ -180,6 +181,7 @@ brews:
       system "#{bin}/bluectl", "--help"
 
   - name: km
+    skip_upload: true  # TODO: Remove once HOMEBREW_TAP_TOKEN PAT is approved
     ids:
       - km-archive
     repository:
@@ -196,6 +198,7 @@ brews:
       system "#{bin}/km", "--help"
 
   - name: sentry
+    skip_upload: true  # TODO: Remove once HOMEBREW_TAP_TOKEN PAT is approved
     ids:
       - host-agent-archive
     repository:
@@ -212,6 +215,7 @@ brews:
       system "#{bin}/sentry", "--help"
 
   - name: nexus
+    skip_upload: true  # TODO: Remove once HOMEBREW_TAP_TOKEN PAT is approved
     ids:
       - control-plane-archive
     repository:
@@ -228,6 +232,7 @@ brews:
       system "#{bin}/nexus", "--help"
 
   - name: dpuemu
+    skip_upload: true  # TODO: Remove once HOMEBREW_TAP_TOKEN PAT is approved
     ids:
       - dpuemu-archive
     repository:
