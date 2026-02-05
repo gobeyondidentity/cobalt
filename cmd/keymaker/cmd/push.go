@@ -130,6 +130,7 @@ type pushRequest struct {
 	CAName     string `json:"ca_name"`
 	TargetDPU  string `json:"target_dpu"`
 	OperatorID string `json:"operator_id"`
+	Force      bool   `json:"force"` // Bypass stale attestation (audited)
 }
 
 // pushResponse is the response from the push API.
@@ -143,12 +144,13 @@ type pushResponse struct {
 }
 
 // callPushAPI calls the server push endpoint and handles the response.
-// If forceReason is non-empty, sends X-Force-Bypass header to bypass attestation checks.
+// If forceReason is non-empty, sets Force=true in request body and X-Force-Bypass header.
 func callPushAPI(config *KMConfig, caName, targetDPU, forceReason string) (*pushResponse, error) {
 	reqBody := pushRequest{
 		CAName:     caName,
 		TargetDPU:  targetDPU,
 		OperatorID: config.OperatorID,
+		Force:      forceReason != "", // Set Force flag when bypass reason provided
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
