@@ -167,8 +167,8 @@ brews:
     ids:
       - bluectl-archive
     repository:
-      owner: nmelo
-      name: homebrew-tap
+      owner: gobeyondidentity
+      name: homebrew-cobalt
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/gobeyondidentity/cobalt"
@@ -183,8 +183,8 @@ brews:
     ids:
       - km-archive
     repository:
-      owner: nmelo
-      name: homebrew-tap
+      owner: gobeyondidentity
+      name: homebrew-cobalt
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/gobeyondidentity/cobalt"
@@ -199,8 +199,8 @@ brews:
     ids:
       - host-agent-archive
     repository:
-      owner: nmelo
-      name: homebrew-tap
+      owner: gobeyondidentity
+      name: homebrew-cobalt
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/gobeyondidentity/cobalt"
@@ -215,8 +215,8 @@ brews:
     ids:
       - control-plane-archive
     repository:
-      owner: nmelo
-      name: homebrew-tap
+      owner: gobeyondidentity
+      name: homebrew-cobalt
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/gobeyondidentity/cobalt"
@@ -231,8 +231,8 @@ brews:
     ids:
       - dpuemu-archive
     repository:
-      owner: nmelo
-      name: homebrew-tap
+      owner: gobeyondidentity
+      name: homebrew-cobalt
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/gobeyondidentity/cobalt"
