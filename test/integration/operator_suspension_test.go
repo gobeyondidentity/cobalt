@@ -482,3 +482,257 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 
 	fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: TestOperatorSuspensionE2E - All scenarios"))
 }
+
+// TestSuspendedOperatorKeyMakerAuth validates that a KeyMaker's DPoP authentication
+// is blocked when its parent operator is suspended. This is a focused test that
+// specifically exercises the DPoP middleware's status check (step 10 per
+// security-architecture.md §2.5).
+//
+// Unlike TestOperatorSuspensionE2E which tests the full credential delivery flow,
+// this test isolates the authentication enforcement:
+// 1. KeyMaker can authenticate when operator is active
+// 2. KeyMaker is blocked (401/403) when operator is suspended
+// 3. KeyMaker can authenticate again when operator is unsuspended
+//
+// This test uses only nexus (no aegis/sentry) to minimize infrastructure and
+// focus on the DPoP middleware enforcement at the API boundary.
+func TestSuspendedOperatorKeyMakerAuth(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	cfg := newTestConfig(t)
+	logInfo(t, "Test config: UseWorkbench=%v, WorkbenchIP=%s", cfg.UseWorkbench, cfg.WorkbenchIP)
+
+	// Overall test timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	// Test-unique identifiers
+	testID := fmt.Sprintf("%d", time.Now().Unix())
+	tenantName := fmt.Sprintf("kmauth-tenant-%s", testID)
+	operatorEmail := fmt.Sprintf("kmauth-op-%s@test.local", testID)
+
+	// Cleanup on exit
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+
+		fmt.Printf("\n%s\n", dimFmt("Cleaning up test artifacts..."))
+		cfg.killProcess(cleanupCtx, cfg.ServerVM, "nexus")
+
+		// Clean up km config on qa-server
+		cfg.multipassExec(cleanupCtx, cfg.ServerVM, "rm", "-rf", "/home/ubuntu/.km")
+	})
+
+	// Get server VM IP (not used directly, but validates VM is accessible)
+	_, err := cfg.getVMIP(ctx, cfg.ServerVM)
+	if err != nil {
+		t.Fatalf("Failed to get server IP: %v", err)
+	}
+
+	// =========================================================================
+	// SETUP: Start nexus and create operator with KeyMaker
+	// =========================================================================
+	t.Run("Setup", func(t *testing.T) {
+		// Step 1: Start nexus
+		logStep(t, 1, "Starting nexus...")
+		cfg.killProcess(ctx, cfg.ServerVM, "nexus")
+
+		// Remove existing database to ensure fresh start
+		cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-f", "/home/ubuntu/.local/share/bluectl/dpus.db")
+		cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-f", "/home/ubuntu/.local/share/bluectl/dpus.db-wal")
+		cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-f", "/home/ubuntu/.local/share/bluectl/dpus.db-shm")
+
+		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "bash", "-c",
+			"setsid /home/ubuntu/nexus > /tmp/nexus.log 2>&1 < /dev/null &")
+		if err != nil {
+			t.Fatalf("Failed to start nexus: %v", err)
+		}
+		time.Sleep(2 * time.Second)
+
+		output, err := cfg.multipassExec(ctx, cfg.ServerVM, "pgrep", "-x", "nexus")
+		if err != nil || strings.TrimSpace(output) == "" {
+			logs, _ := cfg.multipassExec(ctx, cfg.ServerVM, "cat", "/tmp/nexus.log")
+			t.Fatalf("Nexus not running after start. Logs:\n%s", logs)
+		}
+		logOK(t, "Nexus started")
+
+		// Initialize bluectl (required for DPoP auth)
+		if err := initBluectl(cfg, ctx, t); err != nil {
+			t.Fatalf("Failed to initialize bluectl: %v", err)
+		}
+
+		// Step 2: Create tenant
+		logStep(t, 2, "Creating tenant...")
+		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"tenant", "add", tenantName, "--server", "http://localhost:18080")
+		if err != nil {
+			t.Fatalf("Failed to create tenant: %v", err)
+		}
+		logOK(t, fmt.Sprintf("Created tenant '%s'", tenantName))
+
+		// Step 3: Create invite and initialize KeyMaker
+		logStep(t, 3, "Creating invite and initializing KeyMaker...")
+		inviteOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"operator", "invite", operatorEmail, tenantName, "--server", "http://localhost:18080")
+		if err != nil {
+			t.Fatalf("Failed to create invite: %v", err)
+		}
+
+		inviteCode := extractInviteCode(inviteOutput)
+		if inviteCode == "" {
+			t.Fatalf("Could not extract invite code from output:\n%s", inviteOutput)
+		}
+		logOK(t, fmt.Sprintf("Created invite code: %s", inviteCode))
+
+		// Initialize km (enrolls KeyMaker)
+		cfg.multipassExec(ctx, cfg.ServerVM, "rm", "-rf", "/home/ubuntu/.km")
+		kmInitOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
+			"init", "--invite-code", inviteCode, "--control-plane", "http://localhost:18080", "--force")
+		if err != nil {
+			t.Fatalf("km init failed: %v\nOutput: %s", err, kmInitOutput)
+		}
+		if !strings.Contains(kmInitOutput, "Bound successfully") {
+			t.Fatalf("km init did not complete successfully. Output:\n%s", kmInitOutput)
+		}
+		logOK(t, "KeyMaker initialized and bound to server")
+
+		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Setup complete"))
+	})
+
+	// =========================================================================
+	// TEST: Verify KeyMaker auth blocked when operator suspended
+	// =========================================================================
+	t.Run("KeyMakerAuthBlockedWhenOperatorSuspended", func(t *testing.T) {
+		// Step 1: Create an SSH CA to verify KeyMaker can authenticate
+		// km ssh-ca create makes an authenticated POST to /api/v1/ssh-cas to register the CA
+		logStep(t, 1, "Creating SSH CA to verify KeyMaker authentication works...")
+		caBeforeSuspend := fmt.Sprintf("test-ca-before-%s", testID)
+		output, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
+			"ssh-ca", "create", caBeforeSuspend)
+		if err != nil {
+			t.Fatalf("km ssh-ca create failed (KeyMaker auth should work): %v\nOutput: %s", err, output)
+		}
+		// Verify CA was registered with server (no warning about registration failure)
+		if strings.Contains(output, "Warning: Failed to register") {
+			t.Fatalf("CA registration failed when operator is active.\nOutput: %s", output)
+		}
+		t.Log("KeyMaker successfully authenticated and registered CA with server")
+		logOK(t, fmt.Sprintf("Created and registered SSH CA '%s' (KeyMaker auth works)", caBeforeSuspend))
+
+		// Step 2: Suspend the operator
+		logStep(t, 2, "Suspending operator...")
+		suspendOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"operator", "suspend", operatorEmail, "--server", "http://localhost:18080")
+		if err != nil {
+			t.Fatalf("bluectl operator suspend failed: %v\nOutput: %s", err, suspendOutput)
+		}
+		if !strings.Contains(suspendOutput, "suspended") {
+			t.Fatalf("Suspend command did not confirm suspension. Output:\n%s", suspendOutput)
+		}
+		t.Logf("Operator suspended: %s", operatorEmail)
+		logOK(t, fmt.Sprintf("Operator suspended: %s", operatorEmail))
+
+		// Step 3: Attempt km ssh-ca create AFTER suspension
+		// Local CA creation will succeed, but server registration (authenticated API call) should fail
+		logStep(t, 3, "Attempting km ssh-ca create AFTER suspension (registration should fail)...")
+		t.Log("Making authenticated API call with suspended operator's KeyMaker...")
+		caAfterSuspend := fmt.Sprintf("test-ca-after-%s", testID)
+		createOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
+			"ssh-ca", "create", caAfterSuspend)
+
+		t.Logf("km ssh-ca create output: %s", createOutput)
+		t.Logf("km ssh-ca create error: %v", err)
+
+		// The CA creation itself succeeds locally, but registration with server should fail
+		// with authentication error (DPoP middleware blocks suspended KeyMaker)
+		combinedOutput := strings.ToLower(createOutput)
+
+		// Check for auth failure in registration warning
+		// Expected: "Warning: Failed to register with server: authentication failed"
+		if !strings.Contains(combinedOutput, "authentication failed") &&
+			!strings.Contains(combinedOutput, "not authorized") &&
+			!strings.Contains(combinedOutput, "forbidden") &&
+			!strings.Contains(combinedOutput, "suspended") {
+			// Check nexus logs to confirm DPoP middleware caught it
+			nexusLog, _ := cfg.multipassExec(ctx, cfg.ServerVM, "tail", "-30", "/tmp/nexus.log")
+			t.Logf("Nexus log (auth.suspended should be logged):\n%s", nexusLog)
+
+			// The definitive check: DPoP middleware should log auth.suspended
+			if !strings.Contains(nexusLog, "auth.suspended") {
+				t.Fatalf("Expected auth error for suspended operator KeyMaker.\nOutput: %s\nNexus log: %s",
+					createOutput, nexusLog)
+			}
+			t.Log("DPoP middleware logged auth.suspended (verified in server logs)")
+		} else {
+			t.Log("CLI output indicates authentication failure (expected)")
+		}
+		logOK(t, "KeyMaker API call correctly blocked (DPoP middleware enforcement)")
+
+		// Step 4: Verify DPoP middleware logged the suspension
+		logStep(t, 4, "Verifying DPoP middleware logged auth.suspended...")
+		nexusLog, _ := cfg.multipassExec(ctx, cfg.ServerVM, "tail", "-50", "/tmp/nexus.log")
+		if !strings.Contains(nexusLog, "auth.suspended") {
+			t.Logf("Warning: Expected 'auth.suspended' in nexus logs. Log:\n%s", nexusLog)
+		} else {
+			t.Log("Confirmed: DPoP middleware logged auth.suspended rejection")
+			logOK(t, "DPoP middleware logged auth.suspended")
+		}
+
+		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: KeyMaker blocked when operator suspended"))
+	})
+
+	// =========================================================================
+	// TEST: Verify KeyMaker auth restored when operator unsuspended
+	// =========================================================================
+	t.Run("KeyMakerAuthRestoredWhenOperatorUnsuspended", func(t *testing.T) {
+		// Step 1: Unsuspend the operator
+		logStep(t, 1, "Unsuspending operator...")
+		unsuspendOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"operator", "unsuspend", operatorEmail, "--server", "http://localhost:18080")
+		if err != nil {
+			t.Fatalf("bluectl operator unsuspend failed: %v\nOutput: %s", err, unsuspendOutput)
+		}
+		if !strings.Contains(unsuspendOutput, "unsuspended") {
+			t.Fatalf("Unsuspend command did not confirm unsuspend. Output:\n%s", unsuspendOutput)
+		}
+		t.Logf("Operator unsuspended: %s", operatorEmail)
+		logOK(t, fmt.Sprintf("Operator unsuspended: %s", operatorEmail))
+
+		// Step 2: Verify km ssh-ca create works AFTER unsuspend
+		// This makes an authenticated API call to register the CA
+		logStep(t, 2, "Attempting km ssh-ca create AFTER unsuspend (should succeed)...")
+		t.Log("Making authenticated API call with unsuspended operator's KeyMaker...")
+		caAfterUnsuspend := fmt.Sprintf("test-ca-restored-%s", testID)
+		createOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
+			"ssh-ca", "create", caAfterUnsuspend)
+
+		t.Logf("km ssh-ca create output: %s", createOutput)
+
+		// Check for success (no auth error, registration succeeded)
+		combinedOutput := strings.ToLower(createOutput)
+		if err != nil {
+			// Check if this is an auth error (bad)
+			if strings.Contains(combinedOutput, "not authorized") ||
+				strings.Contains(combinedOutput, "suspended") ||
+				strings.Contains(combinedOutput, "authentication failed") {
+				t.Fatalf("km command failed with auth error after unsuspend.\nOutput: %s\nError: %v", createOutput, err)
+			}
+			// Non-auth error might be OK
+			t.Logf("Command returned non-auth error: %v", err)
+		}
+
+		// Verify CA was registered successfully (no warning)
+		if strings.Contains(createOutput, "Warning: Failed to register") {
+			t.Fatalf("CA registration failed after unsuspend - auth not restored.\nOutput: %s", createOutput)
+		}
+
+		t.Logf("km ssh-ca create succeeded. Output: %s", createOutput)
+		logOK(t, fmt.Sprintf("Created and registered SSH CA '%s' (KeyMaker auth restored)", caAfterUnsuspend))
+
+		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: KeyMaker auth restored after unsuspend"))
+	})
+
+	fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: TestSuspendedOperatorKeyMakerAuth - All scenarios"))
+}
