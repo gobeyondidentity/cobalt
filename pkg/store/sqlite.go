@@ -929,6 +929,57 @@ func (s *Store) ReactivateDPU(id string, enrollmentExpiresAt time.Time) error {
 // ErrAlreadyDecommissioned is returned when attempting to decommission an already-decommissioned DPU.
 var ErrAlreadyDecommissioned = fmt.Errorf("DPU already decommissioned")
 
+// ErrNotDecommissioned is returned when attempting to reactivate a DPU that is not decommissioned.
+var ErrNotDecommissioned = fmt.Errorf("DPU is not decommissioned")
+
+// ReactivateDPUAtomic atomically reactivates a decommissioned DPU.
+// Returns ErrNotDecommissioned if the DPU is not in decommissioned status (for 409 response).
+// Sets status=pending, clears decommissioning fields, clears public_key/kid/key_fingerprint,
+// and sets a new enrollment_expires_at window.
+func (s *Store) ReactivateDPUAtomic(id string, enrollmentExpiresAt time.Time) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check current status
+	var status string
+	err = tx.QueryRow(`SELECT status FROM dpus WHERE id = ? OR name = ?`, id, id).Scan(&status)
+	if err != nil {
+		return fmt.Errorf("DPU not found: %s", id)
+	}
+
+	// Must be decommissioned to reactivate
+	if status != "decommissioned" {
+		return ErrNotDecommissioned
+	}
+
+	// Update to pending, clear decommissioning and enrollment fields
+	_, err = tx.Exec(
+		`UPDATE dpus SET
+			status = 'pending',
+			decommissioned_at = NULL,
+			decommissioned_by = NULL,
+			decommissioned_reason = NULL,
+			enrollment_expires_at = ?,
+			public_key = NULL,
+			kid = NULL,
+			key_fingerprint = NULL
+		WHERE id = ? OR name = ?`,
+		enrollmentExpiresAt.Unix(), id, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to reactivate DPU: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
 // DecommissionDPUAtomic atomically decommissions a DPU and optionally scrubs its credentials.
 // Returns ErrAlreadyDecommissioned if the DPU is already decommissioned (for 409 response).
 // Returns the count of credentials scrubbed if scrubCredentials is true.

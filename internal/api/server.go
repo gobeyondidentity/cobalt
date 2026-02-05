@@ -66,6 +66,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/dpus", s.handleAddDPU)
 	mux.HandleFunc("GET /api/v1/dpus/{id}", s.handleGetDPU)
 	mux.HandleFunc("DELETE /api/v1/dpus/{id}", s.handleDecommissionDPU)
+	mux.HandleFunc("POST /api/v1/dpus/{id}/reactivate", s.handleReactivateDPU)
 	mux.HandleFunc("GET /api/v1/dpus/{id}/info", s.handleGetSystemInfo)
 	mux.HandleFunc("GET /api/v1/dpus/{id}/flows", s.handleGetFlows)
 	mux.HandleFunc("GET /api/v1/dpus/{id}/attestation", s.handleGetAttestation)
