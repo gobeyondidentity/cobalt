@@ -24,6 +24,7 @@ func init() {
 	dpuCmd.AddCommand(dpuInfoCmd)
 	dpuCmd.AddCommand(dpuHealthCmd)
 	dpuCmd.AddCommand(dpuAssignCmd)
+	dpuCmd.AddCommand(dpuDecommissionCmd)
 
 	// Add flags
 	dpuAddCmd.Flags().IntP("port", "p", 18051, "gRPC port")
@@ -40,6 +41,11 @@ func init() {
 	// Flags for dpu assign
 	dpuAssignCmd.Flags().String("tenant", "", "Tenant to assign the DPU to (required)")
 	dpuAssignCmd.MarkFlagRequired("tenant")
+
+	// Flags for dpu decommission
+	dpuDecommissionCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+	dpuDecommissionCmd.Flags().String("reason", "", "Reason for decommissioning (required)")
+	dpuDecommissionCmd.Flags().Bool("scrub-credentials", false, "Scrub queued credentials (default: false)")
 }
 
 var dpuCmd = &cobra.Command{
@@ -485,4 +491,109 @@ Examples:
 		}
 		return assignDPURemote(cmd.Context(), serverURL, tenantName, dpuName)
 	},
+}
+
+var dpuDecommissionCmd = &cobra.Command{
+	Use:   "decommission <name-or-id>",
+	Short: "Decommission a DPU",
+	Long: `Decommission a DPU by name or ID. The DPU will no longer authenticate,
+but audit records are preserved. Use this for hardware removal scenarios.
+
+Unlike 'dpu remove' which deletes the record entirely, decommissioning:
+  - Blocks all authentication attempts (returns auth.decommissioned)
+  - Optionally scrubs queued credentials
+  - Retains audit trail for compliance
+
+Examples:
+  bluectl dpu decommission bf3-lab --reason "Hardware removal"
+  bluectl dpu decommission bf3-lab --reason "RMA" --scrub-credentials
+  bluectl dpu decommission bf3-lab --reason "Decommissioning" --yes`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		nameOrID := args[0]
+		skipConfirm, _ := cmd.Flags().GetBool("yes")
+		reason, _ := cmd.Flags().GetString("reason")
+		scrubCredentials, _ := cmd.Flags().GetBool("scrub-credentials")
+
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+		return decommissionDPURemote(cmd.Context(), serverURL, nameOrID, reason, skipConfirm, scrubCredentials)
+	},
+}
+
+func decommissionDPURemote(ctx context.Context, serverURL, nameOrID, reason string, skipConfirm, scrubCredentials bool) error {
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
+
+	// Get DPU details first for confirmation and output
+	dpu, err := client.GetDPU(ctx, nameOrID)
+	if err != nil {
+		return fmt.Errorf("DPU not found: %s", nameOrID)
+	}
+
+	// Check if already decommissioned
+	if dpu.Status == "decommissioned" {
+		fmt.Printf("DPU '%s' is already decommissioned.\n", dpu.Name)
+		return nil
+	}
+
+	// Prompt for reason if not provided
+	if reason == "" {
+		fmt.Print("Reason for decommissioning: ")
+		reader := bufio.NewReader(os.Stdin)
+		reason, err = reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read reason: %w", err)
+		}
+		reason = strings.TrimSpace(reason)
+		if reason == "" {
+			return fmt.Errorf("reason is required")
+		}
+	}
+
+	if !skipConfirm {
+		fmt.Printf("Decommission DPU '%s' (%s:%d)?\n", dpu.Name, dpu.Host, dpu.Port)
+		fmt.Printf("  Status: %s\n", dpu.Status)
+		if scrubCredentials {
+			fmt.Println("  WARNING: Queued credentials will be scrubbed")
+		}
+		fmt.Printf("  Reason: %s\n", reason)
+		fmt.Println()
+		fmt.Print("Type 'yes' to confirm: ")
+
+		reader := bufio.NewReader(os.Stdin)
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read confirmation: %w", err)
+		}
+
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response != "yes" {
+			fmt.Println("Decommission cancelled.")
+			return nil
+		}
+	}
+
+	result, err := client.DecommissionDPU(ctx, dpu.ID, reason, scrubCredentials)
+	if err != nil {
+		return fmt.Errorf("failed to decommission DPU: %w", err)
+	}
+
+	if outputFormat == "json" || outputFormat == "yaml" {
+		return formatOutput(map[string]any{
+			"status": "decommissioned",
+			"dpu":    result,
+		})
+	}
+
+	fmt.Printf("DPU decommissioned:\n")
+	fmt.Printf("  ID:                   %s\n", result.ID)
+	fmt.Printf("  Status:               %s\n", result.Status)
+	fmt.Printf("  Decommissioned at:    %s\n", result.DecommissionedAt)
+	fmt.Printf("  Credentials scrubbed: %d\n", result.CredentialsScrubbed)
+	return nil
 }
