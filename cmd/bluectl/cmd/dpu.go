@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net"
@@ -32,6 +33,9 @@ func init() {
 
 	// Flags for dpu list
 	dpuListCmd.Flags().String("status", "", "Filter by status (pending, active, decommissioned)")
+
+	// Flags for dpu remove
+	dpuRemoveCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 
 	// Flags for dpu assign
 	dpuAssignCmd.Flags().String("tenant", "", "Tenant to assign the DPU to (required)")
@@ -241,25 +245,57 @@ func addDPURemote(ctx context.Context, serverURL, name, host string, port int, o
 var dpuRemoveCmd = &cobra.Command{
 	Use:   "remove <name-or-id>",
 	Short: "Remove a registered DPU",
-	Args:  cobra.ExactArgs(1),
+	Long: `Remove a DPU registration. This action is permanent.
+
+Examples:
+  bluectl dpu remove bf3-lab
+  bluectl dpu remove bf3-lab --yes`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		nameOrID := args[0]
+		skipConfirm, _ := cmd.Flags().GetBool("yes")
+
 		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-		return removeDPURemote(cmd.Context(), serverURL, args[0])
+		return removeDPURemote(cmd.Context(), serverURL, nameOrID, skipConfirm)
 	},
 }
 
-func removeDPURemote(ctx context.Context, serverURL, nameOrID string) error {
+func removeDPURemote(ctx context.Context, serverURL, nameOrID string, skipConfirm bool) error {
 	client, err := NewNexusClientWithDPoP(serverURL)
 	if err != nil {
 		return err
 	}
-	if err := client.RemoveDPU(ctx, nameOrID); err != nil {
+
+	// Get DPU details first for confirmation and output
+	dpu, err := client.GetDPU(ctx, nameOrID)
+	if err != nil {
+		return fmt.Errorf("DPU not found: %s", nameOrID)
+	}
+
+	if !skipConfirm {
+		fmt.Printf("Remove DPU '%s' (%s:%d)? This action is permanent.\n", dpu.Name, dpu.Host, dpu.Port)
+		fmt.Print("Type 'yes' to confirm: ")
+
+		reader := bufio.NewReader(os.Stdin)
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read confirmation: %w", err)
+		}
+
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response != "yes" {
+			fmt.Println("Removal cancelled.")
+			return nil
+		}
+	}
+
+	if err := client.RemoveDPU(ctx, dpu.ID); err != nil {
 		return fmt.Errorf("failed to remove DPU from server: %w", err)
 	}
-	fmt.Printf("Removed DPU '%s'\n", nameOrID)
+	fmt.Printf("Removed DPU '%s'\n", dpu.Name)
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -31,6 +32,9 @@ func init() {
 	// Flags for operator list
 	operatorListCmd.Flags().String("tenant", "", "Filter by tenant")
 	operatorListCmd.Flags().String("status", "", "Filter by status (active, suspended)")
+
+	// Flags for operator suspend
+	operatorSuspendCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 
 	// Flags for operator revoke
 	operatorRevokeCmd.Flags().String("tenant", "", "Tenant name (required)")
@@ -223,10 +227,12 @@ var operatorSuspendCmd = &cobra.Command{
 authorization checks will fail until reactivated.
 
 Examples:
-  bluectl operator suspend marcus@acme.com`,
+  bluectl operator suspend marcus@acme.com
+  bluectl operator suspend marcus@acme.com --yes`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
+		skipConfirm, _ := cmd.Flags().GetBool("yes")
 
 		serverURL, err := requireServer()
 		if err != nil {
@@ -247,6 +253,23 @@ Examples:
 		if op.Status == "suspended" {
 			fmt.Printf("Operator %s is already suspended.\n", email)
 			return nil
+		}
+
+		if !skipConfirm {
+			fmt.Printf("Suspend operator '%s'? Their KeyMakers will be blocked from distributing credentials.\n", email)
+			fmt.Print("Type 'yes' to confirm: ")
+
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read confirmation: %w", err)
+			}
+
+			response = strings.TrimSpace(strings.ToLower(response))
+			if response != "yes" {
+				fmt.Println("Suspension cancelled.")
+				return nil
+			}
 		}
 
 		if err := client.UpdateOperatorStatus(cmd.Context(), email, "suspended"); err != nil {
