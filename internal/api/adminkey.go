@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -99,7 +100,7 @@ func (s *Server) handleRevokeAdminKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if admin key exists
+	// Check if admin key exists (needed for self-revocation check and audit)
 	ak, err := s.store.GetAdminKey(id)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -107,12 +108,6 @@ func (s *Server) handleRevokeAdminKey(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeInternalError(w, r, err, "failed to retrieve admin key")
-		return
-	}
-
-	// Check if already revoked (LC-1: revocation is permanent)
-	if ak.Status == "revoked" {
-		writeError(w, r, http.StatusConflict, "admin key is already revoked")
 		return
 	}
 
@@ -130,8 +125,12 @@ func (s *Server) handleRevokeAdminKey(w http.ResponseWriter, r *http.Request) {
 	// Determine if this is self-revocation
 	isSelfRevocation := ak.OperatorID == identity.OperatorID
 
-	// Revoke the admin key
-	if err := s.store.RevokeAdminKeyWithReason(id, identity.KID, req.Reason); err != nil {
+	// Revoke the admin key atomically (prevents race condition)
+	if err := s.store.RevokeAdminKeyAtomic(id, identity.KID, req.Reason); err != nil {
+		if errors.Is(err, store.ErrAdminKeyAlreadyRevoked) {
+			writeError(w, r, http.StatusConflict, "admin key is already revoked")
+			return
+		}
 		writeInternalError(w, r, err, "failed to revoke admin key")
 		return
 	}

@@ -491,6 +491,9 @@ func (s *Store) RevokeKeyMakerWithReason(id, revokedBy, reason string) error {
 // ErrAlreadyRevoked is returned when attempting to revoke an already-revoked KeyMaker.
 var ErrAlreadyRevoked = fmt.Errorf("keymaker already revoked")
 
+// ErrAdminKeyAlreadyRevoked is returned when attempting to revoke an already-revoked AdminKey.
+var ErrAdminKeyAlreadyRevoked = fmt.Errorf("admin key already revoked")
+
 // RevokeKeyMakerAtomic atomically revokes a KeyMaker if it is not already revoked.
 // Returns ErrAlreadyRevoked if the KeyMaker is already revoked (for 409 response).
 // Returns "keymaker not found" error if the KeyMaker does not exist.
@@ -1010,6 +1013,36 @@ func (s *Store) RevokeAdminKeyWithReason(id, revokedBy, reason string) error {
 
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
+		return fmt.Errorf("admin key not found: %s", id)
+	}
+	return nil
+}
+
+// RevokeAdminKeyAtomic atomically revokes an AdminKey if it is not already revoked.
+// Returns ErrAdminKeyAlreadyRevoked if the AdminKey is already revoked (for 409 response).
+// Returns "admin key not found" error if the AdminKey does not exist.
+func (s *Store) RevokeAdminKeyAtomic(id, revokedBy, reason string) error {
+	now := time.Now().Unix()
+	result, err := s.db.Exec(
+		`UPDATE admin_keys SET status = 'revoked', revoked_at = ?, revoked_by = ?, revoked_reason = ?
+		 WHERE id = ? AND status != 'revoked'`,
+		now, revokedBy, reason, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to revoke admin key: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		// Check if the AdminKey exists but is already revoked
+		ak, err := s.GetAdminKey(id)
+		if err != nil {
+			return fmt.Errorf("admin key not found: %s", id)
+		}
+		if ak.Status == "revoked" {
+			return ErrAdminKeyAlreadyRevoked
+		}
+		// This shouldn't happen, but handle it
 		return fmt.Errorf("admin key not found: %s", id)
 	}
 	return nil
