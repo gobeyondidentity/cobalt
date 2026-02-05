@@ -30,7 +30,8 @@ type ServerConfig struct {
 	// Defaults to 1 hour if zero.
 	AttestationStaleAfter time.Duration
 
-	// AuditEmitter emits security audit events to syslog. Optional; nil disables syslog audit.
+	// AuditEmitter receives structured audit events for lifecycle and security operations.
+	// If nil, a NopEmitter is used (events are silently discarded).
 	AuditEmitter audit.EventEmitter
 }
 
@@ -55,10 +56,15 @@ func NewServerWithConfig(s *store.Store, cfg ServerConfig) *Server {
 		gate.FreshnessWindow = cfg.AttestationStaleAfter
 	}
 
+	emitter := cfg.AuditEmitter
+	if emitter == nil {
+		emitter = audit.NopEmitter{}
+	}
+
 	return &Server{
 		store: s,
 		gate:  gate,
-		audit: cfg.AuditEmitter,
+		audit: emitter,
 	}
 }
 

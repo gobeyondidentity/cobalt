@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
@@ -122,8 +123,10 @@ func (s *Server) handleDecommissionDPU(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := s.store.InsertAuditEntry(auditEntry); err != nil {
 		log.Printf("failed to insert audit entry for DPU decommission: %v", err)
-		// Don't fail the request, audit logging is non-critical
 	}
+
+	// Emit structured lifecycle audit event (non-blocking)
+	s.emitAuditEvent(audit.NewLifecycleDecommission(identity.KID, getClientIP(r), dpu.ID, req.Reason, ""))
 
 	log.Printf("DPU decommissioned: id=%s name=%s by=%s reason=%s credentials_scrubbed=%d",
 		dpu.ID, dpu.Name, identity.KID, req.Reason, credentialsScrubbed)

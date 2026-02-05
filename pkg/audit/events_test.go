@@ -228,7 +228,7 @@ func TestNewLifecycleRevoke(t *testing.T) {
 	t.Parallel()
 	t.Log("Verifying NewLifecycleRevoke captures revoking actor and revoked key")
 
-	e := NewLifecycleRevoke("adm_admin1", "10.0.0.4", "km_revoked", "req-5")
+	e := NewLifecycleRevoke("adm_admin1", "10.0.0.4", "km_revoked", "compromised key", "req-5")
 
 	if e.Type != EventLifecycleRevoke {
 		t.Errorf("Type = %q, want %q", e.Type, EventLifecycleRevoke)
@@ -239,13 +239,16 @@ func TestNewLifecycleRevoke(t *testing.T) {
 	if e.Details["revoked_key_id"] != "km_revoked" {
 		t.Errorf("Details[revoked_key_id] = %q, want %q", e.Details["revoked_key_id"], "km_revoked")
 	}
+	if e.Details["reason"] != "compromised key" {
+		t.Errorf("Details[reason] = %q, want %q", e.Details["reason"], "compromised key")
+	}
 }
 
 func TestNewLifecycleSuspend(t *testing.T) {
 	t.Parallel()
 	t.Log("Verifying NewLifecycleSuspend captures suspending actor and target operator")
 
-	e := NewLifecycleSuspend("adm_admin1", "10.0.0.5", "km_target", "req-6")
+	e := NewLifecycleSuspend("adm_admin1", "10.0.0.5", "km_target", "policy violation", "req-6")
 
 	if e.Type != EventLifecycleSuspend {
 		t.Errorf("Type = %q, want %q", e.Type, EventLifecycleSuspend)
@@ -256,13 +259,16 @@ func TestNewLifecycleSuspend(t *testing.T) {
 	if e.Details["operator_id"] != "km_target" {
 		t.Errorf("Details[operator_id] = %q, want %q", e.Details["operator_id"], "km_target")
 	}
+	if e.Details["reason"] != "policy violation" {
+		t.Errorf("Details[reason] = %q, want %q", e.Details["reason"], "policy violation")
+	}
 }
 
 func TestNewLifecycleUnsuspend(t *testing.T) {
 	t.Parallel()
 	t.Log("Verifying NewLifecycleUnsuspend uses NOTICE severity")
 
-	e := NewLifecycleUnsuspend("adm_admin1", "10.0.0.6", "km_target", "req-7")
+	e := NewLifecycleUnsuspend("adm_admin1", "10.0.0.6", "km_target", "investigation complete", "req-7")
 
 	if e.Type != EventLifecycleUnsuspend {
 		t.Errorf("Type = %q, want %q", e.Type, EventLifecycleUnsuspend)
@@ -273,13 +279,16 @@ func TestNewLifecycleUnsuspend(t *testing.T) {
 	if e.Details["operator_id"] != "km_target" {
 		t.Errorf("Details[operator_id] = %q, want %q", e.Details["operator_id"], "km_target")
 	}
+	if e.Details["reason"] != "investigation complete" {
+		t.Errorf("Details[reason] = %q, want %q", e.Details["reason"], "investigation complete")
+	}
 }
 
 func TestNewLifecycleDecommission(t *testing.T) {
 	t.Parallel()
 	t.Log("Verifying NewLifecycleDecommission captures DPU ID")
 
-	e := NewLifecycleDecommission("adm_admin1", "10.0.0.7", "dpu_xyz", "req-8")
+	e := NewLifecycleDecommission("adm_admin1", "10.0.0.7", "dpu_xyz", "hardware failure", "req-8")
 
 	if e.Type != EventLifecycleDecommission {
 		t.Errorf("Type = %q, want %q", e.Type, EventLifecycleDecommission)
@@ -289,6 +298,9 @@ func TestNewLifecycleDecommission(t *testing.T) {
 	}
 	if e.Details["dpu_id"] != "dpu_xyz" {
 		t.Errorf("Details[dpu_id] = %q, want %q", e.Details["dpu_id"], "dpu_xyz")
+	}
+	if e.Details["reason"] != "hardware failure" {
+		t.Errorf("Details[reason] = %q, want %q", e.Details["reason"], "hardware failure")
 	}
 }
 
@@ -359,10 +371,10 @@ func TestAllHelpers_SetTimestamp(t *testing.T) {
 		NewAuthFailure("a", "1.2.3.4", "bad", "GET", "/", "r"),
 		NewEnrollComplete("a", "1.2.3.4", "km", "a", "r"),
 		NewEnrollFailure("1.2.3.4", "bad", "km", "r"),
-		NewLifecycleRevoke("a", "1.2.3.4", "k", "r"),
-		NewLifecycleSuspend("a", "1.2.3.4", "o", "r"),
-		NewLifecycleUnsuspend("a", "1.2.3.4", "o", "r"),
-		NewLifecycleDecommission("a", "1.2.3.4", "d", "r"),
+		NewLifecycleRevoke("a", "1.2.3.4", "k", "reason", "r"),
+		NewLifecycleSuspend("a", "1.2.3.4", "o", "reason", "r"),
+		NewLifecycleUnsuspend("a", "1.2.3.4", "o", "reason", "r"),
+		NewLifecycleDecommission("a", "1.2.3.4", "d", "reason", "r"),
 		NewAttestationBypass("a", "1.2.3.4", "d", "reason", "stale", "r"),
 		NewBootstrapComplete("a", "1.2.3.4", "a", "r"),
 	}
@@ -383,10 +395,10 @@ func TestAllHelpers_SeverityMatchesMapping(t *testing.T) {
 		NewAuthFailure("a", "1.2.3.4", "bad", "GET", "/", "r"),
 		NewEnrollComplete("a", "1.2.3.4", "km", "a", "r"),
 		NewEnrollFailure("1.2.3.4", "bad", "km", "r"),
-		NewLifecycleRevoke("a", "1.2.3.4", "k", "r"),
-		NewLifecycleSuspend("a", "1.2.3.4", "o", "r"),
-		NewLifecycleUnsuspend("a", "1.2.3.4", "o", "r"),
-		NewLifecycleDecommission("a", "1.2.3.4", "d", "r"),
+		NewLifecycleRevoke("a", "1.2.3.4", "k", "reason", "r"),
+		NewLifecycleSuspend("a", "1.2.3.4", "o", "reason", "r"),
+		NewLifecycleUnsuspend("a", "1.2.3.4", "o", "reason", "r"),
+		NewLifecycleDecommission("a", "1.2.3.4", "d", "reason", "r"),
 		NewAttestationBypass("a", "1.2.3.4", "d", "reason", "stale", "r"),
 		NewBootstrapComplete("a", "1.2.3.4", "a", "r"),
 	}

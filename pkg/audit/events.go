@@ -159,7 +159,7 @@ func NewEnrollFailure(ip, reason, identityType, requestID string) Event {
 }
 
 // NewLifecycleRevoke creates a lifecycle.revoke event for key revocations.
-func NewLifecycleRevoke(actorID, ip, revokedKeyID, requestID string) Event {
+func NewLifecycleRevoke(actorID, ip, revokedKeyID, reason, requestID string) Event {
 	return Event{
 		Type:      EventLifecycleRevoke,
 		Severity:  SeverityWarning,
@@ -169,12 +169,13 @@ func NewLifecycleRevoke(actorID, ip, revokedKeyID, requestID string) Event {
 		RequestID: requestID,
 		Details: map[string]string{
 			"revoked_key_id": revokedKeyID,
+			"reason":         reason,
 		},
 	}
 }
 
 // NewLifecycleSuspend creates a lifecycle.suspend event for operator suspensions.
-func NewLifecycleSuspend(actorID, ip, operatorID, requestID string) Event {
+func NewLifecycleSuspend(actorID, ip, operatorID, reason, requestID string) Event {
 	return Event{
 		Type:      EventLifecycleSuspend,
 		Severity:  SeverityWarning,
@@ -184,12 +185,13 @@ func NewLifecycleSuspend(actorID, ip, operatorID, requestID string) Event {
 		RequestID: requestID,
 		Details: map[string]string{
 			"operator_id": operatorID,
+			"reason":      reason,
 		},
 	}
 }
 
 // NewLifecycleUnsuspend creates a lifecycle.unsuspend event for operator unsuspensions.
-func NewLifecycleUnsuspend(actorID, ip, operatorID, requestID string) Event {
+func NewLifecycleUnsuspend(actorID, ip, operatorID, reason, requestID string) Event {
 	return Event{
 		Type:      EventLifecycleUnsuspend,
 		Severity:  SeverityNotice,
@@ -199,12 +201,13 @@ func NewLifecycleUnsuspend(actorID, ip, operatorID, requestID string) Event {
 		RequestID: requestID,
 		Details: map[string]string{
 			"operator_id": operatorID,
+			"reason":      reason,
 		},
 	}
 }
 
 // NewLifecycleDecommission creates a lifecycle.decommission event for DPU decommissions.
-func NewLifecycleDecommission(actorID, ip, dpuID, requestID string) Event {
+func NewLifecycleDecommission(actorID, ip, dpuID, reason, requestID string) Event {
 	return Event{
 		Type:      EventLifecycleDecommission,
 		Severity:  SeverityWarning,
@@ -214,6 +217,7 @@ func NewLifecycleDecommission(actorID, ip, dpuID, requestID string) Event {
 		RequestID: requestID,
 		Details: map[string]string{
 			"dpu_id": dpuID,
+			"reason": reason,
 		},
 	}
 }

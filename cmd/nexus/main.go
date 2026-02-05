@@ -81,6 +81,7 @@ func main() {
 	}
 
 	// Initialize audit logging (StoreAuditLogger + SyslogAuditLogger)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	storeAudit := authz.NewStoreAuditLogger(&auditStoreAdapter{s: db})
 	var auditLogger authz.AuditLogger = storeAudit
 	syslogAudit, syslogErr := audit.NewSyslogWriter(audit.SyslogConfig{AppName: "nexus"})
@@ -113,7 +114,6 @@ func main() {
 	proofValidator := api.NewStoreProofValidator(validator, db)
 	identityLookup := api.NewStoreIdentityLookup(db)
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpop.WithLogger(logger))
 
 	// Initialize Cedar authorization middleware

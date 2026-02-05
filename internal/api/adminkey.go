@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
@@ -230,8 +231,10 @@ func (s *Server) handleRevokeAdminKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := s.store.InsertAuditEntry(auditEntry); err != nil {
 		log.Printf("failed to insert audit entry for admin key revocation: %v", err)
-		// Don't fail the request, audit logging is non-critical
 	}
+
+	// Emit structured lifecycle audit event (non-blocking)
+	s.emitAuditEvent(audit.NewLifecycleRevoke(identity.KID, getClientIP(r), id, req.Reason, ""))
 
 	if isSelfRevocation {
 		log.Printf("WARNING: Admin self-revocation: admin_key=%s operator_id=%s reason=%s", id, ak.OperatorID, req.Reason)
