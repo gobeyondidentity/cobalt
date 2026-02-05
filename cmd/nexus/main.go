@@ -17,6 +17,7 @@ import (
 
 	"github.com/gobeyondidentity/cobalt/internal/api"
 	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/authz"
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
@@ -102,8 +103,20 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpop.WithLogger(logger))
 
+	// Initialize audit logging (StoreAuditLogger + SyslogAuditLogger)
+	storeAudit := authz.NewStoreAuditLogger(&auditStoreAdapter{s: db})
+	var auditLogger authz.AuditLogger = storeAudit
+	syslogAudit, syslogErr := audit.NewSyslogWriter(audit.SyslogConfig{AppName: "nexus"})
+	if syslogErr != nil {
+		slog.Warn("syslog unavailable, audit will use SQLite only", "error", syslogErr)
+	} else {
+		auditLogger = authz.NewMultiAuditLogger(storeAudit, syslogAudit)
+		defer syslogAudit.Close()
+		log.Printf("Syslog audit writer initialized (RFC 5424)")
+	}
+
 	// Initialize Cedar authorization middleware
-	authorizer, err := authz.NewAuthorizer(authz.Config{Logger: logger})
+	authorizer, err := authz.NewAuthorizer(authz.Config{Logger: logger, AuditLogger: auditLogger})
 	if err != nil {
 		log.Fatalf("Failed to initialize authorizer: %v", err)
 	}
@@ -291,6 +304,20 @@ func initBootstrapWindow(db *store.Store) (context.CancelFunc, error) {
 	go runBootstrapCountdown(ctx, db, expiresAt)
 
 	return cancel, nil
+}
+
+// auditStoreAdapter wraps store.Store to satisfy authz.AuditStore interface.
+// Needed because store.AuditEntry and authz.AuditEntry are separate types.
+type auditStoreAdapter struct{ s *store.Store }
+
+func (a *auditStoreAdapter) InsertAuditEntry(entry *authz.AuditEntry) (int64, error) {
+	return a.s.InsertAuditEntry(&store.AuditEntry{
+		Timestamp: entry.Timestamp,
+		Action:    entry.Action,
+		Target:    entry.Target,
+		Decision:  entry.Decision,
+		Details:   entry.Details,
+	})
 }
 
 // runBootstrapCountdown logs countdown messages every minute until window expires.
