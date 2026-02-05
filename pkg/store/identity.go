@@ -164,6 +164,65 @@ func (s *Store) UnsuspendOperator(id string) error {
 	return nil
 }
 
+// SuspendOperatorAtomic atomically suspends an operator if not already suspended.
+// Returns ErrOperatorAlreadySuspended if the operator is already suspended (for 409 response).
+// Returns "operator not found" error if the operator does not exist.
+func (s *Store) SuspendOperatorAtomic(id, suspendedBy, reason string) error {
+	now := time.Now().Unix()
+	result, err := s.db.Exec(
+		`UPDATE operators SET status = 'suspended', suspended_at = ?, suspended_by = ?, suspended_reason = ?
+		 WHERE id = ? AND status != 'suspended'`,
+		now, suspendedBy, reason, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to suspend operator: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		// Check if the operator exists but is already suspended
+		op, err := s.GetOperator(id)
+		if err != nil {
+			return fmt.Errorf("operator not found: %s", id)
+		}
+		if op.Status == "suspended" {
+			return ErrOperatorAlreadySuspended
+		}
+		// This shouldn't happen, but handle it
+		return fmt.Errorf("operator not found: %s", id)
+	}
+	return nil
+}
+
+// UnsuspendOperatorAtomic atomically unsuspends an operator if currently suspended.
+// Returns ErrOperatorNotSuspended if the operator is not suspended (for 409 response).
+// Returns "operator not found" error if the operator does not exist.
+func (s *Store) UnsuspendOperatorAtomic(id string) error {
+	result, err := s.db.Exec(
+		`UPDATE operators SET status = 'active', suspended_at = NULL, suspended_by = NULL, suspended_reason = NULL
+		 WHERE id = ? AND status = 'suspended'`,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to unsuspend operator: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		// Check if the operator exists but is not suspended
+		op, err := s.GetOperator(id)
+		if err != nil {
+			return fmt.Errorf("operator not found: %s", id)
+		}
+		if op.Status != "suspended" {
+			return ErrOperatorNotSuspended
+		}
+		// This shouldn't happen, but handle it
+		return fmt.Errorf("operator not found: %s", id)
+	}
+	return nil
+}
+
 func (s *Store) scanOperator(row *sql.Row) (*Operator, error) {
 	var op Operator
 	var displayName sql.NullString
@@ -493,6 +552,12 @@ var ErrAlreadyRevoked = fmt.Errorf("keymaker already revoked")
 
 // ErrAdminKeyAlreadyRevoked is returned when attempting to revoke an already-revoked AdminKey.
 var ErrAdminKeyAlreadyRevoked = fmt.Errorf("admin key already revoked")
+
+// ErrOperatorAlreadySuspended is returned when attempting to suspend an already-suspended Operator.
+var ErrOperatorAlreadySuspended = fmt.Errorf("operator already suspended")
+
+// ErrOperatorNotSuspended is returned when attempting to unsuspend an Operator that is not suspended.
+var ErrOperatorNotSuspended = fmt.Errorf("operator is not suspended")
 
 // RevokeKeyMakerAtomic atomically revokes a KeyMaker if it is not already revoked.
 // Returns ErrAlreadyRevoked if the KeyMaker is already revoked (for 409 response).

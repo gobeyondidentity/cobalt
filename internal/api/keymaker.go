@@ -719,16 +719,10 @@ func (s *Server) handleSuspendOperator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get target operator
+	// Get target operator (for authorization check and audit log)
 	operator, err := s.store.GetOperator(operatorID)
 	if err != nil {
 		writeError(w, r, http.StatusNotFound, "operator not found")
-		return
-	}
-
-	// Check if already suspended
-	if operator.Status == "suspended" {
-		writeError(w, r, http.StatusConflict, "operator is already suspended")
 		return
 	}
 
@@ -743,8 +737,12 @@ func (s *Server) handleSuspendOperator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Suspend the operator
-	if err := s.store.SuspendOperator(operatorID, identity.KID, req.Reason); err != nil {
+	// Atomically suspend the operator (handles concurrent suspension with 409)
+	if err := s.store.SuspendOperatorAtomic(operatorID, identity.KID, req.Reason); err != nil {
+		if err == store.ErrOperatorAlreadySuspended {
+			writeError(w, r, http.StatusConflict, "operator is already suspended")
+			return
+		}
 		writeInternalError(w, r, err, "failed to suspend operator")
 		return
 	}
@@ -801,16 +799,10 @@ func (s *Server) handleUnsuspendOperator(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Get target operator
+	// Get target operator (for authorization check and audit log)
 	operator, err := s.store.GetOperator(operatorID)
 	if err != nil {
 		writeError(w, r, http.StatusNotFound, "operator not found")
-		return
-	}
-
-	// Check if not suspended
-	if operator.Status != "suspended" {
-		writeError(w, r, http.StatusConflict, "operator is not currently suspended")
 		return
 	}
 
@@ -825,8 +817,12 @@ func (s *Server) handleUnsuspendOperator(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Unsuspend the operator
-	if err := s.store.UnsuspendOperator(operatorID); err != nil {
+	// Atomically unsuspend the operator (handles concurrent unsuspension with 409)
+	if err := s.store.UnsuspendOperatorAtomic(operatorID); err != nil {
+		if err == store.ErrOperatorNotSuspended {
+			writeError(w, r, http.StatusConflict, "operator is not currently suspended")
+			return
+		}
 		writeInternalError(w, r, err, "failed to unsuspend operator")
 		return
 	}

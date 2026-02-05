@@ -580,6 +580,200 @@ func TestTimestampPrecision(t *testing.T) {
 	t.Log("Timestamp precision test passed: uses Unix seconds")
 }
 
+// TestSuspendOperatorAtomic verifies that atomic suspension handles concurrent requests.
+func TestSuspendOperatorAtomic(t *testing.T) {
+	t.Log("Testing atomic operator suspension")
+
+	dir := t.TempDir()
+	store, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	defer store.Close()
+
+	// Create operator
+	t.Log("Creating test operator")
+	err = store.CreateOperator("op_test", "test@example.com", "Test Operator")
+	if err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+	err = store.UpdateOperatorStatus("op_test", "active")
+	if err != nil {
+		t.Fatalf("failed to activate operator: %v", err)
+	}
+
+	// First suspension should succeed
+	t.Log("First atomic suspension should succeed")
+	err = store.SuspendOperatorAtomic("op_test", "admin1", "First suspension")
+	if err != nil {
+		t.Fatalf("first suspension failed: %v", err)
+	}
+
+	// Verify operator is suspended
+	op, err := store.GetOperator("op_test")
+	if err != nil {
+		t.Fatalf("failed to get operator: %v", err)
+	}
+	if op.Status != "suspended" {
+		t.Errorf("expected status 'suspended', got '%s'", op.Status)
+	}
+	if op.SuspendedBy == nil || *op.SuspendedBy != "admin1" {
+		t.Errorf("expected SuspendedBy 'admin1', got '%v'", op.SuspendedBy)
+	}
+
+	// Second suspension should return ErrOperatorAlreadySuspended
+	t.Log("Second atomic suspension should return ErrOperatorAlreadySuspended")
+	err = store.SuspendOperatorAtomic("op_test", "admin2", "Second suspension")
+	if err != ErrOperatorAlreadySuspended {
+		t.Errorf("expected ErrOperatorAlreadySuspended, got '%v'", err)
+	}
+
+	// Verify original suspension is preserved
+	op, _ = store.GetOperator("op_test")
+	if op.SuspendedBy == nil || *op.SuspendedBy != "admin1" {
+		t.Errorf("original SuspendedBy should be preserved, got '%v'", op.SuspendedBy)
+	}
+	if op.SuspendedReason == nil || *op.SuspendedReason != "First suspension" {
+		t.Errorf("original reason should be preserved, got '%v'", op.SuspendedReason)
+	}
+
+	// Test suspending non-existent operator
+	t.Log("Suspending non-existent operator should return not found error")
+	err = store.SuspendOperatorAtomic("op_nonexistent", "admin", "reason")
+	if err == nil || err == ErrOperatorAlreadySuspended {
+		t.Errorf("expected 'not found' error, got '%v'", err)
+	}
+
+	t.Log("Atomic suspension test passed")
+}
+
+// TestUnsuspendOperatorAtomic verifies that atomic unsuspension handles concurrent requests.
+func TestUnsuspendOperatorAtomic(t *testing.T) {
+	t.Log("Testing atomic operator unsuspension")
+
+	dir := t.TempDir()
+	store, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	defer store.Close()
+
+	// Create operator and suspend
+	t.Log("Creating and suspending test operator")
+	err = store.CreateOperator("op_test", "test@example.com", "Test Operator")
+	if err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+	err = store.SuspendOperator("op_test", "admin", "Initial suspension")
+	if err != nil {
+		t.Fatalf("failed to suspend operator: %v", err)
+	}
+
+	// First unsuspension should succeed
+	t.Log("First atomic unsuspension should succeed")
+	err = store.UnsuspendOperatorAtomic("op_test")
+	if err != nil {
+		t.Fatalf("first unsuspension failed: %v", err)
+	}
+
+	// Verify operator is active
+	op, err := store.GetOperator("op_test")
+	if err != nil {
+		t.Fatalf("failed to get operator: %v", err)
+	}
+	if op.Status != "active" {
+		t.Errorf("expected status 'active', got '%s'", op.Status)
+	}
+	if op.SuspendedAt != nil {
+		t.Error("SuspendedAt should be nil after unsuspension")
+	}
+
+	// Second unsuspension should return ErrOperatorNotSuspended
+	t.Log("Second atomic unsuspension should return ErrOperatorNotSuspended")
+	err = store.UnsuspendOperatorAtomic("op_test")
+	if err != ErrOperatorNotSuspended {
+		t.Errorf("expected ErrOperatorNotSuspended, got '%v'", err)
+	}
+
+	// Verify operator is still active
+	op, _ = store.GetOperator("op_test")
+	if op.Status != "active" {
+		t.Errorf("operator should still be active, got '%s'", op.Status)
+	}
+
+	// Test unsuspending non-existent operator
+	t.Log("Unsuspending non-existent operator should return not found error")
+	err = store.UnsuspendOperatorAtomic("op_nonexistent")
+	if err == nil || err == ErrOperatorNotSuspended {
+		t.Errorf("expected 'not found' error, got '%v'", err)
+	}
+
+	t.Log("Atomic unsuspension test passed")
+}
+
+// TestSuspendOperatorAtomicConcurrent tests concurrent suspension attempts.
+func TestSuspendOperatorAtomicConcurrent(t *testing.T) {
+	t.Log("Testing concurrent operator suspension attempts")
+
+	dir := t.TempDir()
+	store, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	defer store.Close()
+
+	// Create operator
+	err = store.CreateOperator("op_concurrent", "concurrent@example.com", "Test")
+	if err != nil {
+		t.Fatalf("failed to create operator: %v", err)
+	}
+	err = store.UpdateOperatorStatus("op_concurrent", "active")
+	if err != nil {
+		t.Fatalf("failed to activate operator: %v", err)
+	}
+
+	// Run 10 concurrent suspension attempts
+	const numGoroutines = 10
+	results := make(chan error, numGoroutines)
+
+	t.Logf("Running %d concurrent suspension attempts", numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func(idx int) {
+			results <- store.SuspendOperatorAtomic("op_concurrent", "admin"+string(rune('0'+idx)), "Concurrent suspension")
+		}(i)
+	}
+
+	// Collect results
+	successCount := 0
+	alreadySuspendedCount := 0
+	for i := 0; i < numGoroutines; i++ {
+		err := <-results
+		if err == nil {
+			successCount++
+		} else if err == ErrOperatorAlreadySuspended {
+			alreadySuspendedCount++
+		} else {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}
+
+	// Exactly one should succeed, rest should get ErrOperatorAlreadySuspended
+	if successCount != 1 {
+		t.Errorf("expected exactly 1 success, got %d", successCount)
+	}
+	if alreadySuspendedCount != numGoroutines-1 {
+		t.Errorf("expected %d already-suspended errors, got %d", numGoroutines-1, alreadySuspendedCount)
+	}
+
+	// Verify operator is suspended exactly once
+	op, _ := store.GetOperator("op_concurrent")
+	if op.Status != "suspended" {
+		t.Errorf("operator should be suspended, got '%s'", op.Status)
+	}
+
+	t.Log("Concurrent suspension test passed: exactly 1 success, others got conflict")
+}
+
 func init() {
 	// Ensure we're using a test database location
 	_ = os.Setenv("XDG_DATA_HOME", os.TempDir())
