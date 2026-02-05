@@ -150,6 +150,14 @@ type dpuResponse struct {
 	Labels   map[string]string `json:"labels,omitempty"`
 }
 
+// dpuListResponse is the paginated response for listing DPUs.
+type dpuListResponse struct {
+	DPUs   []dpuResponse `json:"dpus"`
+	Total  int           `json:"total"`
+	Limit  int           `json:"limit"`
+	Offset int           `json:"offset"`
+}
+
 // tenantResponse matches the API response for tenant operations.
 type tenantResponse struct {
 	ID          string   `json:"id"`
@@ -244,12 +252,12 @@ func (c *NexusClient) ListDPUs(ctx context.Context, status string) ([]dpuRespons
 		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var dpus []dpuResponse
-	if err := json.NewDecoder(resp.Body).Decode(&dpus); err != nil {
+	var listResp dpuListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return dpus, nil
+	return listResp.DPUs, nil
 }
 
 // RemoveDPU deletes a DPU from the Nexus server.
@@ -591,6 +599,14 @@ type operatorResponse struct {
 	UpdatedAt  string `json:"updated_at"`
 }
 
+// operatorListResponse is the paginated response for listing operators.
+type operatorListResponse struct {
+	Operators []operatorResponse `json:"operators"`
+	Total     int                `json:"total"`
+	Limit     int                `json:"limit"`
+	Offset    int                `json:"offset"`
+}
+
 // updateOperatorStatusRequest is the request body for updating operator status.
 type updateOperatorStatusRequest struct {
 	Status string `json:"status"`
@@ -631,12 +647,12 @@ func (c *NexusClient) ListOperators(ctx context.Context, tenant, status string) 
 		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var operators []operatorResponse
-	if err := json.NewDecoder(resp.Body).Decode(&operators); err != nil {
+	var listResp operatorListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return operators, nil
+	return listResp.Operators, nil
 }
 
 // GetOperator retrieves an operator by email from the Nexus server.

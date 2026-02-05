@@ -113,16 +113,19 @@ func TestNexusClient_ListDPUs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name       string
-		serverResp []dpuResponse
+		serverResp dpuListResponse
 		serverCode int
 		wantErr    bool
 		wantCount  int
 	}{
 		{
 			name: "successful list with DPUs",
-			serverResp: []dpuResponse{
-				{ID: "abc12345", Name: "bf3-lab", Host: "192.168.1.204", Port: 18051, Status: "healthy"},
-				{ID: "def67890", Name: "bf3-dev", Host: "192.168.1.205", Port: 18051, Status: "offline"},
+			serverResp: dpuListResponse{
+				DPUs: []dpuResponse{
+					{ID: "abc12345", Name: "bf3-lab", Host: "192.168.1.204", Port: 18051, Status: "healthy"},
+					{ID: "def67890", Name: "bf3-dev", Host: "192.168.1.205", Port: 18051, Status: "offline"},
+				},
+				Total: 2, Limit: 100, Offset: 0,
 			},
 			serverCode: http.StatusOK,
 			wantErr:    false,
@@ -130,7 +133,7 @@ func TestNexusClient_ListDPUs(t *testing.T) {
 		},
 		{
 			name:       "empty list",
-			serverResp: []dpuResponse{},
+			serverResp: dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0},
 			serverCode: http.StatusOK,
 			wantErr:    false,
 			wantCount:  0,
@@ -812,13 +815,13 @@ func TestAssignDPURemote_ResolvesNames(t *testing.T) {
 					json.NewEncoder(w).Encode(tenants)
 
 				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/dpus":
-					// Return list of DPUs for name resolution
+					// Return list of DPUs for name resolution (wrapped format)
 					dpus := []dpuResponse{
 						{ID: dpuID, Name: dpuName, Host: "192.168.1.204", Port: 18051},
 						{ID: "dpu_other", Name: "bf3-dev", Host: "192.168.1.205", Port: 18051},
 					}
 					w.WriteHeader(http.StatusOK)
-					json.NewEncoder(w).Encode(dpus)
+					json.NewEncoder(w).Encode(dpuListResponse{DPUs: dpus, Total: len(dpus), Limit: 100, Offset: 0})
 
 				case r.Method == http.MethodPost && len(r.URL.Path) > len("/api/v1/tenants/") && r.URL.Path[len(r.URL.Path)-5:] == "/dpus":
 					// This is the assign call: POST /api/tenants/{tenantID}/dpus
@@ -1252,7 +1255,7 @@ func TestNexusClient_DPoP_HeaderPresent(t *testing.T) {
 		receivedPath = r.URL.Path
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]dpuResponse{})
+		json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 	}))
 	defer server.Close()
 
@@ -1324,7 +1327,7 @@ func TestNexusClient_DPoP_HeaderNotPresentWhenDisabled(t *testing.T) {
 		receivedDPoPHeader = r.Header.Get("DPoP")
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]dpuResponse{})
+		json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 	}))
 	defer server.Close()
 
@@ -1411,7 +1414,7 @@ func TestNexusClient_DPoP_AllHTTPMethods(t *testing.T) {
 				switch r.Method {
 				case "GET":
 					w.WriteHeader(http.StatusOK)
-					json.NewEncoder(w).Encode([]dpuResponse{})
+					json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 				case "POST":
 					w.WriteHeader(http.StatusCreated)
 					json.NewEncoder(w).Encode(dpuResponse{ID: "new-id"})
@@ -1548,7 +1551,7 @@ func TestNexusClient_DPoP_FreshProofPerRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		proofs = append(proofs, r.Header.Get("DPoP"))
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]dpuResponse{})
+		json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 	}))
 	defer server.Close()
 
@@ -1619,7 +1622,7 @@ func TestNewNexusClientWithDPoPFromPaths_LoadsFromFiles(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedDPoPHeader = r.Header.Get("DPoP")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]dpuResponse{})
+		json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 	}))
 	defer server.Close()
 
