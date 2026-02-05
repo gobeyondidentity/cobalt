@@ -216,6 +216,11 @@ func buildCedarRequest(req AuthzRequest) cedar.Request {
 		contextMap["force_bypass_requested"] = cedar.Boolean(bypass)
 	}
 
+	// Add is_resource_owner if present (for self-revocation checks)
+	if isOwner, ok := req.Context["is_resource_owner"].(bool); ok {
+		contextMap["is_resource_owner"] = cedar.Boolean(isOwner)
+	}
+
 	return cedar.Request{
 		Principal: cedar.NewEntityUID(cedar.EntityType(req.Principal.Type), cedar.String(req.Principal.UID)),
 		Action:    cedar.NewEntityUID("Action", cedar.String(req.Action)),

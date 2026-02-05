@@ -77,7 +77,7 @@ func TestActionRegistry_DPUEndpoints(t *testing.T) {
 		{"GET", "/api/v1/dpus", Action(ActionDPUList)},
 		{"GET", "/api/v1/dpus/dpu_xyz", Action(ActionDPURead)},
 		{"POST", "/api/v1/dpus", Action(ActionDPURegister)},
-		{"DELETE", "/api/v1/dpus/dpu_abc", Action(ActionDPUDelete)},
+		{"DELETE", "/api/v1/dpus/dpu_abc", Action(ActionDPUDecommission)}, // Phase 4: decommission replaces delete
 		{"GET", "/api/v1/dpus/dpu_xyz/attestation", Action(ActionDPUReadAttestation)},
 	}
 
