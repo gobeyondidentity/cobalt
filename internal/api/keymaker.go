@@ -14,6 +14,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// Constants for KeyMaker operations.
+const (
+	// InviteCodePrefixMaxLength is the max length of tenant name prefix in invite codes.
+	InviteCodePrefixMaxLength = 4
+
+	// InviteDefaultTTL is how long an invite code is valid before expiring.
+	InviteDefaultTTL = 24 * time.Hour
+)
+
 // ----- KeyMaker Binding Types -----
 
 // BindRequest is the request body for binding a KeyMaker.

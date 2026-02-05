@@ -152,8 +152,8 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 
 	// Generate invite code
 	prefix := tenant.Name
-	if len(prefix) > 4 {
-		prefix = prefix[:4]
+	if len(prefix) > InviteCodePrefixMaxLength {
+		prefix = prefix[:InviteCodePrefixMaxLength]
 	}
 	code := store.GenerateInviteCode(strings.ToUpper(prefix))
 
@@ -165,7 +165,7 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 		TenantID:      tenant.ID,
 		Role:          req.Role,
 		CreatedBy:     adminKID,
-		ExpiresAt:     time.Now().Add(24 * time.Hour),
+		ExpiresAt:     time.Now().Add(InviteDefaultTTL),
 		Status:        "pending",
 	}
 

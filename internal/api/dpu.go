@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -10,6 +11,16 @@ import (
 
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
+)
+
+// Constants for DPU lifecycle operations.
+const (
+	// MinReactivationReasonLength is the minimum character length for DPU reactivation reasons.
+	// Reactivation is a high-severity security event that requires documented justification.
+	MinReactivationReasonLength = 20
+
+	// ReactivationEnrollmentWindow is how long a reactivated DPU has to re-enroll.
+	ReactivationEnrollmentWindow = 24 * time.Hour
 )
 
 // DecommissionDPURequest is the request body for decommissioning a DPU.
@@ -193,10 +204,10 @@ func (s *Server) handleReactivateDPU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate reason has minimum length (20 chars)
+	// Validate reason has minimum length
 	req.Reason = strings.TrimSpace(req.Reason)
-	if len(req.Reason) < 20 {
-		writeError(w, r, http.StatusBadRequest, "reason must be at least 20 characters")
+	if len(req.Reason) < MinReactivationReasonLength {
+		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("reason must be at least %d characters", MinReactivationReasonLength))
 		return
 	}
 
@@ -225,8 +236,8 @@ func (s *Server) handleReactivateDPU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set enrollment window (24 hours from now)
-	enrollmentExpiresAt := time.Now().Add(24 * time.Hour)
+	// Set enrollment window
+	enrollmentExpiresAt := time.Now().Add(ReactivationEnrollmentWindow)
 
 	// Atomically reactivate
 	err = s.store.ReactivateDPUAtomic(id, enrollmentExpiresAt)
