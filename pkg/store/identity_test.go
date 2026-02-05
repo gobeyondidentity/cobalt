@@ -821,6 +821,69 @@ func BenchmarkKeyMakerLookupByKid(b *testing.B) {
 	}
 }
 
+// TestGetOperatorTenantsForOperators tests batch lookup of operator tenant memberships.
+func TestGetOperatorTenantsForOperators(t *testing.T) {
+	t.Log("Setting up test store and prerequisite data")
+	store := setupTestStore(t)
+
+	// Create tenants
+	t.Log("Creating tenants")
+	require.NoError(t, store.AddTenant("tnt1", "Tenant One", "", "", nil))
+	require.NoError(t, store.AddTenant("tnt2", "Tenant Two", "", "", nil))
+	require.NoError(t, store.AddTenant("tnt3", "Tenant Three", "", "", nil))
+
+	// Create operators
+	t.Log("Creating operators")
+	require.NoError(t, store.CreateOperator("op1", "op1@example.com", "Operator 1"))
+	require.NoError(t, store.CreateOperator("op2", "op2@example.com", "Operator 2"))
+	require.NoError(t, store.CreateOperator("op3", "op3@example.com", "Operator 3"))
+
+	// Add operator-tenant memberships
+	t.Log("Creating operator-tenant memberships")
+	require.NoError(t, store.AddOperatorToTenant("op1", "tnt1", "operator"))
+	require.NoError(t, store.AddOperatorToTenant("op1", "tnt2", "tenant:admin"))
+	require.NoError(t, store.AddOperatorToTenant("op2", "tnt2", "operator"))
+	// op3 has no tenant memberships
+
+	// Test batch lookup
+	t.Log("Testing batch lookup for all three operators")
+	result, err := store.GetOperatorTenantsForOperators([]string{"op1", "op2", "op3"})
+	require.NoError(t, err, "batch lookup should succeed")
+
+	// Verify op1 has 2 memberships
+	t.Log("Verifying op1 has 2 tenant memberships")
+	assert.Len(t, result["op1"], 2, "op1 should have 2 memberships")
+
+	// Verify tenant names are resolved
+	t.Log("Verifying tenant names are resolved (not just IDs)")
+	for _, m := range result["op1"] {
+		assert.NotEmpty(t, m.TenantName, "tenant name should be resolved")
+		assert.NotEqual(t, m.TenantID, m.TenantName, "tenant name should not equal tenant ID")
+	}
+
+	// Verify op2 has 1 membership
+	t.Log("Verifying op2 has 1 tenant membership")
+	assert.Len(t, result["op2"], 1, "op2 should have 1 membership")
+	assert.Equal(t, "Tenant Two", result["op2"][0].TenantName)
+	assert.Equal(t, "operator", result["op2"][0].Role)
+
+	// Verify op3 has no memberships (returns nil/empty slice)
+	t.Log("Verifying op3 has no tenant memberships")
+	assert.Len(t, result["op3"], 0, "op3 should have no memberships")
+
+	// Test empty input
+	t.Log("Testing empty input returns empty map")
+	emptyResult, err := store.GetOperatorTenantsForOperators([]string{})
+	require.NoError(t, err, "empty input should succeed")
+	assert.Len(t, emptyResult, 0, "empty input should return empty map")
+
+	// Test single operator
+	t.Log("Testing single operator lookup")
+	singleResult, err := store.GetOperatorTenantsForOperators([]string{"op1"})
+	require.NoError(t, err, "single operator should succeed")
+	assert.Len(t, singleResult["op1"], 2, "op1 should still have 2 memberships")
+}
+
 // TestAdminKey_ListEmpty verifies empty list behavior.
 func TestAdminKey_ListEmpty(t *testing.T) {
 	t.Log("Setting up test store")

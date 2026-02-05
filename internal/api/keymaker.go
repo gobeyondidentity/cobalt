@@ -554,30 +554,41 @@ func (s *Server) handleListOperators(w http.ResponseWriter, r *http.Request) {
 
 	// Build response with tenant info
 	result := make([]operatorResponse, 0, len(operators))
-	for _, op := range operators {
-		if authorizedTenantID != "" {
-			// Single tenant filter: include tenant info
-			tenant, err := s.store.GetTenant(authorizedTenantID)
-			tenantNameStr := authorizedTenantID
-			if err == nil {
-				tenantNameStr = tenant.Name
-			}
+
+	if authorizedTenantID != "" {
+		// Single tenant filter: cache tenant name lookup (was N queries, now 1)
+		tenant, err := s.store.GetTenant(authorizedTenantID)
+		tenantNameStr := authorizedTenantID
+		if err == nil {
+			tenantNameStr = tenant.Name
+		}
+		for _, op := range operators {
 			role, _ := s.store.GetOperatorRole(op.ID, authorizedTenantID)
 			result = append(result, operatorToResponseWithTenant(op, authorizedTenantID, tenantNameStr, role))
-		} else {
-			// Super-admin view without tenant filter: include all tenant memberships
-			memberships, err := s.store.GetOperatorTenants(op.ID)
-			if err != nil || len(memberships) == 0 {
+		}
+	} else {
+		// Super-admin view without tenant filter: batch lookup all memberships
+		// Collect operator IDs for batch query
+		operatorIDs := make([]string, len(operators))
+		for i, op := range operators {
+			operatorIDs[i] = op.ID
+		}
+
+		// Batch fetch all memberships with tenant names (was N+M queries, now 1)
+		membershipMap, err := s.store.GetOperatorTenantsForOperators(operatorIDs)
+		if err != nil {
+			writeInternalError(w, r, err, "failed to get operator tenants")
+			return
+		}
+
+		for _, op := range operators {
+			memberships := membershipMap[op.ID]
+			if len(memberships) == 0 {
 				result = append(result, operatorToResponse(op))
 				continue
 			}
 			for _, m := range memberships {
-				tenant, err := s.store.GetTenant(m.TenantID)
-				tName := m.TenantID
-				if err == nil {
-					tName = tenant.Name
-				}
-				result = append(result, operatorToResponseWithTenant(op, m.TenantID, tName, m.Role))
+				result = append(result, operatorToResponseWithTenant(op, m.TenantID, m.TenantName, m.Role))
 			}
 		}
 	}

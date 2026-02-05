@@ -371,6 +371,62 @@ func (s *Store) GetOperatorTenants(operatorID string) ([]*OperatorTenant, error)
 	return memberships, rows.Err()
 }
 
+// OperatorTenantWithName extends OperatorTenant with the tenant name.
+// Used for batch queries that need to avoid N+1 lookups for tenant names.
+type OperatorTenantWithName struct {
+	OperatorID string
+	TenantID   string
+	TenantName string
+	Role       string
+	CreatedAt  time.Time
+}
+
+// GetOperatorTenantsForOperators returns all tenant memberships for a list of operators.
+// Returns a map from operatorID to their memberships with tenant names included.
+// Uses a single JOIN query to avoid N+1 queries when listing operators.
+func (s *Store) GetOperatorTenantsForOperators(operatorIDs []string) (map[string][]*OperatorTenantWithName, error) {
+	result := make(map[string][]*OperatorTenantWithName)
+
+	if len(operatorIDs) == 0 {
+		return result, nil
+	}
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(operatorIDs))
+	args := make([]interface{}, len(operatorIDs))
+	for i, id := range operatorIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT ot.operator_id, ot.tenant_id, t.name, ot.role, ot.created_at
+		FROM operator_tenants ot
+		INNER JOIN tenants t ON ot.tenant_id = t.id
+		WHERE ot.operator_id IN (%s)
+		ORDER BY ot.operator_id, t.name`,
+		strings.Join(placeholders, ","))
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get operator tenants: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var m OperatorTenantWithName
+		var createdAt int64
+		err := rows.Scan(&m.OperatorID, &m.TenantID, &m.TenantName, &m.Role, &createdAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan operator tenant: %w", err)
+		}
+		m.CreatedAt = time.Unix(createdAt, 0)
+		result[m.OperatorID] = append(result[m.OperatorID], &m)
+	}
+
+	return result, rows.Err()
+}
+
 // GetOperatorRole returns the role of an operator in a specific tenant.
 func (s *Store) GetOperatorRole(operatorID, tenantID string) (string, error) {
 	var role string
