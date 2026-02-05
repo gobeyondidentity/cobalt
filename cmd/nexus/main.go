@@ -114,7 +114,12 @@ func main() {
 	proofValidator := api.NewStoreProofValidator(validator, db)
 	identityLookup := api.NewStoreIdentityLookup(db)
 
-	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpop.WithLogger(logger))
+	dpopOpts := []dpop.AuthMiddlewareOption{dpop.WithLogger(logger)}
+	if syslogAudit != nil {
+		authEmitter := audit.NewAuthEventEmitter(logger, syslogAudit)
+		dpopOpts = append(dpopOpts, dpop.WithAuditEmitter(authEmitter))
+	}
+	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpopOpts...)
 
 	// Initialize Cedar authorization middleware
 	authorizer, err := authz.NewAuthorizer(authz.Config{Logger: logger, AuditLogger: auditLogger})
