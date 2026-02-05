@@ -237,28 +237,34 @@ func (s *Store) scanAuthorizationRows(rows *sql.Rows) (*Authorization, error) {
 }
 
 func (s *Store) scanAuthorizationsWithJoins(rows *sql.Rows) ([]*Authorization, error) {
+	// Scan all rows first to release the database connection. With
+	// SetMaxOpenConns(1), holding rows open while making sub-queries deadlocks.
 	var auths []*Authorization
 	for rows.Next() {
 		auth, err := s.scanAuthorizationRows(rows)
 		if err != nil {
 			return nil, err
 		}
+		auths = append(auths, auth)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
 
-		// Fetch associated CAs
+	// Now fetch associated data (connection is free for sub-queries)
+	for _, auth := range auths {
+		var err error
 		auth.CAIDs, err = s.getAuthorizationCAIDs(auth.ID)
 		if err != nil {
 			return nil, err
 		}
-
-		// Fetch associated devices
 		auth.DeviceIDs, err = s.getAuthorizationDeviceIDs(auth.ID)
 		if err != nil {
 			return nil, err
 		}
-
-		auths = append(auths, auth)
 	}
-	return auths, rows.Err()
+	return auths, nil
 }
 
 func (s *Store) getAuthorizationCAIDs(authID string) ([]string, error) {

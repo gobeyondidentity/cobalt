@@ -199,6 +199,14 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// SQLite allows only one writer at a time. Go's database/sql pool creates
+	// multiple connections by default, and PRAGMAs are per-connection. A second
+	// connection won't have busy_timeout/foreign_keys/WAL set, causing immediate
+	// SQLITE_BUSY failures under concurrency. Limiting to one connection forces
+	// all transactions to serialize at the Go level, which matches SQLite's
+	// single-writer constraint and guarantees PRAGMAs stay effective.
+	db.SetMaxOpenConns(1)
+
 	// Enable foreign key constraints
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		db.Close()
@@ -214,17 +222,9 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
-	// Set busy timeout to wait up to 5 seconds for locks instead of failing immediately.
-	// This prevents "database is locked" errors during concurrent transactions.
-	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
-	}
-
-	// Set busy timeout to handle concurrent access gracefully.
-	// Without this, concurrent writes immediately return SQLITE_BUSY.
-	// 5 seconds allows retries under contention (especially on Windows
-	// where file locking behavior differs from Unix).
+	// Set busy timeout to wait up to 5 seconds for locks instead of failing
+	// immediately. This handles cross-process contention (e.g., CLI and server
+	// accessing the same DB file concurrently).
 	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
