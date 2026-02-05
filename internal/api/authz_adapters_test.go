@@ -177,6 +177,38 @@ func TestAutoRefreshAttestationLookup_UnavailableTriggersRefresh(t *testing.T) {
 	// Verify by checking the function completes without error
 }
 
+// TestActionToResourceType verifies all action prefix mappings.
+func TestActionToResourceType(t *testing.T) {
+	tests := []struct {
+		action   string
+		expected string
+	}{
+		{"operator:list", "Operator"},
+		{"role:assign", "Operator"},
+		{"dpu:register", "DPU"},
+		{"credential:push", "DPU"},
+		{"host:register", "DPU"},
+		{"host:report_posture", "DPU"},
+		{"host:list", "DPU"},
+		{"distribution:create", "Distribution"},
+		{"authorization:list", "Authorization"},
+		{"tenant:create", "Tenant"},
+		{"audit:read", "Audit"},
+		{"trust:create", "TrustRelationship"},
+		{"ssh-ca:create", "SSHCA"},
+		{"unknown:action", "Unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.action, func(t *testing.T) {
+			got := actionToResourceType(tt.action)
+			if got != tt.expected {
+				t.Errorf("actionToResourceType(%q) = %q, want %q", tt.action, got, tt.expected)
+			}
+		})
+	}
+}
+
 // setupTestStore creates a test store with required tables.
 func setupTestStore(t *testing.T) *store.Store {
 	t.Helper()
