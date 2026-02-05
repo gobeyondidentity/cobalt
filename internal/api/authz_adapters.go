@@ -224,8 +224,8 @@ func extractIDFromBody(r *http.Request) (string, error) {
 		return "", nil
 	}
 
-	// Look for common ID fields
-	for _, field := range []string{"id", "dpu_id", "dpuId", "device_id", "operator_id", "tenant_id", "target_dpu"} {
+	// Look for common ID fields (DPU fields first for push requests)
+	for _, field := range []string{"id", "target_dpu", "dpu_id", "dpuId", "device_id", "operator_id", "tenant_id"} {
 		if v, ok := data[field]; ok {
 			if s, ok := v.(string); ok {
 				return s, nil
