@@ -187,7 +187,14 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", path)
+	// Use _txlock=immediate so db.Begin() issues BEGIN IMMEDIATE instead of
+	// BEGIN (deferred). This prevents TOCTOU races between concurrent write
+	// transactions (e.g., QueueCredential vs DecommissionDPUAtomic) by
+	// acquiring the write lock upfront rather than deferring until the first
+	// write statement. SQLite only allows one writer at a time regardless,
+	// so this has no performance impact.
+	dsn := path + "?_txlock=immediate"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

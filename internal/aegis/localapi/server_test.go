@@ -830,6 +830,11 @@ func TestLocalAPI_CredentialQueuePersistence(t *testing.T) {
 			t.Fatalf("failed to open store: %v", err)
 		}
 
+		// QueueCredential requires the DPU to exist in the dpus table
+		if err := stateStore.Add("dpu_87654321", "dpu-credqueue-test", "10.0.0.1", 50051); err != nil {
+			t.Fatalf("failed to create DPU: %v", err)
+		}
+
 		server1, err := NewServer(&Config{
 			ListenAddr:      "localhost:0",
 			ServerURL: mock.url(),

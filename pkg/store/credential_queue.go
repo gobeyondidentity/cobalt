@@ -20,24 +20,47 @@ type QueuedCredential struct {
 // ErrDPUDecommissioned is returned when attempting to queue credentials for a decommissioned DPU.
 var ErrDPUDecommissioned = fmt.Errorf("cannot queue credentials for decommissioned DPU")
 
+// ErrDPUNotFound is returned when attempting to queue credentials for a DPU that does not exist.
+var ErrDPUNotFound = fmt.Errorf("cannot queue credentials for unknown DPU")
+
 // QueueCredential adds a credential to the queue for a specific DPU.
+// The check-then-insert runs in a transaction. Combined with _txlock=immediate on
+// the DSN, db.Begin() uses BEGIN IMMEDIATE, which acquires the write lock upfront
+// and prevents TOCTOU races with concurrent DecommissionDPUAtomic calls.
 // Returns ErrDPUDecommissioned if the DPU is decommissioned.
+// Returns ErrDPUNotFound if the DPU does not exist.
 func (s *Store) QueueCredential(dpuName, credType, credName string, data []byte) error {
-	// Guard: reject writes to decommissioned DPUs
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Guard: reject writes to unknown or decommissioned DPUs
 	var status string
-	err := s.db.QueryRow(`SELECT status FROM dpus WHERE name = ?`, dpuName).Scan(&status)
-	if err == nil && status == "decommissioned" {
+	err = tx.QueryRow(`SELECT status FROM dpus WHERE name = ?`, dpuName).Scan(&status)
+	if err == sql.ErrNoRows {
+		return ErrDPUNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check DPU status: %w", err)
+	}
+	if status == "decommissioned" {
 		return ErrDPUDecommissioned
 	}
 
 	now := time.Now().Unix()
-	_, err = s.db.Exec(
+	_, err = tx.Exec(
 		`INSERT INTO credential_queue (dpu_name, cred_type, cred_name, data, queued_at)
 		VALUES (?, ?, ?, ?, ?)`,
 		dpuName, credType, credName, data, now,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to queue credential: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
 }
