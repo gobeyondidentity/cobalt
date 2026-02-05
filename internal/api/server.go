@@ -110,6 +110,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/keymakers/{id}", s.handleRevokeKeyMaker)
 
 	// Admin Key routes (Phase 4: Lifecycle Management)
+	mux.HandleFunc("GET /api/v1/admin-keys", s.handleListAdminKeys)
+	mux.HandleFunc("GET /api/v1/admin-keys/{id}", s.handleGetAdminKey)
 	mux.HandleFunc("DELETE /api/v1/admin-keys/{id}", s.handleRevokeAdminKey)
 
 	// Operator routes

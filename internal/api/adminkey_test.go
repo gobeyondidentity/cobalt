@@ -649,3 +649,259 @@ func TestIsAdminKeyLastActiveSuperAdmin(t *testing.T) {
 
 // Import context for dpop.ContextWithIdentity
 var _ = context.Background
+
+// ----- List AdminKey Tests -----
+
+func TestListAdminKeys_Success(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing successful admin key listing by super:admin")
+
+	s, srv, cleanup := setupAdminKeyTest(t)
+	defer cleanup()
+
+	// Setup: create tenant, operators, and admin keys
+	createTestTenant(t, s, "tenant1", "Test Tenant")
+	createTestOperator(t, s, "op_caller", "caller@test.com")
+	createTestOperator(t, s, "op_other", "other@test.com")
+	addOperatorToTenant(t, s, "op_caller", "tenant1", "super:admin")
+	addOperatorToTenant(t, s, "op_other", "tenant1", "operator")
+
+	// Create admin keys
+	createTestAdminKey(t, s, "adm_caller", "op_caller", "active")
+	createTestAdminKey(t, s, "adm_other", "op_other", "active")
+
+	identity := &dpop.Identity{
+		KID:        "adm_caller",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_caller",
+	}
+
+	req := requestWithIdentity("GET", "/api/v1/admin-keys", nil, identity)
+	rec := httptest.NewRecorder()
+	srv.handleListAdminKeys(rec, req)
+
+	t.Logf("Response status: %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var keys []AdminKeyResponse
+	if err := json.NewDecoder(rec.Body).Decode(&keys); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(keys) != 2 {
+		t.Errorf("expected 2 admin keys, got %d", len(keys))
+	}
+	t.Log("Admin keys listed successfully")
+}
+
+func TestListAdminKeys_WithStatusFilter(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing admin key listing with status filter")
+
+	s, srv, cleanup := setupAdminKeyTest(t)
+	defer cleanup()
+
+	createTestTenant(t, s, "tenant1", "Test Tenant")
+	createTestOperator(t, s, "op_caller", "caller@test.com")
+	createTestOperator(t, s, "op_other", "other@test.com")
+	addOperatorToTenant(t, s, "op_caller", "tenant1", "super:admin")
+	addOperatorToTenant(t, s, "op_other", "tenant1", "operator")
+
+	createTestAdminKey(t, s, "adm_active", "op_caller", "active")
+	createTestAdminKey(t, s, "adm_revoked", "op_other", "revoked")
+
+	identity := &dpop.Identity{
+		KID:        "adm_active",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_caller",
+	}
+
+	// Test filter by revoked
+	req := requestWithIdentity("GET", "/api/v1/admin-keys?status=revoked", nil, identity)
+	rec := httptest.NewRecorder()
+	srv.handleListAdminKeys(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var keys []AdminKeyResponse
+	if err := json.NewDecoder(rec.Body).Decode(&keys); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(keys) != 1 {
+		t.Errorf("expected 1 revoked admin key, got %d", len(keys))
+	}
+	if len(keys) > 0 && keys[0].Status != "revoked" {
+		t.Errorf("expected status 'revoked', got %s", keys[0].Status)
+	}
+	t.Log("Status filter works correctly")
+}
+
+func TestListAdminKeys_TenantAdminForbidden(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing that tenant:admin receives 403 for listing admin keys")
+
+	s, srv, cleanup := setupAdminKeyTest(t)
+	defer cleanup()
+
+	createTestTenant(t, s, "tenant1", "Test Tenant")
+	createTestOperator(t, s, "op_tenant_admin", "tadmin@test.com")
+	addOperatorToTenant(t, s, "op_tenant_admin", "tenant1", "tenant:admin")
+	createTestAdminKey(t, s, "adm_tadmin", "op_tenant_admin", "active")
+
+	identity := &dpop.Identity{
+		KID:        "adm_tadmin",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_tenant_admin",
+	}
+
+	req := requestWithIdentity("GET", "/api/v1/admin-keys", nil, identity)
+	rec := httptest.NewRecorder()
+	srv.handleListAdminKeys(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected status 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+	t.Log("tenant:admin correctly receives 403")
+}
+
+func TestListAdminKeys_InvalidStatus(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing that invalid status filter returns 400")
+
+	s, srv, cleanup := setupAdminKeyTest(t)
+	defer cleanup()
+
+	createTestTenant(t, s, "tenant1", "Test Tenant")
+	createTestOperator(t, s, "op_caller", "caller@test.com")
+	addOperatorToTenant(t, s, "op_caller", "tenant1", "super:admin")
+	createTestAdminKey(t, s, "adm_caller", "op_caller", "active")
+
+	identity := &dpop.Identity{
+		KID:        "adm_caller",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_caller",
+	}
+
+	req := requestWithIdentity("GET", "/api/v1/admin-keys?status=invalid", nil, identity)
+	rec := httptest.NewRecorder()
+	srv.handleListAdminKeys(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	t.Log("Invalid status filter correctly rejected")
+}
+
+// ----- Get AdminKey Tests -----
+
+func TestGetAdminKey_Success(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing successful admin key retrieval by super:admin")
+
+	s, srv, cleanup := setupAdminKeyTest(t)
+	defer cleanup()
+
+	createTestTenant(t, s, "tenant1", "Test Tenant")
+	createTestOperator(t, s, "op_caller", "caller@test.com")
+	addOperatorToTenant(t, s, "op_caller", "tenant1", "super:admin")
+	createTestAdminKey(t, s, "adm_caller", "op_caller", "active")
+
+	identity := &dpop.Identity{
+		KID:        "adm_caller",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_caller",
+	}
+
+	req := requestWithIdentity("GET", "/api/v1/admin-keys/adm_caller", nil, identity)
+	req.SetPathValue("id", "adm_caller")
+	rec := httptest.NewRecorder()
+	srv.handleGetAdminKey(rec, req)
+
+	t.Logf("Response status: %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var key AdminKeyResponse
+	if err := json.NewDecoder(rec.Body).Decode(&key); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if key.ID != "adm_caller" {
+		t.Errorf("expected ID 'adm_caller', got %s", key.ID)
+	}
+	if key.Status != "active" {
+		t.Errorf("expected status 'active', got %s", key.Status)
+	}
+	t.Log("Admin key retrieved successfully")
+}
+
+func TestGetAdminKey_NotFound(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing 404 for non-existent admin key")
+
+	s, srv, cleanup := setupAdminKeyTest(t)
+	defer cleanup()
+
+	createTestTenant(t, s, "tenant1", "Test Tenant")
+	createTestOperator(t, s, "op_caller", "caller@test.com")
+	addOperatorToTenant(t, s, "op_caller", "tenant1", "super:admin")
+	createTestAdminKey(t, s, "adm_caller", "op_caller", "active")
+
+	identity := &dpop.Identity{
+		KID:        "adm_caller",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_caller",
+	}
+
+	req := requestWithIdentity("GET", "/api/v1/admin-keys/adm_nonexistent", nil, identity)
+	req.SetPathValue("id", "adm_nonexistent")
+	rec := httptest.NewRecorder()
+	srv.handleGetAdminKey(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	t.Log("Non-existent admin key correctly returns 404")
+}
+
+func TestGetAdminKey_TenantAdminForbidden(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing that tenant:admin receives 403 for getting admin key details")
+
+	s, srv, cleanup := setupAdminKeyTest(t)
+	defer cleanup()
+
+	createTestTenant(t, s, "tenant1", "Test Tenant")
+	createTestOperator(t, s, "op_tenant_admin", "tadmin@test.com")
+	addOperatorToTenant(t, s, "op_tenant_admin", "tenant1", "tenant:admin")
+	createTestAdminKey(t, s, "adm_tadmin", "op_tenant_admin", "active")
+
+	identity := &dpop.Identity{
+		KID:        "adm_tadmin",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_tenant_admin",
+	}
+
+	req := requestWithIdentity("GET", "/api/v1/admin-keys/adm_tadmin", nil, identity)
+	req.SetPathValue("id", "adm_tadmin")
+	rec := httptest.NewRecorder()
+	srv.handleGetAdminKey(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected status 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+	t.Log("tenant:admin correctly receives 403")
+}

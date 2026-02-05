@@ -1282,3 +1282,117 @@ func (c *NexusClient) GetHostPostureByDPU(ctx context.Context, dpuName string) (
 
 	return &posture, nil
 }
+
+// ----- Admin Key Methods -----
+
+// adminKeyResponse matches the API response for admin key operations.
+type adminKeyResponse struct {
+	ID             string  `json:"id"`
+	OperatorID     string  `json:"operator_id"`
+	Name           string  `json:"name,omitempty"`
+	Kid            string  `json:"kid"`
+	KeyFingerprint string  `json:"key_fingerprint"`
+	Status         string  `json:"status"`
+	BoundAt        string  `json:"bound_at"`
+	LastSeen       *string `json:"last_seen,omitempty"`
+	RevokedAt      *string `json:"revoked_at,omitempty"`
+	RevokedBy      *string `json:"revoked_by,omitempty"`
+	RevokedReason  *string `json:"revoked_reason,omitempty"`
+}
+
+// revokeAdminKeyRequest is the request body for revoking an admin key.
+type revokeAdminKeyRequest struct {
+	Reason string `json:"reason"`
+}
+
+// ListAdminKeys retrieves all admin keys from the Nexus server, optionally filtered by status.
+func (c *NexusClient) ListAdminKeys(ctx context.Context, status string) ([]adminKeyResponse, error) {
+	url := c.baseURL + "/api/v1/admin-keys"
+	if status != "" {
+		url += "?status=" + status
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var adminKeys []adminKeyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&adminKeys); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return adminKeys, nil
+}
+
+// GetAdminKey retrieves an admin key by ID from the Nexus server.
+func (c *NexusClient) GetAdminKey(ctx context.Context, id string) (*adminKeyResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/admin-keys/"+id, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("admin key not found: %s", id)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ak adminKeyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&ak); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &ak, nil
+}
+
+// RevokeAdminKey revokes an admin key by ID with a reason.
+func (c *NexusClient) RevokeAdminKey(ctx context.Context, id, reason string) error {
+	reqBody := revokeAdminKeyRequest{
+		Reason: reason,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/admin-keys/"+id, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}

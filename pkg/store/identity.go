@@ -1028,6 +1028,37 @@ func (s *Store) ListAdminKeysByOperator(operatorID string) ([]*AdminKey, error) 
 	return keys, rows.Err()
 }
 
+// ListAdminKeys returns all admin keys, optionally filtered by status.
+func (s *Store) ListAdminKeys(status string) ([]*AdminKey, error) {
+	var query string
+	var args []interface{}
+
+	if status != "" {
+		query = `SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen, revoked_at, revoked_by, revoked_reason
+		         FROM admin_keys WHERE status = ? ORDER BY bound_at DESC`
+		args = append(args, status)
+	} else {
+		query = `SELECT id, operator_id, name, public_key, kid, key_fingerprint, status, bound_at, last_seen, revoked_at, revoked_by, revoked_reason
+		         FROM admin_keys ORDER BY bound_at DESC`
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list admin keys: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []*AdminKey
+	for rows.Next() {
+		ak, err := s.scanAdminKeyRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, ak)
+	}
+	return keys, rows.Err()
+}
+
 // UpdateAdminKeyLastSeen updates the last seen timestamp for an admin key.
 func (s *Store) UpdateAdminKeyLastSeen(id string) error {
 	now := time.Now().Unix()

@@ -63,6 +63,87 @@ func adminKeyToResponse(ak *store.AdminKey) AdminKeyResponse {
 	return resp
 }
 
+// handleListAdminKeys handles GET /api/v1/admin-keys
+// Only super:admin can list admin keys. Returns 403 for tenant:admin.
+func (s *Server) handleListAdminKeys(w http.ResponseWriter, r *http.Request) {
+	// Get caller identity from context
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	// Only super:admin can list admin keys
+	isSuperAdmin, err := s.store.IsSuperAdmin(identity.OperatorID)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to check caller permissions")
+		return
+	}
+	if !isSuperAdmin {
+		writeError(w, r, http.StatusForbidden, "only super:admin can list admin keys")
+		return
+	}
+
+	// Parse optional status filter
+	status := r.URL.Query().Get("status")
+	if status != "" && status != "active" && status != "revoked" {
+		writeError(w, r, http.StatusBadRequest, "invalid status: must be 'active' or 'revoked'")
+		return
+	}
+
+	// Fetch admin keys from store
+	adminKeys, err := s.store.ListAdminKeys(status)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to list admin keys")
+		return
+	}
+
+	// Convert to response format
+	responses := make([]AdminKeyResponse, 0, len(adminKeys))
+	for _, ak := range adminKeys {
+		responses = append(responses, adminKeyToResponse(ak))
+	}
+
+	writeJSON(w, http.StatusOK, responses)
+}
+
+// handleGetAdminKey handles GET /api/v1/admin-keys/{id}
+// Only super:admin can get admin key details. Returns 403 for tenant:admin.
+func (s *Server) handleGetAdminKey(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	// Get caller identity from context
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	// Only super:admin can get admin key details
+	isSuperAdmin, err := s.store.IsSuperAdmin(identity.OperatorID)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to check caller permissions")
+		return
+	}
+	if !isSuperAdmin {
+		writeError(w, r, http.StatusForbidden, "only super:admin can view admin keys")
+		return
+	}
+
+	// Fetch admin key from store
+	ak, err := s.store.GetAdminKey(id)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, r, http.StatusNotFound, "admin key not found")
+			return
+		}
+		writeInternalError(w, r, err, "failed to retrieve admin key")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, adminKeyToResponse(ak))
+}
+
 // handleRevokeAdminKey handles DELETE /api/v1/admin-keys/{id}
 // Only super:admin can revoke admin keys. Returns 403 for tenant:admin.
 func (s *Server) handleRevokeAdminKey(w http.ResponseWriter, r *http.Request) {
