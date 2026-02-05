@@ -39,6 +39,7 @@ func init() {
 	// Flags for operator revoke
 	operatorRevokeCmd.Flags().String("tenant", "", "Tenant name (required)")
 	operatorRevokeCmd.Flags().String("ca", "", "CA name to revoke access from (required)")
+	operatorRevokeCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	operatorRevokeCmd.MarkFlagRequired("tenant")
 	operatorRevokeCmd.MarkFlagRequired("ca")
 
@@ -510,29 +511,128 @@ var operatorRevokeCmd = &cobra.Command{
 	Short: "Revoke specific authorization",
 	Long: `Revoke an operator's authorization for a specific CA within a tenant.
 
+This removes the operator's ability to distribute credentials for the specified CA
+to devices in the tenant. Other authorizations for the same operator remain intact.
+
 Examples:
-  bluectl operator revoke nelson@acme.com --tenant acme --ca ops-ca`,
+  bluectl operator revoke nelson@acme.com --tenant acme --ca ops-ca
+  bluectl operator revoke nelson@acme.com --tenant acme --ca ops-ca --yes`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		tenantName, _ := cmd.Flags().GetString("tenant")
 		caName, _ := cmd.Flags().GetString("ca")
+		skipConfirm, _ := cmd.Flags().GetBool("yes")
 
-		_, err := requireServer()
+		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
+		return revokeAuthorizationRemote(cmd.Context(), serverURL, email, tenantName, caName, skipConfirm)
+	},
+}
 
-		// For now, print informational message
+func revokeAuthorizationRemote(ctx context.Context, serverURL, email, tenantName, caName string, skipConfirm bool, optClient ...*NexusClient) error {
+	var client *NexusClient
+	var err error
+	if len(optClient) > 0 && optClient[0] != nil {
+		client = optClient[0]
+	} else {
+		client, err = NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Get operator by email
+	operator, err := client.GetOperator(ctx, email)
+	if err != nil {
+		return fmt.Errorf("operator not found: %s", email)
+	}
+
+	// Resolve tenant name to ID
+	tenants, err := client.ListTenants(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list tenants: %w", err)
+	}
+
+	var tenantID string
+	for _, t := range tenants {
+		if t.Name == tenantName || t.ID == tenantName {
+			tenantID = t.ID
+			break
+		}
+	}
+	if tenantID == "" {
+		return fmt.Errorf("tenant not found: %s", tenantName)
+	}
+
+	// Resolve CA name to ID
+	ca, err := client.GetSSHCA(ctx, caName)
+	if err != nil {
+		return fmt.Errorf("CA not found: %s", caName)
+	}
+
+	// Get operator's authorizations
+	auths, err := client.GetOperatorAuthorizations(ctx, operator.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get authorizations: %w", err)
+	}
+
+	// Find matching authorization by tenant ID and CA ID
+	var matchingAuth *authorizationResponse
+	for i := range auths {
+		auth := &auths[i]
+		if auth.TenantID != tenantID {
+			continue
+		}
+		// Check if this authorization includes the specified CA
+		for _, authCAID := range auth.CAIDs {
+			if authCAID == ca.ID {
+				matchingAuth = auth
+				break
+			}
+		}
+		if matchingAuth != nil {
+			break
+		}
+	}
+
+	if matchingAuth == nil {
+		return fmt.Errorf("no authorization found for %s with CA %s in tenant %s", email, caName, tenantName)
+	}
+
+	// Confirmation prompt
+	if !skipConfirm {
+		devices := formatDeviceSelector(matchingAuth.DeviceNames)
 		fmt.Printf("Revoke authorization:\n")
 		fmt.Printf("  Operator: %s\n", email)
 		fmt.Printf("  Tenant:   %s\n", tenantName)
 		fmt.Printf("  CA:       %s\n", caName)
+		fmt.Printf("  Devices:  %s\n", devices)
 		fmt.Println()
-		fmt.Println("Note: Authorization revoke via API not yet implemented.")
-		fmt.Println("Use the Nexus web interface or API directly.")
-		return nil
-	},
+		fmt.Print("Type 'yes' to confirm: ")
+
+		reader := bufio.NewReader(os.Stdin)
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read confirmation: %w", err)
+		}
+
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response != "yes" {
+			fmt.Println("Revocation cancelled.")
+			return nil
+		}
+	}
+
+	// Delete the authorization
+	if err := client.DeleteAuthorization(ctx, matchingAuth.ID); err != nil {
+		return fmt.Errorf("failed to revoke authorization: %w", err)
+	}
+
+	fmt.Printf("Authorization revoked for %s (CA: %s, tenant: %s).\n", email, caName, tenantName)
+	return nil
 }
 
 var operatorRemoveCmd = &cobra.Command{

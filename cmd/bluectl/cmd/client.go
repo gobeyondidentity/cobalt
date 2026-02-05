@@ -1097,6 +1097,32 @@ func (c *NexusClient) GetOperatorAuthorizations(ctx context.Context, operatorID 
 	return auths, nil
 }
 
+// DeleteAuthorization deletes an authorization by ID.
+// API: DELETE /api/v1/authorizations/{id}
+func (c *NexusClient) DeleteAuthorization(ctx context.Context, id string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/authorizations/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("authorization not found: %s", id)
+	}
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 // ----- Role Management Methods -----
 
 // assignRoleRequest is the request body for assigning a role.
