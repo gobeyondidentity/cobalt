@@ -11,6 +11,7 @@ import (
 
 	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 	"github.com/google/uuid"
 )
@@ -514,7 +515,7 @@ func (s *Server) handleRevokeKeyMaker(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Emit structured lifecycle audit event (non-blocking)
-	s.emitAuditEvent(audit.NewLifecycleRevoke(identity.KID, getClientIP(r), km.ID, req.Reason, ""))
+	s.emitAuditEvent(audit.NewLifecycleRevoke(identity.KID, netutil.ClientIP(r), km.ID, req.Reason, ""))
 
 	log.Printf("KeyMaker revoked: id=%s operator_id=%s name=%s by=%s reason=%s",
 		km.ID, km.OperatorID, km.Name, identity.KID, req.Reason)

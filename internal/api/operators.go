@@ -11,6 +11,7 @@ import (
 
 	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
@@ -415,7 +416,7 @@ func (s *Server) handleSuspendOperator(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Emit structured lifecycle audit event (non-blocking)
-	s.emitAuditEvent(audit.NewLifecycleSuspend(identity.KID, getClientIP(r), operatorID, req.Reason, ""))
+	s.emitAuditEvent(audit.NewLifecycleSuspend(identity.KID, netutil.ClientIP(r), operatorID, req.Reason, ""))
 
 	log.Printf("Operator suspended: operator_id=%s email=%s by=%s reason=%s", operatorID, operator.Email, identity.KID, req.Reason)
 
@@ -497,7 +498,7 @@ func (s *Server) handleUnsuspendOperator(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Emit structured lifecycle audit event (non-blocking)
-	s.emitAuditEvent(audit.NewLifecycleUnsuspend(identity.KID, getClientIP(r), operatorID, req.Reason, ""))
+	s.emitAuditEvent(audit.NewLifecycleUnsuspend(identity.KID, netutil.ClientIP(r), operatorID, req.Reason, ""))
 
 	log.Printf("Operator unsuspended: operator_id=%s email=%s by=%s reason=%s", operatorID, operator.Email, identity.KID, req.Reason)
 

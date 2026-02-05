@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
@@ -58,7 +59,7 @@ func (s *Server) handleEnrollInit(w http.ResponseWriter, r *http.Request) {
 	inviteSvc := store.NewInviteService(s.store)
 	inviteCode, err := inviteSvc.ValidateInviteCode(req.Code)
 	if err != nil {
-		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "invalid_invite_code", "km", ""))
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "invalid_invite_code", "km", ""))
 		writeEnrollmentErrorFromError(w, r, http.StatusUnauthorized, err)
 		return
 	}
@@ -80,7 +81,7 @@ func (s *Server) handleEnrollInit(w http.ResponseWriter, r *http.Request) {
 		SessionType:      "operator",
 		ChallengeBytesHex: challengeHex,
 		InviteCodeID:     &inviteCode.ID,
-		IPAddress:        getClientIP(r),
+		IPAddress:        netutil.ClientIP(r),
 		CreatedAt:        time.Now(),
 		ExpiresAt:        time.Now().Add(OperatorChallengeTTL),
 	}
@@ -106,7 +107,7 @@ func (s *Server) handleEnrollInit(w http.ResponseWriter, r *http.Request) {
 		Target:    enrollmentID,
 		Decision:  "challenge_issued",
 		Details: map[string]string{
-			"ip":            getClientIP(r),
+			"ip":            netutil.ClientIP(r),
 			"enrollment_id": enrollmentID,
 			"invite_code":   inviteCode.ID,
 			"operator":      inviteCode.OperatorEmail,
@@ -146,14 +147,14 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 	// GetKeyMakerByFingerprint returns error "keymaker not found" if not found
 	existingKM, err := s.store.GetKeyMakerByFingerprint(fingerprint)
 	if err == nil && existingKM != nil {
-		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "key_exists", "km", ""))
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "key_exists", "km", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
 	// Also check admin_keys table for duplicate fingerprints
 	existingAdminKey, err := s.store.GetAdminKeyByFingerprint(fingerprint)
 	if err == nil && existingAdminKey != nil {
-		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "key_exists", "km", ""))
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "key_exists", "km", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
@@ -221,7 +222,7 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 		Decision:  "enrolled",
 		Details: map[string]string{
 			"fingerprint":    fingerprint,
-			"ip":             getClientIP(r),
+			"ip":             netutil.ClientIP(r),
 			"operator_id":    operator.ID,
 			"operator_email": inviteCode.OperatorEmail,
 			"tenant_id":      inviteCode.TenantID,
@@ -230,7 +231,7 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 	})
 
 	// Audit event (syslog)
-	s.emitAuditEvent(audit.NewEnrollComplete(keymakerID, getClientIP(r), "km", keymakerID, ""))
+	s.emitAuditEvent(audit.NewEnrollComplete(keymakerID, netutil.ClientIP(r), "km", keymakerID, ""))
 
 	// Get tenant name for response
 	var tenantName string

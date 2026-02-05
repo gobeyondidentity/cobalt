@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 )
 
 // PrincipalLookup resolves a DPoP identity to an authorization principal.
@@ -260,7 +261,7 @@ func (m *AuthzMiddleware) Wrap(next http.Handler) http.Handler {
 					dpuID := m.extractDPUID(r, resource, principal)
 					m.bypassAudit.EmitAttestationBypass(
 						principal.UID,
-						clientIP(r),
+						netutil.ClientIP(r),
 						dpuID,
 						r.Header.Get("X-Force-Bypass"),
 						attestStatus,
@@ -420,13 +421,3 @@ func (m *AuthzMiddleware) writeError(w http.ResponseWriter, status int, code, me
 	})
 }
 
-// clientIP extracts the client IP from the request, checking proxy headers first.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
-	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	return r.RemoteAddr
-}

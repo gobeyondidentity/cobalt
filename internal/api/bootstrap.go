@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
@@ -65,7 +66,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hasAdmin {
-		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "already_enrolled", "admin", ""))
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "already_enrolled", "admin", ""))
 		writeEnrollmentError(w, enrollment.ErrAlreadyEnrolled())
 		return
 	}
@@ -85,7 +86,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 
 	// Check if window has expired
 	if time.Since(state.WindowOpenedAt) > BootstrapWindowDuration {
-		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "window_closed", "admin", ""))
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "window_closed", "admin", ""))
 		writeEnrollmentError(w, enrollment.ErrWindowClosed())
 		return
 	}
@@ -131,7 +132,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 		SessionType:      "bootstrap",
 		ChallengeBytesHex: challengeHex,
 		PublicKeyB64:     &req.PublicKey,
-		IPAddress:        getClientIP(r),
+		IPAddress:        netutil.ClientIP(r),
 		CreatedAt:        time.Now(),
 		ExpiresAt:        time.Now().Add(ChallengeTTL),
 	}
@@ -148,7 +149,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 		Target:    enrollmentID,
 		Decision:  "challenge_issued",
 		Details: map[string]string{
-			"ip":            getClientIP(r),
+			"ip":            netutil.ClientIP(r),
 			"enrollment_id": enrollmentID,
 		},
 	})
@@ -178,7 +179,7 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if session == nil {
-		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "invalid_session", "", ""))
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "invalid_session", "", ""))
 		writeEnrollmentError(w, enrollment.ErrInvalidSession(req.EnrollmentID))
 		return
 	}
@@ -187,7 +188,7 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 	if time.Now().After(session.ExpiresAt) {
 		// Delete expired session
 		s.store.DeleteEnrollmentSession(req.EnrollmentID)
-		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "challenge_expired", sessionIdentityType(session.SessionType), ""))
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "challenge_expired", sessionIdentityType(session.SessionType), ""))
 		writeEnrollmentError(w, enrollment.ErrChallengeExpired())
 		return
 	}
@@ -221,7 +222,7 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 	// Verify Ed25519 signature
 	pubKey := ed25519.PublicKey(pubKeyBytes)
 	if !ed25519.Verify(pubKey, challengeBytes, signatureBytes) {
-		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "invalid_signature", sessionIdentityType(session.SessionType), ""))
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "invalid_signature", sessionIdentityType(session.SessionType), ""))
 		writeEnrollmentError(w, enrollment.ErrInvalidSignature())
 		return
 	}
@@ -312,12 +313,12 @@ func (s *Server) handleBootstrapEnrollComplete(w http.ResponseWriter, r *http.Re
 		Decision:  "enrolled",
 		Details: map[string]string{
 			"fingerprint": fingerprint,
-			"ip":          getClientIP(r),
+			"ip":          netutil.ClientIP(r),
 		},
 	})
 
 	// Audit event (syslog)
-	s.emitAuditEvent(audit.NewBootstrapComplete(adminID, getClientIP(r), adminID, ""))
+	s.emitAuditEvent(audit.NewBootstrapComplete(adminID, netutil.ClientIP(r), adminID, ""))
 
 	// Return response
 	resp := EnrollCompleteResponse{
@@ -361,16 +362,3 @@ func writeEnrollmentErrorFromError(w http.ResponseWriter, r *http.Request, defau
 	writeError(w, r, defaultStatus, err.Error())
 }
 
-// getClientIP extracts the client IP from the request.
-func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (for proxies)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
-	}
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	// Fall back to RemoteAddr
-	return r.RemoteAddr
-}

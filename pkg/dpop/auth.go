@@ -10,6 +10,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 )
 
 // CallerType identifies the type of authenticated caller.
@@ -396,7 +398,7 @@ func (m *AuthMiddleware) writeError(w http.ResponseWriter, status int, code, _ s
 
 // logAuthSuccess logs a successful authentication event and emits an audit event.
 func (m *AuthMiddleware) logAuthSuccess(r *http.Request, kid string, latencyMS int64) {
-	ip := getClientIP(r)
+	ip := netutil.ClientIP(r)
 	m.logger.Info("auth.success",
 		"kid", sanitizeForLog(kid),
 		"method", r.Method,
@@ -410,7 +412,7 @@ func (m *AuthMiddleware) logAuthSuccess(r *http.Request, kid string, latencyMS i
 // logAuthFailure logs an authentication failure event and emits an audit event.
 // The detail parameter provides additional context for server logs.
 func (m *AuthMiddleware) logAuthFailure(r *http.Request, kid, reason, detail string) {
-	ip := getClientIP(r)
+	ip := netutil.ClientIP(r)
 	args := []any{
 		"reason", reason,
 		"kid", sanitizeForLog(kid),
@@ -443,35 +445,4 @@ func sanitizeForLog(s string) string {
 	return result
 }
 
-// getClientIP extracts the client IP from the request.
-func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header (may be set by proxy)
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		// Take the first IP in the chain
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
-
-	// Check X-Real-IP header
-	xri := r.Header.Get("X-Real-IP")
-	if xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr
-	// Strip port if present
-	addr := r.RemoteAddr
-	if idx := strings.LastIndex(addr, ":"); idx != -1 {
-		// Check if this is IPv6 [::1]:port format
-		if strings.Contains(addr, "[") {
-			if closeIdx := strings.LastIndex(addr, "]"); closeIdx != -1 && closeIdx < idx {
-				return addr[:idx]
-			}
-		} else {
-			return addr[:idx]
-		}
-	}
-	return addr
-}
 

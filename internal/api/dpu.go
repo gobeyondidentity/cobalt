@@ -11,6 +11,7 @@ import (
 
 	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
@@ -126,7 +127,7 @@ func (s *Server) handleDecommissionDPU(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Emit structured lifecycle audit event (non-blocking)
-	s.emitAuditEvent(audit.NewLifecycleDecommission(identity.KID, getClientIP(r), dpu.ID, req.Reason, ""))
+	s.emitAuditEvent(audit.NewLifecycleDecommission(identity.KID, netutil.ClientIP(r), dpu.ID, req.Reason, ""))
 
 	log.Printf("DPU decommissioned: id=%s name=%s by=%s reason=%s credentials_scrubbed=%d",
 		dpu.ID, dpu.Name, identity.KID, req.Reason, credentialsScrubbed)
