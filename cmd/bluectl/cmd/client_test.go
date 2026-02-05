@@ -1888,3 +1888,113 @@ func TestNexusClient_RemoveRole(t *testing.T) {
 		})
 	}
 }
+
+func TestNexusClient_GetOperatorAuthorizations(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing GetOperatorAuthorizations retrieves authorizations by operator ID")
+
+	tests := []struct {
+		name       string
+		operatorID string
+		response   []map[string]interface{}
+		statusCode int
+		wantLen    int
+		wantErr    bool
+	}{
+		{
+			name:       "successful_get_with_authorizations",
+			operatorID: "op_abc123",
+			response: []map[string]interface{}{
+				{
+					"id":           "auth_xyz789",
+					"operator_id":  "op_abc123",
+					"tenant_id":    "tnt_test",
+					"ca_ids":       []string{"ca_ops"},
+					"ca_names":     []string{"ops-ca"},
+					"device_ids":   []string{"all"},
+					"device_names": []string{"all"},
+					"created_at":   "2026-01-15T10:00:00Z",
+					"created_by":   "admin@test.com",
+				},
+				{
+					"id":           "auth_abc456",
+					"operator_id":  "op_abc123",
+					"tenant_id":    "tnt_test",
+					"ca_ids":       []string{"ca_dev"},
+					"ca_names":     []string{"dev-ca"},
+					"device_ids":   []string{"dpu_001", "dpu_002"},
+					"device_names": []string{"bf3-lab-01", "bf3-lab-02"},
+					"created_at":   "2026-01-16T11:00:00Z",
+					"created_by":   "admin@test.com",
+					"expires_at":   "2026-12-31T23:59:59Z",
+				},
+			},
+			statusCode: http.StatusOK,
+			wantLen:    2,
+			wantErr:    false,
+		},
+		{
+			name:       "successful_get_empty_authorizations",
+			operatorID: "op_noauths",
+			response:   []map[string]interface{}{},
+			statusCode: http.StatusOK,
+			wantLen:    0,
+			wantErr:    false,
+		},
+		{
+			name:       "server_error",
+			operatorID: "op_error",
+			statusCode: http.StatusInternalServerError,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			t.Logf("Received request: GET /api/v1/authorizations?operator_id=%s", tt.operatorID)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					t.Errorf("expected GET request, got %s", r.Method)
+				}
+				expectedPath := "/api/v1/authorizations"
+				if r.URL.Path != expectedPath {
+					t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
+				}
+				gotOperatorID := r.URL.Query().Get("operator_id")
+				if gotOperatorID != tt.operatorID {
+					t.Errorf("expected operator_id=%s, got %s", tt.operatorID, gotOperatorID)
+				}
+
+				w.WriteHeader(tt.statusCode)
+				if tt.statusCode == http.StatusOK {
+					json.NewEncoder(w).Encode(tt.response)
+				} else {
+					w.Write([]byte(`{"error": "internal server error"}`))
+				}
+			}))
+			defer server.Close()
+
+			client := NewNexusClient(server.URL)
+			auths, err := client.GetOperatorAuthorizations(context.Background(), tt.operatorID)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetOperatorAuthorizations() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && len(auths) != tt.wantLen {
+				t.Errorf("GetOperatorAuthorizations() returned %d authorizations, want %d", len(auths), tt.wantLen)
+			}
+			if !tt.wantErr && tt.wantLen > 0 {
+				if auths[0].ID != tt.response[0]["id"] {
+					t.Errorf("First auth ID = %s, want %s", auths[0].ID, tt.response[0]["id"])
+				}
+				// Check second authorization has expiration
+				if tt.wantLen > 1 && auths[1].ExpiresAt == nil {
+					t.Error("Second auth should have ExpiresAt set")
+				}
+			}
+		})
+	}
+}

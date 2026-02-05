@@ -323,3 +323,49 @@ func TestSetRoleRemote_PermissionDenied(t *testing.T) {
 		t.Errorf("expected permission error, got: %v", err)
 	}
 }
+
+func TestFormatDeviceSelector(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing formatDeviceSelector formats device names correctly")
+
+	tests := []struct {
+		name        string
+		deviceNames []string
+		want        string
+	}{
+		{
+			name:        "all devices",
+			deviceNames: []string{"all"},
+			want:        "all devices",
+		},
+		{
+			name:        "single device",
+			deviceNames: []string{"bf3-lab-01"},
+			want:        "bf3-lab-01",
+		},
+		{
+			name:        "multiple devices",
+			deviceNames: []string{"bf3-lab-01", "bf3-lab-02", "bf3-prod-01"},
+			want:        "bf3-lab-01, bf3-lab-02, bf3-prod-01",
+		},
+		{
+			name:        "empty list",
+			deviceNames: []string{},
+			want:        "-",
+		},
+		{
+			name:        "nil slice",
+			deviceNames: nil,
+			want:        "-",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatDeviceSelector(tt.deviceNames)
+			if got != tt.want {
+				t.Errorf("formatDeviceSelector(%v) = %q, want %q", tt.deviceNames, got, tt.want)
+			}
+		})
+	}
+}

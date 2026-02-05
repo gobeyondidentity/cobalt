@@ -430,24 +430,79 @@ var operatorAuthorizationsCmd = &cobra.Command{
 	Short: "List operator's authorizations",
 	Long: `List all authorizations granted to an operator.
 
+Shows CA access, device selectors, and expiration dates.
+
 Examples:
   bluectl operator authorizations nelson@acme.com`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
-		_, err := requireServer()
+		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
 
-		// For now, print informational message
-		fmt.Printf("Authorizations for %s:\n", email)
-		fmt.Println()
-		fmt.Println("Note: Authorization listing via API not yet implemented.")
-		fmt.Println("Use the Nexus web interface or API directly.")
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
+		ctx := cmd.Context()
+
+		// Get operator by email to resolve ID
+		operator, err := client.GetOperator(ctx, email)
+		if err != nil {
+			return fmt.Errorf("operator not found: %s", email)
+		}
+
+		// Get authorizations for operator
+		auths, err := client.GetOperatorAuthorizations(ctx, operator.ID)
+		if err != nil {
+			return fmt.Errorf("failed to get authorizations: %w", err)
+		}
+
+		if outputFormat == "json" || outputFormat == "yaml" {
+			if len(auths) == 0 {
+				fmt.Println("[]")
+				return nil
+			}
+			return formatOutput(auths)
+		}
+
+		if len(auths) == 0 {
+			fmt.Printf("No authorizations found for %s.\n", email)
+			fmt.Println()
+			fmt.Println("To grant access, use: bluectl operator grant <email> <tenant> <ca> <devices>")
+			return nil
+		}
+
+		fmt.Printf("Authorizations for %s:\n\n", email)
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "CA\tDEVICES\tCREATED\tEXPIRES")
+		for _, auth := range auths {
+			caNames := strings.Join(auth.CANames, ", ")
+			devices := formatDeviceSelector(auth.DeviceNames)
+			expires := "-"
+			if auth.ExpiresAt != nil {
+				expires = *auth.ExpiresAt
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", caNames, devices, auth.CreatedAt, expires)
+		}
+		w.Flush()
 		return nil
 	},
+}
+
+// formatDeviceSelector formats device names for display.
+// Returns "all devices" for ["all"], or comma-separated names otherwise.
+func formatDeviceSelector(deviceNames []string) string {
+	if len(deviceNames) == 0 {
+		return "-"
+	}
+	if len(deviceNames) == 1 && deviceNames[0] == "all" {
+		return "all devices"
+	}
+	return strings.Join(deviceNames, ", ")
 }
 
 var operatorRevokeCmd = &cobra.Command{

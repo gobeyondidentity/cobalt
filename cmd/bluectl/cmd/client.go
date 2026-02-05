@@ -1029,6 +1029,7 @@ type authorizationResponse struct {
 	DeviceNames []string `json:"device_names"`
 	CreatedAt   string   `json:"created_at"`
 	CreatedBy   string   `json:"created_by"`
+	ExpiresAt   *string  `json:"expires_at,omitempty"`
 }
 
 // GrantAuthorization creates an authorization for an operator to access CAs and devices.
@@ -1068,6 +1069,32 @@ func (c *NexusClient) GrantAuthorization(ctx context.Context, email, tenantID st
 	}
 
 	return &auth, nil
+}
+
+// GetOperatorAuthorizations retrieves all authorizations for an operator by their ID.
+func (c *NexusClient) GetOperatorAuthorizations(ctx context.Context, operatorID string) ([]authorizationResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/authorizations?operator_id="+operatorID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var auths []authorizationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&auths); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return auths, nil
 }
 
 // ----- Role Management Methods -----
