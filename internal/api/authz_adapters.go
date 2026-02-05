@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/gobeyondidentity/cobalt/pkg/attestation"
 	"github.com/gobeyondidentity/cobalt/pkg/authz"
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
@@ -309,4 +311,128 @@ func (l *StoreAttestationLookup) GetAttestationStatus(ctx context.Context, dpuID
 	default:
 		return authz.AttestationUnavailable, nil
 	}
+}
+
+// AutoRefreshAttestationLookup retrieves attestation status with automatic refresh.
+// When status is unavailable or stale, it attempts to refresh attestation from the DPU
+// before returning the status. This solves the chicken-and-egg problem where new DPUs
+// have no attestation data, causing Cedar policy to block credential:push before the
+// handler can trigger a refresh.
+type AutoRefreshAttestationLookup struct {
+	store  *store.Store
+	gate   *attestation.Gate
+	logger *slog.Logger
+}
+
+// NewAutoRefreshAttestationLookup creates an attestation lookup that auto-refreshes.
+func NewAutoRefreshAttestationLookup(s *store.Store, g *attestation.Gate) *AutoRefreshAttestationLookup {
+	return &AutoRefreshAttestationLookup{
+		store:  s,
+		gate:   g,
+		logger: slog.Default(),
+	}
+}
+
+// WithLogger sets a custom logger for the auto-refresh lookup.
+func (l *AutoRefreshAttestationLookup) WithLogger(logger *slog.Logger) *AutoRefreshAttestationLookup {
+	l.logger = logger
+	return l
+}
+
+// GetAttestationStatus returns the current attestation status for a DPU.
+// If the status is unavailable or stale, it attempts to refresh attestation
+// from the DPU before returning the result.
+func (l *AutoRefreshAttestationLookup) GetAttestationStatus(ctx context.Context, dpuID string) (authz.AttestationStatus, error) {
+	// Look up the DPU to get its full details
+	dpu, err := l.store.Get(dpuID)
+	if err != nil || dpu == nil {
+		// DPU not found, can't refresh
+		return authz.AttestationUnavailable, nil
+	}
+
+	// Get current attestation status from store
+	att, err := l.store.GetAttestation(dpu.Name)
+	if err != nil {
+		att = nil // Treat as unavailable
+	}
+
+	// Determine current status
+	var currentStatus authz.AttestationStatus
+	if att == nil {
+		currentStatus = authz.AttestationUnavailable
+	} else {
+		switch att.Status {
+		case store.AttestationStatusVerified:
+			// Check freshness
+			if att.Age() <= l.gate.FreshnessWindow {
+				return authz.AttestationVerified, nil
+			}
+			currentStatus = authz.AttestationStale
+		case store.AttestationStatusStale:
+			currentStatus = authz.AttestationStale
+		case store.AttestationStatusFailed:
+			// Failed attestation cannot be auto-refreshed
+			return authz.AttestationFailed, nil
+		default:
+			currentStatus = authz.AttestationUnavailable
+		}
+	}
+
+	// If status is unavailable or stale, attempt auto-refresh
+	if currentStatus == authz.AttestationUnavailable || currentStatus == authz.AttestationStale {
+		l.logger.Info("auto-refreshing attestation for policy check",
+			"dpu_id", dpuID,
+			"dpu_name", dpu.Name,
+			"current_status", string(currentStatus),
+		)
+
+		decision, refreshed, err := l.gate.CanDistributeWithAutoRefresh(
+			ctx,
+			dpu,
+			"authz:middleware", // Trigger source
+			"system",           // Triggered by (middleware doesn't know the operator yet)
+		)
+		if err != nil {
+			l.logger.Error("attestation auto-refresh failed",
+				"dpu_id", dpuID,
+				"error", err,
+			)
+			return authz.AttestationUnavailable, nil
+		}
+
+		if refreshed {
+			l.logger.Info("attestation auto-refresh completed",
+				"dpu_id", dpuID,
+				"dpu_name", dpu.Name,
+				"allowed", decision.Allowed,
+				"reason", decision.Reason,
+			)
+		}
+
+		// Map the decision to attestation status
+		if decision.Allowed {
+			return authz.AttestationVerified, nil
+		}
+
+		// Check the reason to determine the actual status
+		if decision.IsAttestationFailed() {
+			return authz.AttestationFailed, nil
+		}
+
+		// Refresh attempted but still not verified
+		if decision.Attestation != nil {
+			switch decision.Attestation.Status {
+			case store.AttestationStatusVerified:
+				return authz.AttestationVerified, nil
+			case store.AttestationStatusStale:
+				return authz.AttestationStale, nil
+			case store.AttestationStatusFailed:
+				return authz.AttestationFailed, nil
+			}
+		}
+
+		return authz.AttestationUnavailable, nil
+	}
+
+	return currentStatus, nil
 }
