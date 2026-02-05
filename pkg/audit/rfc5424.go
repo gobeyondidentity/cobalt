@@ -56,7 +56,7 @@ const timestampFormat = "2006-01-02T15:04:05.000Z"
 // Returns the formatted bytes. Does not append a newline.
 func FormatMessage(m Message) []byte {
 	var b strings.Builder
-	b.Grow(384)
+	b.Grow(384) // typical RFC 5424 audit message is ~300 bytes; 384 avoids reallocation
 
 	// PRI and VERSION
 	fmt.Fprintf(&b, "<%d>1", int(m.Facility)*8+int(m.Severity))

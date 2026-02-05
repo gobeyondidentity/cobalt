@@ -8,6 +8,11 @@ import (
 // ClientIP extracts the client IP address from an HTTP request.
 // It checks X-Forwarded-For first (taking only the first entry in the chain),
 // then X-Real-IP, and falls back to RemoteAddr with port stripped.
+//
+// Trust model: This function trusts X-Forwarded-For as set by the reverse proxy
+// infrastructure. It is used for audit logging only, not access control decisions.
+// Deployments must ensure XFF is set by a trusted proxy (and not spoofable by
+// clients) for the audit trail to be meaningful.
 func ClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header (may contain multiple comma-separated IPs)
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {

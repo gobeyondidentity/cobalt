@@ -1,6 +1,9 @@
 package audit
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 // Severity represents syslog severity levels per RFC 5424.
 type Severity int
@@ -103,7 +106,7 @@ func NewAuthSuccess(actorID, ip, method, path, requestID string, latencyMS int64
 		Details: map[string]string{
 			"method":     method,
 			"path":       path,
-			"latency_ms": formatInt(latencyMS),
+			"latency_ms": strconv.FormatInt(latencyMS, 10),
 		},
 	}
 }
@@ -258,25 +261,3 @@ func NewBootstrapComplete(actorID, ip, kid, requestID string) Event {
 	}
 }
 
-// formatInt converts an int64 to its string representation.
-func formatInt(n int64) string {
-	if n == 0 {
-		return "0"
-	}
-	buf := make([]byte, 0, 20)
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	for n > 0 {
-		buf = append(buf, byte('0'+n%10))
-		n /= 10
-	}
-	if neg {
-		buf = append(buf, '-')
-	}
-	for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
-		buf[i], buf[j] = buf[j], buf[i]
-	}
-	return string(buf)
-}
