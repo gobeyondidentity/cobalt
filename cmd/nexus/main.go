@@ -80,9 +80,22 @@ func main() {
 		log.Fatalf("Failed to initialize bootstrap: %v", err)
 	}
 
+	// Initialize audit logging (StoreAuditLogger + SyslogAuditLogger)
+	storeAudit := authz.NewStoreAuditLogger(&auditStoreAdapter{s: db})
+	var auditLogger authz.AuditLogger = storeAudit
+	syslogAudit, syslogErr := audit.NewSyslogWriter(audit.SyslogConfig{AppName: "nexus"})
+	if syslogErr != nil {
+		slog.Warn("syslog unavailable, audit will use SQLite only", "error", syslogErr)
+	} else {
+		auditLogger = authz.NewMultiAuditLogger(storeAudit, syslogAudit)
+		defer syslogAudit.Close()
+		log.Printf("Syslog audit writer initialized (RFC 5424)")
+	}
+
 	// Create API server with configuration
 	server := api.NewServerWithConfig(db, api.ServerConfig{
 		AttestationStaleAfter: staleAfter,
+		AuditEmitter:         syslogAudit,
 	})
 
 	// Set up HTTP server
@@ -102,18 +115,6 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpop.WithLogger(logger))
-
-	// Initialize audit logging (StoreAuditLogger + SyslogAuditLogger)
-	storeAudit := authz.NewStoreAuditLogger(&auditStoreAdapter{s: db})
-	var auditLogger authz.AuditLogger = storeAudit
-	syslogAudit, syslogErr := audit.NewSyslogWriter(audit.SyslogConfig{AppName: "nexus"})
-	if syslogErr != nil {
-		slog.Warn("syslog unavailable, audit will use SQLite only", "error", syslogErr)
-	} else {
-		auditLogger = authz.NewMultiAuditLogger(storeAudit, syslogAudit)
-		defer syslogAudit.Close()
-		log.Printf("Syslog audit writer initialized (RFC 5424)")
-	}
 
 	// Initialize Cedar authorization middleware
 	authorizer, err := authz.NewAuthorizer(authz.Config{Logger: logger, AuditLogger: auditLogger})

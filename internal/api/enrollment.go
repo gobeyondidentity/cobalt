@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
@@ -57,6 +58,7 @@ func (s *Server) handleEnrollInit(w http.ResponseWriter, r *http.Request) {
 	inviteSvc := store.NewInviteService(s.store)
 	inviteCode, err := inviteSvc.ValidateInviteCode(req.Code)
 	if err != nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "invalid_invite_code", "km", ""))
 		writeEnrollmentErrorFromError(w, r, http.StatusUnauthorized, err)
 		return
 	}
@@ -144,12 +146,14 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 	// GetKeyMakerByFingerprint returns error "keymaker not found" if not found
 	existingKM, err := s.store.GetKeyMakerByFingerprint(fingerprint)
 	if err == nil && existingKM != nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "key_exists", "km", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
 	// Also check admin_keys table for duplicate fingerprints
 	existingAdminKey, err := s.store.GetAdminKeyByFingerprint(fingerprint)
 	if err == nil && existingAdminKey != nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "key_exists", "km", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
@@ -209,7 +213,7 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 		// Log but don't fail - enrollment succeeded
 	}
 
-	// Audit log entry
+	// Audit log entry (SQLite)
 	s.store.InsertAuditEntry(&store.AuditEntry{
 		Timestamp: time.Now(),
 		Action:    "enroll.operator.complete",
@@ -224,6 +228,9 @@ func (s *Server) handleOperatorEnrollComplete(w http.ResponseWriter, r *http.Req
 			"role":           inviteCode.Role,
 		},
 	})
+
+	// Audit event (syslog)
+	s.emitAuditEvent(audit.NewEnrollComplete(keymakerID, getClientIP(r), "km", keymakerID, ""))
 
 	// Get tenant name for response
 	var tenantName string

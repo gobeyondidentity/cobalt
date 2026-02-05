@@ -180,9 +180,9 @@ func TestNewAuthFailure(t *testing.T) {
 
 func TestNewEnrollComplete(t *testing.T) {
 	t.Parallel()
-	t.Log("Verifying NewEnrollComplete sets correct type and severity")
+	t.Log("Verifying NewEnrollComplete sets correct type, severity, and identity fields")
 
-	e := NewEnrollComplete("km_new", "10.0.0.2", "req-3")
+	e := NewEnrollComplete("km_new", "10.0.0.2", "km", "km_new", "req-3")
 
 	if e.Type != EventEnrollComplete {
 		t.Errorf("Type = %q, want %q", e.Type, EventEnrollComplete)
@@ -193,13 +193,19 @@ func TestNewEnrollComplete(t *testing.T) {
 	if e.ActorID != "km_new" {
 		t.Errorf("ActorID = %q, want %q", e.ActorID, "km_new")
 	}
+	if e.Details["identity_type"] != "km" {
+		t.Errorf("Details[identity_type] = %q, want %q", e.Details["identity_type"], "km")
+	}
+	if e.Details["kid"] != "km_new" {
+		t.Errorf("Details[kid] = %q, want %q", e.Details["kid"], "km_new")
+	}
 }
 
 func TestNewEnrollFailure(t *testing.T) {
 	t.Parallel()
-	t.Log("Verifying NewEnrollFailure sets correct type and reason (no ActorID)")
+	t.Log("Verifying NewEnrollFailure sets correct type, reason, and identity_type (no ActorID)")
 
-	e := NewEnrollFailure("10.0.0.3", "invalid_invite_code", "req-4")
+	e := NewEnrollFailure("10.0.0.3", "invalid_invite_code", "km", "req-4")
 
 	if e.Type != EventEnrollFailure {
 		t.Errorf("Type = %q, want %q", e.Type, EventEnrollFailure)
@@ -212,6 +218,9 @@ func TestNewEnrollFailure(t *testing.T) {
 	}
 	if e.Details["reason"] != "invalid_invite_code" {
 		t.Errorf("Details[reason] = %q, want %q", e.Details["reason"], "invalid_invite_code")
+	}
+	if e.Details["identity_type"] != "km" {
+		t.Errorf("Details[identity_type] = %q, want %q", e.Details["identity_type"], "km")
 	}
 }
 
@@ -305,9 +314,9 @@ func TestNewAttestationBypass(t *testing.T) {
 
 func TestNewBootstrapComplete(t *testing.T) {
 	t.Parallel()
-	t.Log("Verifying NewBootstrapComplete uses NOTICE severity")
+	t.Log("Verifying NewBootstrapComplete uses NOTICE severity and sets admin identity_type")
 
-	e := NewBootstrapComplete("adm_first", "10.0.0.9", "req-10")
+	e := NewBootstrapComplete("adm_first", "10.0.0.9", "adm_first", "req-10")
 
 	if e.Type != EventBootstrapComplete {
 		t.Errorf("Type = %q, want %q", e.Type, EventBootstrapComplete)
@@ -318,6 +327,12 @@ func TestNewBootstrapComplete(t *testing.T) {
 	if e.ActorID != "adm_first" {
 		t.Errorf("ActorID = %q, want %q", e.ActorID, "adm_first")
 	}
+	if e.Details["identity_type"] != "admin" {
+		t.Errorf("Details[identity_type] = %q, want %q", e.Details["identity_type"], "admin")
+	}
+	if e.Details["kid"] != "adm_first" {
+		t.Errorf("Details[kid] = %q, want %q", e.Details["kid"], "adm_first")
+	}
 }
 
 func TestAllHelpers_SetTimestamp(t *testing.T) {
@@ -327,14 +342,14 @@ func TestAllHelpers_SetTimestamp(t *testing.T) {
 	events := []Event{
 		NewAuthSuccess("a", "1.2.3.4", "GET", "/", "r", 0),
 		NewAuthFailure("a", "1.2.3.4", "bad", "GET", "/", "r"),
-		NewEnrollComplete("a", "1.2.3.4", "r"),
-		NewEnrollFailure("1.2.3.4", "bad", "r"),
+		NewEnrollComplete("a", "1.2.3.4", "km", "a", "r"),
+		NewEnrollFailure("1.2.3.4", "bad", "km", "r"),
 		NewLifecycleRevoke("a", "1.2.3.4", "k", "r"),
 		NewLifecycleSuspend("a", "1.2.3.4", "o", "r"),
 		NewLifecycleUnsuspend("a", "1.2.3.4", "o", "r"),
 		NewLifecycleDecommission("a", "1.2.3.4", "d", "r"),
 		NewAttestationBypass("a", "1.2.3.4", "d", "reason", "r"),
-		NewBootstrapComplete("a", "1.2.3.4", "r"),
+		NewBootstrapComplete("a", "1.2.3.4", "a", "r"),
 	}
 
 	for _, e := range events {
@@ -351,14 +366,14 @@ func TestAllHelpers_SeverityMatchesMapping(t *testing.T) {
 	events := []Event{
 		NewAuthSuccess("a", "1.2.3.4", "GET", "/", "r", 0),
 		NewAuthFailure("a", "1.2.3.4", "bad", "GET", "/", "r"),
-		NewEnrollComplete("a", "1.2.3.4", "r"),
-		NewEnrollFailure("1.2.3.4", "bad", "r"),
+		NewEnrollComplete("a", "1.2.3.4", "km", "a", "r"),
+		NewEnrollFailure("1.2.3.4", "bad", "km", "r"),
 		NewLifecycleRevoke("a", "1.2.3.4", "k", "r"),
 		NewLifecycleSuspend("a", "1.2.3.4", "o", "r"),
 		NewLifecycleUnsuspend("a", "1.2.3.4", "o", "r"),
 		NewLifecycleDecommission("a", "1.2.3.4", "d", "r"),
 		NewAttestationBypass("a", "1.2.3.4", "d", "reason", "r"),
-		NewBootstrapComplete("a", "1.2.3.4", "r"),
+		NewBootstrapComplete("a", "1.2.3.4", "a", "r"),
 	}
 
 	for _, e := range events {

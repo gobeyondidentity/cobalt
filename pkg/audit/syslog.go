@@ -120,11 +120,14 @@ func (w *SyslogAuditLogger) LogDecision(_ context.Context, entry authz.AuthzAudi
 }
 
 // Emit converts an audit Event to an RFC 5424 message and writes it to the
-// syslog socket. Implements EventEmitter for authentication events.
+// syslog socket. Implements EventEmitter for authentication and enrollment events.
 func (w *SyslogAuditLogger) Emit(ev Event) error {
-	params := []SDParam{
-		{Name: "actor_id", Value: ev.ActorID},
-		{Name: "ip", Value: ev.IP},
+	params := make([]SDParam, 0, 6)
+	if ev.ActorID != "" {
+		params = append(params, SDParam{Name: "actor_id", Value: ev.ActorID})
+	}
+	if ev.IP != "" {
+		params = append(params, SDParam{Name: "ip", Value: ev.IP})
 	}
 	if ev.RequestID != "" {
 		params = append(params, SDParam{Name: "request_id", Value: ev.RequestID})

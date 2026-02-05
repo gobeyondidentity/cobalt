@@ -126,7 +126,8 @@ func NewAuthFailure(actorID, ip, reason, method, path, requestID string) Event {
 }
 
 // NewEnrollComplete creates an enroll.complete event for successful enrollments.
-func NewEnrollComplete(actorID, ip, requestID string) Event {
+// identityType is one of: km, dpu, sentry, admin. kid is the new key/identity ID.
+func NewEnrollComplete(actorID, ip, identityType, kid, requestID string) Event {
 	return Event{
 		Type:      EventEnrollComplete,
 		Severity:  SeverityNotice,
@@ -134,12 +135,16 @@ func NewEnrollComplete(actorID, ip, requestID string) Event {
 		ActorID:   actorID,
 		IP:        ip,
 		RequestID: requestID,
-		Details:   map[string]string{},
+		Details: map[string]string{
+			"identity_type": identityType,
+			"kid":           kid,
+		},
 	}
 }
 
 // NewEnrollFailure creates an enroll.failure event for failed enrollment attempts.
-func NewEnrollFailure(ip, reason, requestID string) Event {
+// identityType is one of: km, dpu, sentry, admin (or empty if unknown).
+func NewEnrollFailure(ip, reason, identityType, requestID string) Event {
 	return Event{
 		Type:      EventEnrollFailure,
 		Severity:  SeverityWarning,
@@ -147,7 +152,8 @@ func NewEnrollFailure(ip, reason, requestID string) Event {
 		IP:        ip,
 		RequestID: requestID,
 		Details: map[string]string{
-			"reason": reason,
+			"reason":        reason,
+			"identity_type": identityType,
 		},
 	}
 }
@@ -229,7 +235,8 @@ func NewAttestationBypass(actorID, ip, dpuID, bypassReason, requestID string) Ev
 }
 
 // NewBootstrapComplete creates a bootstrap.complete event for first admin enrollment.
-func NewBootstrapComplete(actorID, ip, requestID string) Event {
+// kid is the new admin identity ID.
+func NewBootstrapComplete(actorID, ip, kid, requestID string) Event {
 	return Event{
 		Type:      EventBootstrapComplete,
 		Severity:  SeverityNotice,
@@ -237,7 +244,10 @@ func NewBootstrapComplete(actorID, ip, requestID string) Event {
 		ActorID:   actorID,
 		IP:        ip,
 		RequestID: requestID,
-		Details:   map[string]string{},
+		Details: map[string]string{
+			"identity_type": "admin",
+			"kid":           kid,
+		},
 	}
 }
 

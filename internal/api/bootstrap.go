@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
@@ -64,6 +65,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hasAdmin {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "already_enrolled", "admin", ""))
 		writeEnrollmentError(w, enrollment.ErrAlreadyEnrolled())
 		return
 	}
@@ -83,6 +85,7 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 
 	// Check if window has expired
 	if time.Since(state.WindowOpenedAt) > BootstrapWindowDuration {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "window_closed", "admin", ""))
 		writeEnrollmentError(w, enrollment.ErrWindowClosed())
 		return
 	}
@@ -175,6 +178,7 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if session == nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "invalid_session", "", ""))
 		writeEnrollmentError(w, enrollment.ErrInvalidSession(req.EnrollmentID))
 		return
 	}
@@ -183,6 +187,7 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 	if time.Now().After(session.ExpiresAt) {
 		// Delete expired session
 		s.store.DeleteEnrollmentSession(req.EnrollmentID)
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "challenge_expired", sessionIdentityType(session.SessionType), ""))
 		writeEnrollmentError(w, enrollment.ErrChallengeExpired())
 		return
 	}
@@ -216,6 +221,7 @@ func (s *Server) handleEnrollComplete(w http.ResponseWriter, r *http.Request) {
 	// Verify Ed25519 signature
 	pubKey := ed25519.PublicKey(pubKeyBytes)
 	if !ed25519.Verify(pubKey, challengeBytes, signatureBytes) {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "invalid_signature", sessionIdentityType(session.SessionType), ""))
 		writeEnrollmentError(w, enrollment.ErrInvalidSignature())
 		return
 	}
@@ -298,7 +304,7 @@ func (s *Server) handleBootstrapEnrollComplete(w http.ResponseWriter, r *http.Re
 		// Log but don't fail - enrollment succeeded
 	}
 
-	// Audit log
+	// Audit log (SQLite)
 	s.store.InsertAuditEntry(&store.AuditEntry{
 		Timestamp: time.Now(),
 		Action:    "bootstrap.complete",
@@ -310,12 +316,29 @@ func (s *Server) handleBootstrapEnrollComplete(w http.ResponseWriter, r *http.Re
 		},
 	})
 
+	// Audit event (syslog)
+	s.emitAuditEvent(audit.NewBootstrapComplete(adminID, getClientIP(r), adminID, ""))
+
 	// Return response
 	resp := EnrollCompleteResponse{
 		ID:          adminID,
 		Fingerprint: fingerprint,
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// sessionIdentityType maps an enrollment session type to the audit identity_type field.
+func sessionIdentityType(sessionType string) string {
+	switch sessionType {
+	case "bootstrap":
+		return "admin"
+	case "operator":
+		return "km"
+	case "dpu":
+		return "dpu"
+	default:
+		return sessionType
+	}
 }
 
 // writeEnrollmentError writes an enrollment error response in the standard format.

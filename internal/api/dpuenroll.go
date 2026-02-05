@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
@@ -50,18 +51,21 @@ func (s *Server) handleDPUEnrollInit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dpu == nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "dpu_not_registered", "dpu", ""))
 		writeError(w, r, http.StatusNotFound, "DPU not registered")
 		return
 	}
 
 	// Validate DPU status is 'pending'
 	if dpu.Status != "pending" {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "already_enrolled", "dpu", ""))
 		writeError(w, r, http.StatusConflict, "DPU already enrolled or decommissioned")
 		return
 	}
 
 	// Validate enrollment_expires_at > now
 	if dpu.EnrollmentExpiresAt == nil || time.Now().After(*dpu.EnrollmentExpiresAt) {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "expired", "dpu", ""))
 		writeEnrollmentError(w, enrollment.ErrExpiredCode())
 		return
 	}
@@ -134,6 +138,7 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 	// Check fingerprint uniqueness across all enrolled DPUs
 	existingDPU, err := s.store.GetDPUByFingerprint(fingerprint)
 	if err == nil && existingDPU != nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "key_exists", "dpu", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
@@ -141,11 +146,13 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 	// Also check keymakers and admin_keys tables for duplicate fingerprints
 	existingKM, err := s.store.GetKeyMakerByFingerprint(fingerprint)
 	if err == nil && existingKM != nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "key_exists", "dpu", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
 	existingAdminKey, err := s.store.GetAdminKeyByFingerprint(fingerprint)
 	if err == nil && existingAdminKey != nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(getClientIP(r), "key_exists", "dpu", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
@@ -164,7 +171,7 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 		// Log but don't fail - enrollment succeeded
 	}
 
-	// Audit log entry
+	// Audit log entry (SQLite)
 	s.store.InsertAuditEntry(&store.AuditEntry{
 		Timestamp: time.Now(),
 		Action:    "enroll.dpu.complete",
@@ -178,6 +185,9 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 			"serial_number": dpu.SerialNumber,
 		},
 	})
+
+	// Audit event (syslog)
+	s.emitAuditEvent(audit.NewEnrollComplete(dpuIdentityID, getClientIP(r), "dpu", dpuIdentityID, ""))
 
 	// Return response
 	resp := EnrollCompleteResponse{
