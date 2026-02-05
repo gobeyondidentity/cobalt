@@ -18,7 +18,7 @@ func init() {
 	operatorCmd.AddCommand(operatorInviteCmd)
 	operatorCmd.AddCommand(operatorListCmd)
 	operatorCmd.AddCommand(operatorSuspendCmd)
-	operatorCmd.AddCommand(operatorActivateCmd)
+	operatorCmd.AddCommand(operatorUnsuspendCmd)
 	operatorCmd.AddCommand(operatorGrantCmd)
 	operatorCmd.AddCommand(operatorAuthorizationsCmd)
 	operatorCmd.AddCommand(operatorRevokeCmd)
@@ -237,13 +237,14 @@ Examples:
 	},
 }
 
-var operatorActivateCmd = &cobra.Command{
-	Use:   "activate <email>",
-	Short: "Activate a suspended operator",
-	Long: `Activate an operator who was previously suspended or pending.
+var operatorUnsuspendCmd = &cobra.Command{
+	Use:     "unsuspend <email>",
+	Aliases: []string{"activate"},
+	Short:   "Unsuspend a suspended operator",
+	Long: `Unsuspend an operator who was previously suspended.
 
 Examples:
-  bluectl operator activate marcus@acme.com`,
+  bluectl operator unsuspend marcus@acme.com`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
@@ -273,7 +274,7 @@ Examples:
 			return err
 		}
 
-		fmt.Printf("Operator %s activated.\n", email)
+		fmt.Printf("Operator %s unsuspended.\n", email)
 		return nil
 	},
 }

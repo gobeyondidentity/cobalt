@@ -43,12 +43,12 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 	// CA names for each scenario phase
 	caBeforeSuspend := fmt.Sprintf("ca-before-suspend-%s", testID)
 	caAfterSuspend := fmt.Sprintf("ca-after-suspend-%s", testID)
-	caAfterActivate := fmt.Sprintf("ca-after-activate-%s", testID)
+	caAfterUnsuspend := fmt.Sprintf("ca-after-unsuspend-%s", testID)
 
 	// CA paths on qa-host
 	caBeforeSuspendPath := fmt.Sprintf("/etc/ssh/trusted-user-ca-keys.d/%s.pub", caBeforeSuspend)
 	caAfterSuspendPath := fmt.Sprintf("/etc/ssh/trusted-user-ca-keys.d/%s.pub", caAfterSuspend)
-	caAfterActivatePath := fmt.Sprintf("/etc/ssh/trusted-user-ca-keys.d/%s.pub", caAfterActivate)
+	caAfterUnsuspendPath := fmt.Sprintf("/etc/ssh/trusted-user-ca-keys.d/%s.pub", caAfterUnsuspend)
 
 	// Cleanup on exit
 	t.Cleanup(func() {
@@ -66,7 +66,7 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		// Clean up test CA files on qa-host
 		cfg.multipassExec(cleanupCtx, cfg.HostVM, "sudo", "rm", "-f", caBeforeSuspendPath)
 		cfg.multipassExec(cleanupCtx, cfg.HostVM, "sudo", "rm", "-f", caAfterSuspendPath)
-		cfg.multipassExec(cleanupCtx, cfg.HostVM, "sudo", "rm", "-f", caAfterActivatePath)
+		cfg.multipassExec(cleanupCtx, cfg.HostVM, "sudo", "rm", "-f", caAfterUnsuspendPath)
 	})
 
 	// Get VM IPs
@@ -331,51 +331,51 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 	})
 
 	// =========================================================================
-	// SCENARIO 2: Activation restores access
+	// SCENARIO 2: Unsuspend restores access
 	// =========================================================================
-	t.Run("Scenario2_ActivationRestoresAccess", func(t *testing.T) {
-		// Step 1: Activate the operator
-		logStep(t, 1, "Activating operator...")
-		activateOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-			"operator", "activate", operatorEmail, "--server", "http://localhost:18080")
+	t.Run("Scenario2_UnsuspendRestoresAccess", func(t *testing.T) {
+		// Step 1: Unsuspend the operator
+		logStep(t, 1, "Unsuspending operator...")
+		unsuspendOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
+			"operator", "unsuspend", operatorEmail, "--server", "http://localhost:18080")
 		if err != nil {
-			t.Fatalf("bluectl operator activate failed: %v\nOutput: %s", err, activateOutput)
+			t.Fatalf("bluectl operator unsuspend failed: %v\nOutput: %s", err, unsuspendOutput)
 		}
-		if !strings.Contains(activateOutput, "activated") {
-			t.Fatalf("Activate command did not confirm activation. Output:\n%s", activateOutput)
+		if !strings.Contains(unsuspendOutput, "unsuspended") {
+			t.Fatalf("Unsuspend command did not confirm unsuspend. Output:\n%s", unsuspendOutput)
 		}
-		logOK(t, fmt.Sprintf("Operator activated: %s", operatorEmail))
+		logOK(t, fmt.Sprintf("Operator unsuspended: %s", operatorEmail))
 
-		// Step 2: Create a new CA for post-activation test
-		logStep(t, 2, "Creating new SSH CA for post-activation test...")
+		// Step 2: Create a new CA for post-unsuspend test
+		logStep(t, 2, "Creating new SSH CA for post-unsuspend test...")
 		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
-			"ssh-ca", "create", caAfterActivate)
+			"ssh-ca", "create", caAfterUnsuspend)
 		if err != nil {
 			t.Fatalf("km ssh-ca create failed: %v", err)
 		}
-		logOK(t, fmt.Sprintf("Created SSH CA '%s'", caAfterActivate))
+		logOK(t, fmt.Sprintf("Created SSH CA '%s'", caAfterUnsuspend))
 
 		// Grant permission for the new CA
 		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-			"operator", "grant", operatorEmail, tenantName, caAfterActivate, dpuName, "--server", "http://localhost:18080")
+			"operator", "grant", operatorEmail, tenantName, caAfterUnsuspend, dpuName, "--server", "http://localhost:18080")
 		if err != nil {
 			t.Fatalf("bluectl operator grant failed: %v", err)
 		}
 		logOK(t, "Granted operator access to new CA")
 
-		// Step 3: Attempt km push AFTER activation (should succeed)
-		logStep(t, 3, "Attempting km push AFTER activation (should succeed)...")
+		// Step 3: Attempt km push AFTER unsuspend (should succeed)
+		logStep(t, 3, "Attempting km push AFTER unsuspend (should succeed)...")
 		pushOutput, err := cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/km",
-			"push", "ssh-ca", caAfterActivate, dpuName, "--force")
+			"push", "ssh-ca", caAfterUnsuspend, dpuName, "--force")
 		if err != nil {
 			nexusLog, _ := cfg.multipassExec(ctx, cfg.ServerVM, "tail", "-30", "/tmp/nexus.log")
 			fmt.Printf("    Nexus log:\n%s\n", nexusLog)
-			t.Fatalf("km push should work after activation: %v\nOutput: %s", err, pushOutput)
+			t.Fatalf("km push should work after unsuspend: %v\nOutput: %s", err, pushOutput)
 		}
 		if !strings.Contains(pushOutput, "CA installed") {
 			t.Fatalf("km push did not indicate success. Output:\n%s", pushOutput)
 		}
-		logOK(t, "Push succeeded after activation")
+		logOK(t, "Push succeeded after unsuspend")
 
 		// Step 4: Wait for credential file to appear with content (async delivery)
 		logStep(t, 4, "Verifying credential was installed...")
@@ -385,7 +385,7 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		var credContent string
 
 		for time.Now().Before(deadline) {
-			output, err := cfg.multipassExec(ctx, cfg.HostVM, "cat", caAfterActivatePath)
+			output, err := cfg.multipassExec(ctx, cfg.HostVM, "cat", caAfterUnsuspendPath)
 			if err == nil {
 				credContent = strings.TrimSpace(output)
 				if strings.HasPrefix(credContent, "ssh-") || strings.HasPrefix(credContent, "ecdsa-") {
@@ -398,11 +398,11 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		if credContent == "" || (!strings.HasPrefix(credContent, "ssh-") && !strings.HasPrefix(credContent, "ecdsa-")) {
 			sentryLog, _ := cfg.multipassExec(ctx, cfg.HostVM, "cat", "/tmp/sentry.log")
 			fmt.Printf("    Sentry log:\n%s\n", sentryLog)
-			t.Fatalf("Credential file not found or invalid at %s after %v", caAfterActivatePath, credentialTimeout)
+			t.Fatalf("Credential file not found or invalid at %s after %v", caAfterUnsuspendPath, credentialTimeout)
 		}
-		logOK(t, fmt.Sprintf("Credential file exists: %s", caAfterActivatePath))
+		logOK(t, fmt.Sprintf("Credential file exists: %s", caAfterUnsuspendPath))
 
-		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Scenario 2 - Activation restores access"))
+		fmt.Printf("\n%s\n", color.New(color.FgGreen, color.Bold).Sprint("PASSED: Scenario 2 - Unsuspend restores access"))
 	})
 
 	// =========================================================================
@@ -443,14 +443,14 @@ func TestOperatorSuspensionE2E(t *testing.T) {
 		}
 		logOK(t, fmt.Sprintf("Operator shows suspended status: %s", truncateForLog(operatorLine, 100)))
 
-		// Step 3: Activate operator
-		logStep(t, 3, "Activating operator...")
+		// Step 3: Unsuspend operator
+		logStep(t, 3, "Unsuspending operator...")
 		_, err = cfg.multipassExec(ctx, cfg.ServerVM, "/home/ubuntu/bluectl",
-			"operator", "activate", operatorEmail, "--server", "http://localhost:18080")
+			"operator", "unsuspend", operatorEmail, "--server", "http://localhost:18080")
 		if err != nil {
-			t.Fatalf("bluectl operator activate failed: %v", err)
+			t.Fatalf("bluectl operator unsuspend failed: %v", err)
 		}
-		logOK(t, "Operator activated")
+		logOK(t, "Operator unsuspended")
 
 		// Step 4: Verify active status in list
 		logStep(t, 4, "Verifying active status in operator list...")
