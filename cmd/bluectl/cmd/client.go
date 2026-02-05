@@ -596,6 +596,11 @@ type updateOperatorStatusRequest struct {
 	Status string `json:"status"`
 }
 
+// suspendOperatorRequest is the request body for suspending/unsuspending an operator.
+type suspendOperatorRequest struct {
+	Reason string `json:"reason"`
+}
+
 // ListOperators retrieves all operators from the Nexus server, optionally filtered by tenant and/or status.
 func (c *NexusClient) ListOperators(ctx context.Context, tenant, status string) ([]operatorResponse, error) {
 	url := c.baseURL + "/api/v1/operators"
@@ -676,6 +681,68 @@ func (c *NexusClient) UpdateOperatorStatus(ctx context.Context, email, status st
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/v1/operators/"+email+"/status", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// SuspendOperator suspends an operator by ID.
+func (c *NexusClient) SuspendOperator(ctx context.Context, id, reason string) error {
+	reqBody := suspendOperatorRequest{
+		Reason: reason,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/operators/"+id+"/suspend", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// UnsuspendOperator unsuspends an operator by ID.
+func (c *NexusClient) UnsuspendOperator(ctx context.Context, id, reason string) error {
+	reqBody := suspendOperatorRequest{
+		Reason: reason,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/operators/"+id+"/unsuspend", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

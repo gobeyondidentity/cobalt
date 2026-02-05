@@ -35,6 +35,12 @@ func init() {
 
 	// Flags for operator suspend
 	operatorSuspendCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+	operatorSuspendCmd.Flags().String("reason", "", "Reason for suspension (required)")
+	operatorSuspendCmd.MarkFlagRequired("reason")
+
+	// Flags for operator unsuspend
+	operatorUnsuspendCmd.Flags().String("reason", "", "Reason for unsuspension (required)")
+	operatorUnsuspendCmd.MarkFlagRequired("reason")
 
 	// Flags for operator revoke
 	operatorRevokeCmd.Flags().String("tenant", "", "Tenant name (required)")
@@ -228,12 +234,13 @@ var operatorSuspendCmd = &cobra.Command{
 authorization checks will fail until reactivated.
 
 Examples:
-  bluectl operator suspend marcus@acme.com
-  bluectl operator suspend marcus@acme.com --yes`,
+  bluectl operator suspend marcus@acme.com --reason "Security investigation"
+  bluectl operator suspend marcus@acme.com --reason "Leave of absence" --yes`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		skipConfirm, _ := cmd.Flags().GetBool("yes")
+		reason, _ := cmd.Flags().GetString("reason")
 
 		serverURL, err := requireServer()
 		if err != nil {
@@ -273,7 +280,7 @@ Examples:
 			}
 		}
 
-		if err := client.UpdateOperatorStatus(cmd.Context(), email, "suspended"); err != nil {
+		if err := client.SuspendOperator(cmd.Context(), op.ID, reason); err != nil {
 			return err
 		}
 
@@ -289,10 +296,11 @@ var operatorUnsuspendCmd = &cobra.Command{
 	Long: `Unsuspend an operator who was previously suspended.
 
 Examples:
-  bluectl operator unsuspend marcus@acme.com`,
+  bluectl operator unsuspend marcus@acme.com --reason "Investigation complete"`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
+		reason, _ := cmd.Flags().GetString("reason")
 
 		serverURL, err := requireServer()
 		if err != nil {
@@ -315,7 +323,7 @@ Examples:
 			return nil
 		}
 
-		if err := client.UpdateOperatorStatus(cmd.Context(), email, "active"); err != nil {
+		if err := client.UnsuspendOperator(cmd.Context(), op.ID, reason); err != nil {
 			return err
 		}
 
