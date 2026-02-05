@@ -649,15 +649,20 @@ Examples:
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
-		yes, _ := cmd.Flags().GetBool("yes")
+		skipConfirm, _ := cmd.Flags().GetBool("yes")
 
-		// Confirm deletion unless --yes/-y is set
-		if !yes {
-			fmt.Printf("Are you sure you want to remove operator '%s'? [y/N]: ", email)
-			var response string
-			fmt.Scanln(&response)
-			response = strings.ToLower(strings.TrimSpace(response))
-			if response != "y" && response != "yes" {
+		if !skipConfirm {
+			fmt.Printf("Remove operator '%s'?\n", email)
+			fmt.Print("Type 'yes' to confirm: ")
+
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read confirmation: %w", err)
+			}
+
+			response = strings.TrimSpace(strings.ToLower(response))
+			if response != "yes" {
 				fmt.Println("Removal cancelled.")
 				return nil
 			}

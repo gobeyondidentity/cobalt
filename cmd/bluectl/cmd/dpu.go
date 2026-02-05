@@ -46,6 +46,7 @@ func init() {
 	// Flags for dpu decommission
 	dpuDecommissionCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	dpuDecommissionCmd.Flags().String("reason", "", "Reason for decommissioning (required)")
+	dpuDecommissionCmd.MarkFlagRequired("reason")
 	dpuDecommissionCmd.Flags().Bool("scrub-credentials", false, "Scrub queued credentials (default: false)")
 
 	// Flags for dpu reactivate
@@ -161,7 +162,7 @@ Examples:
   bluectl dpu add 192.168.1.204 --offline --name bf3-lab  # Skip connectivity check
   bluectl dpu add dpu.example.com                    # Hostname, default port
   bluectl dpu add 10.0.0.50 --port 50052             # Custom port`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		hostArg := args[0]
 		port, _ := cmd.Flags().GetInt("port")
@@ -261,7 +262,7 @@ var dpuRemoveCmd = &cobra.Command{
 Examples:
   bluectl dpu remove bf3-lab
   bluectl dpu remove bf3-lab --yes`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		nameOrID := args[0]
 		skipConfirm, _ := cmd.Flags().GetBool("yes")
@@ -314,7 +315,7 @@ var dpuInfoCmd = &cobra.Command{
 	Use:     "info <name-or-id>",
 	Aliases: []string{"show", "describe"},
 	Short:   "Show DPU system information",
-	Args:    cobra.ExactArgs(1),
+	Args:    ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		serverURL, err := requireServer()
 		if err != nil {
@@ -391,7 +392,7 @@ Use --verbose to see detailed component status.
 Examples:
   bluectl dpu health bf3-lab
   bluectl dpu health bf3-lab --verbose`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: runDPUHealth,
 }
 
@@ -485,7 +486,7 @@ This is an alias for 'bluectl tenant assign <tenant> <dpu>'.
 Examples:
   bluectl dpu assign bf3-lab --tenant "Production"
   bluectl dpu assign bf3-dev --tenant acme`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dpuName := args[0]
 		tenantName, _ := cmd.Flags().GetString("tenant")
@@ -513,7 +514,7 @@ Examples:
   bluectl dpu decommission bf3-lab --reason "Hardware removal"
   bluectl dpu decommission bf3-lab --reason "RMA" --scrub-credentials
   bluectl dpu decommission bf3-lab --reason "Decommissioning" --yes`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		nameOrID := args[0]
 		skipConfirm, _ := cmd.Flags().GetBool("yes")
@@ -544,20 +545,6 @@ func decommissionDPURemote(ctx context.Context, serverURL, nameOrID, reason stri
 	if dpu.Status == "decommissioned" {
 		fmt.Printf("DPU '%s' is already decommissioned.\n", dpu.Name)
 		return nil
-	}
-
-	// Prompt for reason if not provided
-	if reason == "" {
-		fmt.Print("Reason for decommissioning: ")
-		reader := bufio.NewReader(os.Stdin)
-		reason, err = reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read reason: %w", err)
-		}
-		reason = strings.TrimSpace(reason)
-		if reason == "" {
-			return fmt.Errorf("reason is required")
-		}
 	}
 
 	if !skipConfirm {
@@ -618,7 +605,7 @@ proper documentation of the reactivation.
 Examples:
   bluectl dpu reactivate bf3-lab --reason "Hardware returned from RMA repair"
   bluectl dpu reactivate bf3-lab --reason "Reinstalled after maintenance window"`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		nameOrID := args[0]
 		reason, _ := cmd.Flags().GetString("reason")
@@ -646,6 +633,11 @@ func reactivateDPURemote(ctx context.Context, serverURL, nameOrID, reason string
 	// Check if not decommissioned
 	if dpu.Status != "decommissioned" {
 		return fmt.Errorf("DPU '%s' is not decommissioned (status: %s)", dpu.Name, dpu.Status)
+	}
+
+	// Validate reason length before API call
+	if len(reason) < 20 {
+		return fmt.Errorf("reason must be at least 20 characters (got %d)", len(reason))
 	}
 
 	result, err := client.ReactivateDPU(ctx, dpu.ID, reason)

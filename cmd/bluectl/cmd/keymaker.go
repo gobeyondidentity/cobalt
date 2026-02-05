@@ -139,7 +139,7 @@ distribute credentials.
 Examples:
   bluectl keymaker revoke km-abc123
   bluectl keymaker revoke km-abc123 --yes`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id := args[0]
 		skipConfirm, _ := cmd.Flags().GetBool("yes")
