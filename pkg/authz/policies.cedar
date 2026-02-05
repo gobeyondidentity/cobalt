@@ -111,6 +111,24 @@ permit(
     principal == resource
 };
 
+// DPU can register its connected host
+permit(
+    principal is DPU,
+    action == Action::"host:register",
+    resource is DPU
+) when {
+    principal == resource
+};
+
+// Forbid cross-DPU host registration
+forbid(
+    principal is DPU,
+    action == Action::"host:register",
+    resource is DPU
+) when {
+    principal != resource
+};
+
 // ============================================================================
 // ATTESTATION GATE: Blocks based on device attestation status
 // ============================================================================
