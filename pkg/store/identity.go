@@ -1322,3 +1322,163 @@ func (s *Store) scanDPUWithDPoP(row *sql.Row) (*DPU, error) {
 
 	return &dpu, nil
 }
+
+// ----- Filtered List Methods for Admin Endpoints -----
+
+// ListOptions contains options for filtered list queries.
+type ListOptions struct {
+	Status   string // Filter by status (e.g., "active", "suspended", "revoked")
+	TenantID string // Filter by tenant ID
+	Limit    int    // Maximum number of results (0 = no limit)
+	Offset   int    // Number of results to skip
+}
+
+// ListOperatorsFiltered returns operators with optional status and tenant filters.
+// If tenantID is provided, only returns operators who are members of that tenant.
+// Returns operators ordered by email with lifecycle fields populated.
+func (s *Store) ListOperatorsFiltered(opts ListOptions) ([]*Operator, int, error) {
+	// Build query based on filters
+	var query string
+	var countQuery string
+	var args []interface{}
+
+	if opts.TenantID != "" {
+		// Join with operator_tenants to filter by tenant
+		query = `SELECT DISTINCT o.id, o.email, o.display_name, o.status, o.created_at, o.last_login,
+				o.suspended_at, o.suspended_by, o.suspended_reason
+				FROM operators o
+				INNER JOIN operator_tenants ot ON o.id = ot.operator_id
+				WHERE ot.tenant_id = ?`
+		countQuery = `SELECT COUNT(DISTINCT o.id) FROM operators o
+				INNER JOIN operator_tenants ot ON o.id = ot.operator_id
+				WHERE ot.tenant_id = ?`
+		args = append(args, opts.TenantID)
+	} else {
+		query = `SELECT id, email, display_name, status, created_at, last_login,
+				suspended_at, suspended_by, suspended_reason
+				FROM operators WHERE 1=1`
+		countQuery = `SELECT COUNT(*) FROM operators WHERE 1=1`
+	}
+
+	// Add status filter
+	if opts.Status != "" {
+		query += " AND o.status = ?"
+		countQuery += " AND o.status = ?"
+		if opts.TenantID == "" {
+			// Adjust for non-joined query
+			query = strings.Replace(query, "AND o.status", "AND status", 1)
+			countQuery = strings.Replace(countQuery, "AND o.status", "AND status", 1)
+		}
+		args = append(args, opts.Status)
+	}
+
+	// Get total count first
+	var total int
+	err := s.db.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count operators: %w", err)
+	}
+
+	// Add ordering and pagination
+	query += " ORDER BY email"
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+	}
+	if opts.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", opts.Offset)
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list operators: %w", err)
+	}
+	defer rows.Close()
+
+	var operators []*Operator
+	for rows.Next() {
+		op, err := s.scanOperatorRows(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		operators = append(operators, op)
+	}
+	return operators, total, rows.Err()
+}
+
+// ListKeyMakersFiltered returns keymakers with optional status and tenant filters.
+// If tenantID is provided, only returns keymakers for operators who are members of that tenant.
+// Returns keymakers ordered by bound_at DESC with lifecycle fields populated.
+func (s *Store) ListKeyMakersFiltered(opts ListOptions) ([]*KeyMaker, int, error) {
+	// Build query based on filters
+	var query string
+	var countQuery string
+	var args []interface{}
+
+	if opts.TenantID != "" {
+		// Join with operator_tenants to filter by tenant
+		query = `SELECT DISTINCT k.id, k.operator_id, k.name, k.platform, k.secure_element,
+				k.device_fingerprint, k.public_key, k.bound_at, k.last_seen, k.status,
+				k.revoked_at, k.revoked_by, k.revoked_reason
+				FROM keymakers k
+				INNER JOIN operator_tenants ot ON k.operator_id = ot.operator_id
+				WHERE ot.tenant_id = ?`
+		countQuery = `SELECT COUNT(DISTINCT k.id) FROM keymakers k
+				INNER JOIN operator_tenants ot ON k.operator_id = ot.operator_id
+				WHERE ot.tenant_id = ?`
+		args = append(args, opts.TenantID)
+	} else {
+		query = `SELECT id, operator_id, name, platform, secure_element,
+				device_fingerprint, public_key, bound_at, last_seen, status,
+				revoked_at, revoked_by, revoked_reason
+				FROM keymakers WHERE 1=1`
+		countQuery = `SELECT COUNT(*) FROM keymakers WHERE 1=1`
+	}
+
+	// Add status filter
+	if opts.Status != "" {
+		if opts.TenantID != "" {
+			query += " AND k.status = ?"
+			countQuery += " AND k.status = ?"
+		} else {
+			query += " AND status = ?"
+			countQuery += " AND status = ?"
+		}
+		args = append(args, opts.Status)
+	}
+
+	// Get total count first
+	var total int
+	err := s.db.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count keymakers: %w", err)
+	}
+
+	// Add ordering and pagination
+	if opts.TenantID != "" {
+		query += " ORDER BY k.bound_at DESC"
+	} else {
+		query += " ORDER BY bound_at DESC"
+	}
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+	}
+	if opts.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", opts.Offset)
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list keymakers: %w", err)
+	}
+	defer rows.Close()
+
+	var keymakers []*KeyMaker
+	for rows.Next() {
+		km, err := s.scanKeyMakerRows(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		keymakers = append(keymakers, km)
+	}
+	return keymakers, total, rows.Err()
+}

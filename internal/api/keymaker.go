@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -376,13 +377,24 @@ func (s *Server) handleInviteOperator(w http.ResponseWriter, r *http.Request) {
 
 // operatorResponse is the response for operator endpoints.
 type operatorResponse struct {
-	ID         string `json:"id"`
-	Email      string `json:"email"`
-	TenantID   string `json:"tenant_id,omitempty"`
-	TenantName string `json:"tenant_name,omitempty"`
-	Role       string `json:"role,omitempty"`
-	Status     string `json:"status"`
-	CreatedAt  string `json:"created_at"`
+	ID              string  `json:"id"`
+	Email           string  `json:"email"`
+	TenantID        string  `json:"tenant_id,omitempty"`
+	TenantName      string  `json:"tenant_name,omitempty"`
+	Role            string  `json:"role,omitempty"`
+	Status          string  `json:"status"`
+	CreatedAt       string  `json:"created_at"`
+	SuspendedAt     *string `json:"suspended_at,omitempty"`
+	SuspendedBy     *string `json:"suspended_by,omitempty"`
+	SuspendedReason *string `json:"suspended_reason,omitempty"`
+}
+
+// OperatorListResponse is the paginated response for listing operators.
+type OperatorListResponse struct {
+	Operators []operatorResponse `json:"operators"`
+	Total     int                `json:"total"`
+	Limit     int                `json:"limit"`
+	Offset    int                `json:"offset"`
 }
 
 // updateOperatorStatusRequest is the request body for updating operator status.
@@ -391,16 +403,27 @@ type updateOperatorStatusRequest struct {
 }
 
 func operatorToResponse(op *store.Operator) operatorResponse {
-	return operatorResponse{
+	resp := operatorResponse{
 		ID:        op.ID,
 		Email:     op.Email,
 		Status:    op.Status,
 		CreatedAt: op.CreatedAt.Format(time.RFC3339),
 	}
+	if op.SuspendedAt != nil {
+		t := op.SuspendedAt.Format(time.RFC3339)
+		resp.SuspendedAt = &t
+	}
+	if op.SuspendedBy != nil {
+		resp.SuspendedBy = op.SuspendedBy
+	}
+	if op.SuspendedReason != nil {
+		resp.SuspendedReason = op.SuspendedReason
+	}
+	return resp
 }
 
 func operatorToResponseWithTenant(op *store.Operator, tenantID, tenantName, role string) operatorResponse {
-	return operatorResponse{
+	resp := operatorResponse{
 		ID:         op.ID,
 		Email:      op.Email,
 		TenantID:   tenantID,
@@ -409,66 +432,167 @@ func operatorToResponseWithTenant(op *store.Operator, tenantID, tenantName, role
 		Status:     op.Status,
 		CreatedAt:  op.CreatedAt.Format(time.RFC3339),
 	}
+	if op.SuspendedAt != nil {
+		t := op.SuspendedAt.Format(time.RFC3339)
+		resp.SuspendedAt = &t
+	}
+	if op.SuspendedBy != nil {
+		resp.SuspendedBy = op.SuspendedBy
+	}
+	if op.SuspendedReason != nil {
+		resp.SuspendedReason = op.SuspendedReason
+	}
+	return resp
 }
 
 // handleListOperators handles GET /api/v1/operators
-// Supports optional ?tenant=<name> query parameter to filter by tenant.
-// Returns one row per operator-tenant membership.
+// Supports query parameters:
+//   - ?status=<status> - Filter by status (active, suspended, pending)
+//   - ?tenant=<name> - Filter by tenant name
+//   - ?limit=<n> - Maximum number of results (default: 100)
+//   - ?offset=<n> - Number of results to skip (default: 0)
+//
+// Authorization:
+//   - tenant:admin sees only operators in their tenant
+//   - super:admin sees all operators
 func (s *Server) handleListOperators(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
 	tenantName := r.URL.Query().Get("tenant")
+	statusFilter := r.URL.Query().Get("status")
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
 
-	var result []operatorResponse
+	// Validate status filter
+	validStatuses := map[string]bool{"active": true, "suspended": true, "pending": true, "": true}
+	if !validStatuses[statusFilter] {
+		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid status: %s (must be 'active', 'suspended', or 'pending')", statusFilter))
+		return
+	}
+
+	// Parse pagination with defaults
+	limit := 100
+	offset := 0
+	if limitStr != "" {
+		l, err := strconv.Atoi(limitStr)
+		if err != nil || l < 0 {
+			writeError(w, r, http.StatusBadRequest, "invalid limit: must be a non-negative integer")
+			return
+		}
+		limit = l
+	}
+	if offsetStr != "" {
+		o, err := strconv.Atoi(offsetStr)
+		if err != nil || o < 0 {
+			writeError(w, r, http.StatusBadRequest, "invalid offset: must be a non-negative integer")
+			return
+		}
+		offset = o
+	}
+
+	// Get caller identity for authorization
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	// Determine authorized tenant(s)
+	isSuperAdmin, err := s.store.IsSuperAdmin(identity.OperatorID)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to check permissions")
+		return
+	}
+
+	var authorizedTenantID string
 
 	if tenantName != "" {
-		// Filtered by tenant: return operators for that specific tenant
+		// Explicit tenant filter requested
 		tenant, terr := s.store.GetTenant(tenantName)
 		if terr != nil {
 			writeError(w, r, http.StatusNotFound, fmt.Sprintf("tenant not found: %s", tenantName))
 			return
 		}
-		operators, err := s.store.ListOperatorsByTenant(tenant.ID)
-		if err != nil {
-			writeError(w, r, http.StatusInternalServerError, "Failed to list operators: "+err.Error())
-			return
-		}
-		result = make([]operatorResponse, 0, len(operators))
-		for _, op := range operators {
-			// Get role for this operator-tenant membership
-			role, err := s.store.GetOperatorRole(op.ID, tenant.ID)
-			if err != nil {
-				role = "" // Should not happen, but degrade gracefully
+		// Check if caller can access this tenant
+		if !isSuperAdmin {
+			callerRole, err := s.store.GetOperatorRole(identity.OperatorID, tenant.ID)
+			if err != nil || (callerRole != "tenant:admin" && callerRole != "super:admin") {
+				writeError(w, r, http.StatusForbidden, "not authorized to list operators in this tenant")
+				return
 			}
-			result = append(result, operatorToResponseWithTenant(op, tenant.ID, tenant.Name, role))
 		}
-	} else {
-		// No filter: return all operators with all their tenant memberships
-		operators, err := s.store.ListOperators()
+		authorizedTenantID = tenant.ID
+	} else if !isSuperAdmin {
+		// No tenant filter and not super:admin: limit to caller's admin tenant(s)
+		callerTenants, err := s.store.GetOperatorTenants(identity.OperatorID)
 		if err != nil {
-			writeError(w, r, http.StatusInternalServerError, "Failed to list operators: "+err.Error())
+			writeInternalError(w, r, err, "failed to get caller tenants")
 			return
 		}
-		result = make([]operatorResponse, 0)
-		for _, op := range operators {
-			// Get all tenant memberships for this operator
+		// Find first tenant where caller is admin
+		for _, t := range callerTenants {
+			if t.Role == "tenant:admin" || t.Role == "super:admin" {
+				authorizedTenantID = t.TenantID
+				break
+			}
+		}
+		if authorizedTenantID == "" {
+			writeError(w, r, http.StatusForbidden, "not authorized to list operators (must be tenant:admin or super:admin)")
+			return
+		}
+	}
+	// If super:admin with no tenant filter, authorizedTenantID stays empty (sees all)
+
+	// Build list options
+	opts := store.ListOptions{
+		Status:   statusFilter,
+		TenantID: authorizedTenantID,
+		Limit:    limit,
+		Offset:   offset,
+	}
+
+	// Fetch operators
+	operators, total, err := s.store.ListOperatorsFiltered(opts)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to list operators")
+		return
+	}
+
+	// Build response with tenant info
+	result := make([]operatorResponse, 0, len(operators))
+	for _, op := range operators {
+		if authorizedTenantID != "" {
+			// Single tenant filter: include tenant info
+			tenant, err := s.store.GetTenant(authorizedTenantID)
+			tenantNameStr := authorizedTenantID
+			if err == nil {
+				tenantNameStr = tenant.Name
+			}
+			role, _ := s.store.GetOperatorRole(op.ID, authorizedTenantID)
+			result = append(result, operatorToResponseWithTenant(op, authorizedTenantID, tenantNameStr, role))
+		} else {
+			// Super-admin view without tenant filter: include all tenant memberships
 			memberships, err := s.store.GetOperatorTenants(op.ID)
 			if err != nil || len(memberships) == 0 {
-				// Operator with no tenant memberships: include without tenant info
 				result = append(result, operatorToResponse(op))
 				continue
 			}
-			// One row per tenant membership
 			for _, m := range memberships {
 				tenant, err := s.store.GetTenant(m.TenantID)
-				tenantName := ""
+				tName := m.TenantID
 				if err == nil {
-					tenantName = tenant.Name
+					tName = tenant.Name
 				}
-				result = append(result, operatorToResponseWithTenant(op, m.TenantID, tenantName, m.Role))
+				result = append(result, operatorToResponseWithTenant(op, m.TenantID, tName, m.Role))
 			}
 		}
 	}
 
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, OperatorListResponse{
+		Operators: result,
+		Total:     total,
+		Limit:     limit,
+		Offset:    offset,
+	})
 }
 
 // handleGetOperator handles GET /api/v1/operators/{email}
@@ -1033,6 +1157,17 @@ type KeyMakerResponse struct {
 	BoundAt       string  `json:"bound_at"`
 	LastSeen      *string `json:"last_seen,omitempty"`
 	Status        string  `json:"status"`
+	RevokedAt     *string `json:"revoked_at,omitempty"`
+	RevokedBy     *string `json:"revoked_by,omitempty"`
+	RevokedReason *string `json:"revoked_reason,omitempty"`
+}
+
+// KeyMakerListResponse is the paginated response for listing keymakers.
+type KeyMakerListResponse struct {
+	KeyMakers []KeyMakerResponse `json:"keymakers"`
+	Total     int                `json:"total"`
+	Limit     int                `json:"limit"`
+	Offset    int                `json:"offset"`
 }
 
 // keymakerToResponse converts a store.KeyMaker to an API response.
@@ -1059,25 +1194,164 @@ func (s *Server) keymakerToResponse(km *store.KeyMaker) KeyMakerResponse {
 		t := km.LastSeen.Format(time.RFC3339)
 		resp.LastSeen = &t
 	}
+	if km.RevokedAt != nil {
+		t := km.RevokedAt.Format(time.RFC3339)
+		resp.RevokedAt = &t
+	}
+	if km.RevokedBy != nil {
+		resp.RevokedBy = km.RevokedBy
+	}
+	if km.RevokedReason != nil {
+		resp.RevokedReason = km.RevokedReason
+	}
 	return resp
 }
 
 // handleListKeyMakers handles GET /api/v1/keymakers
-// Supports optional ?operator_id= query parameter to filter by operator.
+// Supports query parameters:
+//   - ?status=<status> - Filter by status (active, revoked)
+//   - ?tenant=<id> - Filter by tenant ID
+//   - ?operator_id=<id> - Filter by operator ID (legacy, still supported)
+//   - ?limit=<n> - Maximum number of results (default: 100)
+//   - ?offset=<n> - Number of results to skip (default: 0)
+//
+// Authorization:
+//   - tenant:admin sees only keymakers for operators in their tenant
+//   - super:admin sees all keymakers
 func (s *Server) handleListKeyMakers(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	tenantID := r.URL.Query().Get("tenant")
+	statusFilter := r.URL.Query().Get("status")
 	operatorID := r.URL.Query().Get("operator_id")
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
 
-	var keymakers []*store.KeyMaker
-	var err error
-
-	if operatorID != "" {
-		keymakers, err = s.store.ListKeyMakersByOperator(operatorID)
-	} else {
-		keymakers, err = s.store.ListAllKeyMakers()
+	// Validate status filter
+	validStatuses := map[string]bool{"active": true, "revoked": true, "": true}
+	if !validStatuses[statusFilter] {
+		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid status: %s (must be 'active' or 'revoked')", statusFilter))
+		return
 	}
 
+	// Parse pagination with defaults
+	limit := 100
+	offset := 0
+	if limitStr != "" {
+		l, err := strconv.Atoi(limitStr)
+		if err != nil || l < 0 {
+			writeError(w, r, http.StatusBadRequest, "invalid limit: must be a non-negative integer")
+			return
+		}
+		limit = l
+	}
+	if offsetStr != "" {
+		o, err := strconv.Atoi(offsetStr)
+		if err != nil || o < 0 {
+			writeError(w, r, http.StatusBadRequest, "invalid offset: must be a non-negative integer")
+			return
+		}
+		offset = o
+	}
+
+	// Get caller identity for authorization
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	// Determine authorized tenant
+	isSuperAdmin, err := s.store.IsSuperAdmin(identity.OperatorID)
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to list keymakers: "+err.Error())
+		writeInternalError(w, r, err, "failed to check permissions")
+		return
+	}
+
+	var authorizedTenantID string
+
+	if tenantID != "" {
+		// Explicit tenant filter requested
+		_, terr := s.store.GetTenant(tenantID)
+		if terr != nil {
+			writeError(w, r, http.StatusNotFound, fmt.Sprintf("tenant not found: %s", tenantID))
+			return
+		}
+		// Check if caller can access this tenant
+		if !isSuperAdmin {
+			callerRole, err := s.store.GetOperatorRole(identity.OperatorID, tenantID)
+			if err != nil || (callerRole != "tenant:admin" && callerRole != "super:admin") {
+				writeError(w, r, http.StatusForbidden, "not authorized to list keymakers in this tenant")
+				return
+			}
+		}
+		authorizedTenantID = tenantID
+	} else if !isSuperAdmin {
+		// No tenant filter and not super:admin: limit to caller's admin tenant(s)
+		callerTenants, err := s.store.GetOperatorTenants(identity.OperatorID)
+		if err != nil {
+			writeInternalError(w, r, err, "failed to get caller tenants")
+			return
+		}
+		// Find first tenant where caller is admin
+		for _, t := range callerTenants {
+			if t.Role == "tenant:admin" || t.Role == "super:admin" {
+				authorizedTenantID = t.TenantID
+				break
+			}
+		}
+		if authorizedTenantID == "" {
+			writeError(w, r, http.StatusForbidden, "not authorized to list keymakers (must be tenant:admin or super:admin)")
+			return
+		}
+	}
+	// If super:admin with no tenant filter, authorizedTenantID stays empty (sees all)
+
+	// Legacy support: if operator_id provided and caller has access, use it
+	// (this maintains backward compatibility while still enforcing auth)
+	if operatorID != "" && authorizedTenantID == "" {
+		// Super-admin can filter by any operator
+		keymakers, err := s.store.ListKeyMakersByOperator(operatorID)
+		if err != nil {
+			writeInternalError(w, r, err, "failed to list keymakers")
+			return
+		}
+		result := make([]KeyMakerResponse, 0, len(keymakers))
+		for _, km := range keymakers {
+			if statusFilter == "" || km.Status == statusFilter {
+				result = append(result, s.keymakerToResponse(km))
+			}
+		}
+		// Apply pagination manually for legacy operator_id filter
+		total := len(result)
+		start := offset
+		end := offset + limit
+		if start > total {
+			start = total
+		}
+		if end > total {
+			end = total
+		}
+		writeJSON(w, http.StatusOK, KeyMakerListResponse{
+			KeyMakers: result[start:end],
+			Total:     total,
+			Limit:     limit,
+			Offset:    offset,
+		})
+		return
+	}
+
+	// Build list options
+	opts := store.ListOptions{
+		Status:   statusFilter,
+		TenantID: authorizedTenantID,
+		Limit:    limit,
+		Offset:   offset,
+	}
+
+	// Fetch keymakers
+	keymakers, total, err := s.store.ListKeyMakersFiltered(opts)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to list keymakers")
 		return
 	}
 
@@ -1086,7 +1360,12 @@ func (s *Server) handleListKeyMakers(w http.ResponseWriter, r *http.Request) {
 		result = append(result, s.keymakerToResponse(km))
 	}
 
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, KeyMakerListResponse{
+		KeyMakers: result,
+		Total:     total,
+		Limit:     limit,
+		Offset:    offset,
+	})
 }
 
 // handleGetKeyMaker handles GET /api/v1/keymakers/{id}

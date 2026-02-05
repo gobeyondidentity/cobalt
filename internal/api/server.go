@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gobeyondidentity/cobalt/internal/version"
 	"github.com/gobeyondidentity/cobalt/pkg/attestation"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/gobeyondidentity/cobalt/pkg/grpcclient"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
@@ -182,14 +184,25 @@ type addDPURequest struct {
 }
 
 type dpuResponse struct {
-	ID       string            `json:"id"`
-	Name     string            `json:"name"`
-	Host     string            `json:"host"`
-	Port     int               `json:"port"`
-	Status   string            `json:"status"`
-	LastSeen *string           `json:"lastSeen,omitempty"`
-	TenantID *string           `json:"tenantId,omitempty"`
-	Labels   map[string]string `json:"labels,omitempty"`
+	ID                   string            `json:"id"`
+	Name                 string            `json:"name"`
+	Host                 string            `json:"host"`
+	Port                 int               `json:"port"`
+	Status               string            `json:"status"`
+	LastSeen             *string           `json:"lastSeen,omitempty"`
+	TenantID             *string           `json:"tenantId,omitempty"`
+	Labels               map[string]string `json:"labels,omitempty"`
+	DecommissionedAt     *string           `json:"decommissioned_at,omitempty"`
+	DecommissionedBy     *string           `json:"decommissioned_by,omitempty"`
+	DecommissionedReason *string           `json:"decommissioned_reason,omitempty"`
+}
+
+// DPUListResponse is the paginated response for listing DPUs.
+type DPUListResponse struct {
+	DPUs   []dpuResponse `json:"dpus"`
+	Total  int           `json:"total"`
+	Limit  int           `json:"limit"`
+	Offset int           `json:"offset"`
 }
 
 func dpuToResponse(d *store.DPU) dpuResponse {
@@ -205,6 +218,16 @@ func dpuToResponse(d *store.DPU) dpuResponse {
 	if d.LastSeen != nil {
 		t := d.LastSeen.Format(time.RFC3339)
 		resp.LastSeen = &t
+	}
+	if d.DecommissionedAt != nil {
+		t := d.DecommissionedAt.Format(time.RFC3339)
+		resp.DecommissionedAt = &t
+	}
+	if d.DecommissionedBy != nil {
+		resp.DecommissionedBy = d.DecommissionedBy
+	}
+	if d.DecommissionedReason != nil {
+		resp.DecommissionedReason = d.DecommissionedReason
 	}
 	return resp
 }
@@ -253,10 +276,115 @@ func tenantToResponse(t *store.Tenant, dpuCount int) tenantResponse {
 	}
 }
 
+// handleListDPUs handles GET /api/v1/dpus
+// Supports query parameters:
+//   - ?status=<status> - Filter by status (pending, active, decommissioned)
+//   - ?tenant=<id> - Filter by tenant ID
+//   - ?limit=<n> - Maximum number of results (default: 100)
+//   - ?offset=<n> - Number of results to skip (default: 0)
+//
+// Authorization:
+//   - tenant:admin sees only DPUs in their tenant
+//   - super:admin sees all DPUs
 func (s *Server) handleListDPUs(w http.ResponseWriter, r *http.Request) {
-	dpus, err := s.store.List()
+	// Parse query parameters
+	tenantID := r.URL.Query().Get("tenant")
+	statusFilter := r.URL.Query().Get("status")
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+
+	// Validate status filter
+	validStatuses := map[string]bool{"pending": true, "active": true, "decommissioned": true, "": true}
+	if !validStatuses[statusFilter] {
+		writeError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid status: %s (must be 'pending', 'active', or 'decommissioned')", statusFilter))
+		return
+	}
+
+	// Parse pagination with defaults
+	limit := 100
+	offset := 0
+	if limitStr != "" {
+		l, err := strconv.Atoi(limitStr)
+		if err != nil || l < 0 {
+			writeError(w, r, http.StatusBadRequest, "invalid limit: must be a non-negative integer")
+			return
+		}
+		limit = l
+	}
+	if offsetStr != "" {
+		o, err := strconv.Atoi(offsetStr)
+		if err != nil || o < 0 {
+			writeError(w, r, http.StatusBadRequest, "invalid offset: must be a non-negative integer")
+			return
+		}
+		offset = o
+	}
+
+	// Get caller identity for authorization
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	// Determine authorized tenant
+	isSuperAdmin, err := s.store.IsSuperAdmin(identity.OperatorID)
 	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "Failed to list DPUs: "+err.Error())
+		writeInternalError(w, r, err, "failed to check permissions")
+		return
+	}
+
+	var authorizedTenantID string
+
+	if tenantID != "" {
+		// Explicit tenant filter requested
+		_, terr := s.store.GetTenant(tenantID)
+		if terr != nil {
+			writeError(w, r, http.StatusNotFound, fmt.Sprintf("tenant not found: %s", tenantID))
+			return
+		}
+		// Check if caller can access this tenant
+		if !isSuperAdmin {
+			callerRole, err := s.store.GetOperatorRole(identity.OperatorID, tenantID)
+			if err != nil || (callerRole != "tenant:admin" && callerRole != "super:admin") {
+				writeError(w, r, http.StatusForbidden, "not authorized to list DPUs in this tenant")
+				return
+			}
+		}
+		authorizedTenantID = tenantID
+	} else if !isSuperAdmin {
+		// No tenant filter and not super:admin: limit to caller's admin tenant(s)
+		callerTenants, err := s.store.GetOperatorTenants(identity.OperatorID)
+		if err != nil {
+			writeInternalError(w, r, err, "failed to get caller tenants")
+			return
+		}
+		// Find first tenant where caller is admin
+		for _, t := range callerTenants {
+			if t.Role == "tenant:admin" || t.Role == "super:admin" {
+				authorizedTenantID = t.TenantID
+				break
+			}
+		}
+		if authorizedTenantID == "" {
+			writeError(w, r, http.StatusForbidden, "not authorized to list DPUs (must be tenant:admin or super:admin)")
+			return
+		}
+	}
+	// If super:admin with no tenant filter, authorizedTenantID stays empty (sees all)
+
+	// Build list options
+	opts := store.ListOptions{
+		Status:   statusFilter,
+		TenantID: authorizedTenantID,
+		Limit:    limit,
+		Offset:   offset,
+	}
+
+	// Fetch DPUs
+	dpus, total, err := s.store.ListDPUsFiltered(opts)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to list DPUs")
 		return
 	}
 
@@ -265,7 +393,12 @@ func (s *Server) handleListDPUs(w http.ResponseWriter, r *http.Request) {
 		result = append(result, dpuToResponse(d))
 	}
 
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, DPUListResponse{
+		DPUs:   result,
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+	})
 }
 
 func (s *Server) handleAddDPU(w http.ResponseWriter, r *http.Request) {

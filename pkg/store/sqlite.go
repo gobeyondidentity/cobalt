@@ -723,6 +723,64 @@ func (s *Store) List() ([]*DPU, error) {
 	return dpus, rows.Err()
 }
 
+// ListDPUsFiltered returns DPUs with optional status and tenant filters.
+// Returns DPUs ordered by name with lifecycle fields populated.
+func (s *Store) ListDPUsFiltered(opts ListOptions) ([]*DPU, int, error) {
+	// Build query based on filters
+	query := `SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels,
+			public_key, kid, key_fingerprint, enrollment_expires_at, serial_number,
+			decommissioned_at, decommissioned_by, decommissioned_reason
+			FROM dpus WHERE 1=1`
+	countQuery := `SELECT COUNT(*) FROM dpus WHERE 1=1`
+	var args []interface{}
+
+	// Add tenant filter
+	if opts.TenantID != "" {
+		query += " AND tenant_id = ?"
+		countQuery += " AND tenant_id = ?"
+		args = append(args, opts.TenantID)
+	}
+
+	// Add status filter
+	if opts.Status != "" {
+		query += " AND status = ?"
+		countQuery += " AND status = ?"
+		args = append(args, opts.Status)
+	}
+
+	// Get total count first
+	var total int
+	err := s.db.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count DPUs: %w", err)
+	}
+
+	// Add ordering and pagination
+	query += " ORDER BY name"
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+	}
+	if opts.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", opts.Offset)
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list DPUs: %w", err)
+	}
+	defer rows.Close()
+
+	var dpus []*DPU
+	for rows.Next() {
+		dpu, err := s.scanDPURows(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		dpus = append(dpus, dpu)
+	}
+	return dpus, total, rows.Err()
+}
+
 // UpdateStatus updates the status and last_seen time for a DPU.
 func (s *Store) UpdateStatus(idOrName, status string) error {
 	now := time.Now().Unix()

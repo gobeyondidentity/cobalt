@@ -162,9 +162,15 @@ func TestProtectedEndpointAcceptsValidProof(t *testing.T) {
 
 	_, handler, s := setupAuthTestServer(t)
 
-	// Create operator and keymaker with DPoP binding
-	t.Log("Creating operator for keymaker enrollment")
-	err := s.CreateOperator("op_test1", "operator@example.com", "Test Operator")
+	// Create tenant and operator with admin role
+	t.Log("Creating tenant and operator for keymaker enrollment")
+	err := s.AddTenant("tenant_test", "test", "", "", nil)
+	require.NoError(t, err)
+	err = s.CreateOperator("op_test1", "operator@example.com", "Test Operator")
+	require.NoError(t, err)
+	err = s.UpdateOperatorStatus("op_test1", "active")
+	require.NoError(t, err)
+	err = s.AddOperatorToTenant("op_test1", "tenant_test", "tenant:admin")
 	require.NoError(t, err)
 
 	// Generate key pair
@@ -216,9 +222,15 @@ func TestProtectedEndpointAcceptsAdminProof(t *testing.T) {
 
 	_, handler, s := setupAuthTestServer(t)
 
-	// Create operator and admin key
-	t.Log("Creating operator for admin key")
-	err := s.CreateOperator("op_admin1", "admin@example.com", "Admin Operator")
+	// Create tenant and operator with super:admin role
+	t.Log("Creating tenant and operator for admin key")
+	err := s.AddTenant("tenant_admin", "admin-tenant", "", "", nil)
+	require.NoError(t, err)
+	err = s.CreateOperator("op_admin1", "admin@example.com", "Admin Operator")
+	require.NoError(t, err)
+	err = s.UpdateOperatorStatus("op_admin1", "active")
+	require.NoError(t, err)
+	err = s.AddOperatorToTenant("op_admin1", "tenant_admin", "super:admin")
 	require.NoError(t, err)
 
 	// Generate key pair
@@ -534,12 +546,16 @@ func TestOperatorSuspensionCascadesToKeyMaker(t *testing.T) {
 
 	_, handler, s := setupAuthTestServer(t)
 
-	// Create operator with active status
-	t.Log("Creating active operator")
-	err := s.CreateOperator("op_cascade_test", "cascade@example.com", "Cascade Test Op")
+	// Create tenant and operator with admin role
+	t.Log("Creating tenant and active operator with admin role")
+	err := s.AddTenant("tenant_cascade", "cascade-tenant", "", "", nil)
 	require.NoError(t, err)
-	// Activate the operator
+	err = s.CreateOperator("op_cascade_test", "cascade@example.com", "Cascade Test Op")
+	require.NoError(t, err)
+	// Activate the operator and add to tenant with admin privileges
 	err = s.UpdateOperatorStatus("op_cascade_test", "active")
+	require.NoError(t, err)
+	err = s.AddOperatorToTenant("op_cascade_test", "tenant_cascade", "tenant:admin")
 	require.NoError(t, err)
 
 	// Create an ACTIVE keymaker for this operator
@@ -614,10 +630,14 @@ func TestOperatorSuspensionImmediateEffect(t *testing.T) {
 
 	_, handler, s := setupAuthTestServer(t)
 
-	// Create and activate operator
-	err := s.CreateOperator("op_immediate", "immediate@example.com", "Immediate Test")
+	// Create tenant and operator with admin role
+	err := s.AddTenant("tenant_immediate", "immediate-tenant", "", "", nil)
+	require.NoError(t, err)
+	err = s.CreateOperator("op_immediate", "immediate@example.com", "Immediate Test")
 	require.NoError(t, err)
 	err = s.UpdateOperatorStatus("op_immediate", "active")
+	require.NoError(t, err)
+	err = s.AddOperatorToTenant("op_immediate", "tenant_immediate", "tenant:admin")
 	require.NoError(t, err)
 
 	// Create active KeyMaker
