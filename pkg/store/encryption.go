@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 )
 
 const (
@@ -27,19 +28,20 @@ var (
 	ErrNoEncryptionKey = errors.New("SECURE_INFRA_KEY environment variable not set")
 	// insecureModeAllowed controls whether plaintext storage is permitted.
 	// Default is false; must be explicitly enabled via SetInsecureMode(true).
-	insecureModeAllowed bool
+	// Uses atomic.Bool for safe concurrent access from parallel tests.
+	insecureModeAllowed atomic.Bool
 )
 
 // SetInsecureMode enables or disables insecure mode (plaintext key storage).
 // When enabled, encryption functions will return plaintext if no encryption key is set.
 // This should only be used for development/testing.
 func SetInsecureMode(allowed bool) {
-	insecureModeAllowed = allowed
+	insecureModeAllowed.Store(allowed)
 }
 
 // InsecureModeAllowed returns whether insecure mode (plaintext storage) is enabled.
 func InsecureModeAllowed() bool {
-	return insecureModeAllowed
+	return insecureModeAllowed.Load()
 }
 
 // DefaultKeyPath returns the default path for the auto-generated encryption key file,
@@ -129,7 +131,7 @@ func deriveKey() ([]byte, bool) {
 func EncryptPrivateKey(plaintext []byte) ([]byte, error) {
 	key, ok := deriveKey()
 	if !ok {
-		if insecureModeAllowed {
+		if insecureModeAllowed.Load() {
 			return plaintext, nil
 		}
 		return nil, ErrNoEncryptionKey
@@ -164,7 +166,7 @@ func EncryptPrivateKey(plaintext []byte) ([]byte, error) {
 func DecryptPrivateKey(ciphertext []byte) ([]byte, error) {
 	key, ok := deriveKey()
 	if !ok {
-		if insecureModeAllowed {
+		if insecureModeAllowed.Load() {
 			return ciphertext, nil
 		}
 		return nil, ErrNoEncryptionKey

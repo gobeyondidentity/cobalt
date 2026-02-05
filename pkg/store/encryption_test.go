@@ -11,7 +11,7 @@ import (
 func TestSetInsecureMode(t *testing.T) {
 	// Reset state after test
 	defer func() {
-		insecureModeAllowed = false
+		insecureModeAllowed.Store(false)
 	}()
 
 	// Default should be false
@@ -72,7 +72,7 @@ func TestEncryptPrivateKey_NoKey_InsecureModeOff(t *testing.T) {
 
 	// Reset insecure mode
 	defer func() {
-		insecureModeAllowed = false
+		insecureModeAllowed.Store(false)
 	}()
 	SetInsecureMode(false)
 
@@ -107,7 +107,7 @@ func TestEncryptPrivateKey_NoKey_InsecureModeOn(t *testing.T) {
 
 	// Enable insecure mode
 	defer func() {
-		insecureModeAllowed = false
+		insecureModeAllowed.Store(false)
 	}()
 	SetInsecureMode(true)
 
@@ -168,7 +168,7 @@ func TestDecryptPrivateKey_NoKey_InsecureModeOff(t *testing.T) {
 
 	// Reset insecure mode
 	defer func() {
-		insecureModeAllowed = false
+		insecureModeAllowed.Store(false)
 	}()
 	SetInsecureMode(false)
 
@@ -200,7 +200,7 @@ func TestDecryptPrivateKey_NoKey_InsecureModeOn(t *testing.T) {
 
 	// Enable insecure mode
 	defer func() {
-		insecureModeAllowed = false
+		insecureModeAllowed.Store(false)
 	}()
 	SetInsecureMode(true)
 
