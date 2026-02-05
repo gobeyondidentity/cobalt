@@ -25,6 +25,7 @@ func init() {
 	dpuCmd.AddCommand(dpuHealthCmd)
 	dpuCmd.AddCommand(dpuAssignCmd)
 	dpuCmd.AddCommand(dpuDecommissionCmd)
+	dpuCmd.AddCommand(dpuReactivateCmd)
 
 	// Add flags
 	dpuAddCmd.Flags().IntP("port", "p", 18051, "gRPC port")
@@ -46,6 +47,10 @@ func init() {
 	dpuDecommissionCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	dpuDecommissionCmd.Flags().String("reason", "", "Reason for decommissioning (required)")
 	dpuDecommissionCmd.Flags().Bool("scrub-credentials", false, "Scrub queued credentials (default: false)")
+
+	// Flags for dpu reactivate
+	dpuReactivateCmd.Flags().String("reason", "", "Reason for reactivating (required, min 20 chars)")
+	dpuReactivateCmd.MarkFlagRequired("reason")
 }
 
 var dpuCmd = &cobra.Command{
@@ -595,5 +600,73 @@ func decommissionDPURemote(ctx context.Context, serverURL, nameOrID, reason stri
 	fmt.Printf("  Status:               %s\n", result.Status)
 	fmt.Printf("  Decommissioned at:    %s\n", result.DecommissionedAt)
 	fmt.Printf("  Credentials scrubbed: %d\n", result.CredentialsScrubbed)
+	return nil
+}
+
+var dpuReactivateCmd = &cobra.Command{
+	Use:   "reactivate <name-or-id>",
+	Short: "Reactivate a decommissioned DPU",
+	Long: `Reactivate a decommissioned DPU by name or ID. This restores the DPU
+to 'pending' status and creates a new 24-hour enrollment window.
+
+This command is restricted to super:admin only. Tenant admins cannot
+reactivate DPUs. Use this for hardware returning from RMA.
+
+The --reason flag is required and must be at least 20 characters to ensure
+proper documentation of the reactivation.
+
+Examples:
+  bluectl dpu reactivate bf3-lab --reason "Hardware returned from RMA repair"
+  bluectl dpu reactivate bf3-lab --reason "Reinstalled after maintenance window"`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		nameOrID := args[0]
+		reason, _ := cmd.Flags().GetString("reason")
+
+		serverURL, err := requireServer()
+		if err != nil {
+			return err
+		}
+		return reactivateDPURemote(cmd.Context(), serverURL, nameOrID, reason)
+	},
+}
+
+func reactivateDPURemote(ctx context.Context, serverURL, nameOrID, reason string) error {
+	client, err := NewNexusClientWithDPoP(serverURL)
+	if err != nil {
+		return err
+	}
+
+	// Get DPU details first for better error messages
+	dpu, err := client.GetDPU(ctx, nameOrID)
+	if err != nil {
+		return fmt.Errorf("DPU not found: %s", nameOrID)
+	}
+
+	// Check if not decommissioned
+	if dpu.Status != "decommissioned" {
+		return fmt.Errorf("DPU '%s' is not decommissioned (status: %s)", dpu.Name, dpu.Status)
+	}
+
+	result, err := client.ReactivateDPU(ctx, dpu.ID, reason)
+	if err != nil {
+		return fmt.Errorf("failed to reactivate DPU: %w", err)
+	}
+
+	if outputFormat == "json" || outputFormat == "yaml" {
+		return formatOutput(map[string]any{
+			"status": "reactivated",
+			"dpu":    result,
+		})
+	}
+
+	fmt.Printf("DPU reactivated:\n")
+	fmt.Printf("  ID:                  %s\n", result.ID)
+	fmt.Printf("  Status:              %s\n", result.Status)
+	fmt.Printf("  Reactivated at:      %s\n", result.ReactivatedAt)
+	fmt.Printf("  Reactivated by:      %s\n", result.ReactivatedBy)
+	fmt.Printf("  Enrollment expires:  %s\n", result.EnrollmentExpiresAt)
+	fmt.Println()
+	fmt.Println("The DPU can now complete enrollment within the enrollment window.")
 	return nil
 }

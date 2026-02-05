@@ -1998,3 +1998,132 @@ func TestNexusClient_GetOperatorAuthorizations(t *testing.T) {
 		})
 	}
 }
+
+// ----- DPU Reactivate Client Tests -----
+
+func TestNexusClient_ReactivateDPU(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing ReactivateDPU client method")
+
+	tests := []struct {
+		name       string
+		dpuID      string
+		reason     string
+		serverResp ReactivateDPUResponse
+		serverCode int
+		wantErr    bool
+		errContains string
+	}{
+		{
+			name:   "successful reactivate",
+			dpuID:  "dpu_abc123",
+			reason: "Hardware returned from RMA repair",
+			serverResp: ReactivateDPUResponse{
+				ID:                  "dpu_abc123",
+				Status:              "pending",
+				ReactivatedAt:       "2026-02-04T15:04:05Z",
+				ReactivatedBy:       "adm_super123",
+				EnrollmentExpiresAt: "2026-02-05T15:04:05Z",
+			},
+			serverCode: http.StatusOK,
+			wantErr:    false,
+		},
+		{
+			name:        "DPU not found",
+			dpuID:       "dpu_nonexistent",
+			reason:      "Hardware returned from RMA repair",
+			serverCode:  http.StatusNotFound,
+			wantErr:     true,
+			errContains: "DPU not found",
+		},
+		{
+			name:        "DPU not decommissioned",
+			dpuID:       "dpu_active",
+			reason:      "Hardware returned from RMA repair",
+			serverCode:  http.StatusConflict,
+			wantErr:     true,
+			errContains: "not decommissioned",
+		},
+		{
+			name:        "reason too short",
+			dpuID:       "dpu_abc123",
+			reason:      "short",
+			serverCode:  http.StatusBadRequest,
+			wantErr:     true,
+		},
+		{
+			name:        "forbidden for tenant admin",
+			dpuID:       "dpu_abc123",
+			reason:      "Hardware returned from RMA repair",
+			serverCode:  http.StatusForbidden,
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Logf("Received request: %s %s", r.Method, r.URL.Path)
+
+				if r.Method != http.MethodPost {
+					t.Errorf("expected POST, got %s", r.Method)
+				}
+
+				expectedPath := "/api/v1/dpus/" + tt.dpuID + "/reactivate"
+				if r.URL.Path != expectedPath {
+					t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
+				}
+
+				// Verify request body
+				var req reactivateDPURequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("failed to decode request body: %v", err)
+				}
+				if req.Reason != tt.reason {
+					t.Errorf("expected reason %s, got %s", tt.reason, req.Reason)
+				}
+
+				w.WriteHeader(tt.serverCode)
+				if tt.serverCode == http.StatusOK {
+					json.NewEncoder(w).Encode(tt.serverResp)
+				} else {
+					json.NewEncoder(w).Encode(map[string]string{"error": "test error"})
+				}
+			}))
+			defer server.Close()
+
+			client := NewNexusClient(server.URL)
+			resp, err := client.ReactivateDPU(context.Background(), tt.dpuID, tt.reason)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReactivateDPU() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr && tt.errContains != "" {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("expected error containing %q, got %q", tt.errContains, err.Error())
+				}
+				return
+			}
+
+			if !tt.wantErr {
+				if resp.ID != tt.serverResp.ID {
+					t.Errorf("expected ID %s, got %s", tt.serverResp.ID, resp.ID)
+				}
+				if resp.Status != tt.serverResp.Status {
+					t.Errorf("expected Status %s, got %s", tt.serverResp.Status, resp.Status)
+				}
+				if resp.ReactivatedAt != tt.serverResp.ReactivatedAt {
+					t.Errorf("expected ReactivatedAt %s, got %s", tt.serverResp.ReactivatedAt, resp.ReactivatedAt)
+				}
+				if resp.ReactivatedBy != tt.serverResp.ReactivatedBy {
+					t.Errorf("expected ReactivatedBy %s, got %s", tt.serverResp.ReactivatedBy, resp.ReactivatedBy)
+				}
+				if resp.EnrollmentExpiresAt != tt.serverResp.EnrollmentExpiresAt {
+					t.Errorf("expected EnrollmentExpiresAt %s, got %s", tt.serverResp.EnrollmentExpiresAt, resp.EnrollmentExpiresAt)
+				}
+			}
+		})
+	}
+}

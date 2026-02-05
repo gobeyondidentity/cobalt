@@ -1509,3 +1509,63 @@ func (c *NexusClient) DecommissionDPU(ctx context.Context, id, reason string, sc
 
 	return &result, nil
 }
+
+// ----- DPU Reactivate Methods -----
+
+// reactivateDPURequest is the request body for reactivating a decommissioned DPU.
+type reactivateDPURequest struct {
+	Reason string `json:"reason"`
+}
+
+// ReactivateDPUResponse is the response for a successful DPU reactivation.
+type ReactivateDPUResponse struct {
+	ID                  string `json:"id"`
+	Status              string `json:"status"`
+	ReactivatedAt       string `json:"reactivated_at"`
+	ReactivatedBy       string `json:"reactivated_by"`
+	EnrollmentExpiresAt string `json:"enrollment_expires_at"`
+}
+
+// ReactivateDPU reactivates a decommissioned DPU by ID with a reason.
+// This sets status to pending, clears old public key, and creates a 24h enrollment window.
+// Only super:admin can call this endpoint.
+func (c *NexusClient) ReactivateDPU(ctx context.Context, id, reason string) (*ReactivateDPUResponse, error) {
+	reqBody := reactivateDPURequest{
+		Reason: reason,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/dpus/"+id+"/reactivate", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("DPU not found: %s", id)
+	}
+	if resp.StatusCode == http.StatusConflict {
+		return nil, fmt.Errorf("DPU is not decommissioned")
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result ReactivateDPUResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
+}
