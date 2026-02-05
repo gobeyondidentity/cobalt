@@ -902,6 +902,33 @@ func (s *Store) GetDPUBySerial(serial string) (*DPU, error) {
 	return &dpu, nil
 }
 
+// GetDPUByKid retrieves a DPU by its DPoP key identifier.
+// Used for O(1) lookup during DPoP token validation.
+func (s *Store) GetDPUByKid(kid string) (*DPU, error) {
+	row := s.db.QueryRow(
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number, decommissioned_at, decommissioned_by, decommissioned_reason
+		 FROM dpus WHERE kid = ?`,
+		kid,
+	)
+	return s.scanDPU(row)
+}
+
+// GetDPUByFingerprint retrieves a DPU by its key fingerprint.
+// Used for duplicate key detection during DPU enrollment.
+// Returns nil, nil if not found (does not return error for not-found case).
+func (s *Store) GetDPUByFingerprint(fingerprint string) (*DPU, error) {
+	row := s.db.QueryRow(
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number, decommissioned_at, decommissioned_by, decommissioned_reason
+		 FROM dpus WHERE key_fingerprint = ?`,
+		fingerprint,
+	)
+	dpu, err := s.scanDPU(row)
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		return nil, nil
+	}
+	return dpu, err
+}
+
 // SetDPUSerialNumber sets the serial number for a DPU.
 func (s *Store) SetDPUSerialNumber(id, serial string) error {
 	result, err := s.db.Exec(
