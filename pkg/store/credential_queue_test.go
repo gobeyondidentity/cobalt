@@ -171,6 +171,62 @@ func TestCredentialQueue(t *testing.T) {
 	})
 }
 
+func TestQueueCredential_RejectsDecommissionedDPU(t *testing.T) {
+	t.Log("Testing that QueueCredential rejects writes to decommissioned DPUs")
+
+	tmpFile, err := os.CreateTemp("", "queue_guard_test_*.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	store, err := Open(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	defer store.Close()
+
+	t.Log("Creating a DPU in the store")
+	dpuName := "guard-test-dpu"
+	dpuID := "dpu_guard_test"
+	if err := store.Add(dpuID, dpuName, "192.168.1.100", 50051); err != nil {
+		t.Fatalf("failed to create DPU: %v", err)
+	}
+
+	t.Log("Queuing a credential for active DPU should succeed")
+	err = store.QueueCredential(dpuName, "ssh-ca", "prod-ca", []byte("pubkey1"))
+	if err != nil {
+		t.Fatalf("QueueCredential should succeed for active DPU: %v", err)
+	}
+
+	t.Log("Decommissioning the DPU")
+	_, err = store.DecommissionDPUAtomic(dpuID, "adm_test", "Hardware removal")
+	if err != nil {
+		t.Fatalf("failed to decommission DPU: %v", err)
+	}
+
+	t.Log("Queuing a credential for decommissioned DPU should fail")
+	err = store.QueueCredential(dpuName, "ssh-ca", "stage-ca", []byte("pubkey2"))
+	if err == nil {
+		t.Fatal("QueueCredential should reject writes to decommissioned DPU")
+	}
+	if err != ErrDPUDecommissioned {
+		t.Errorf("expected ErrDPUDecommissioned, got: %v", err)
+	}
+
+	t.Log("Verifying only the pre-decommission credential exists (was scrubbed by decommission)")
+	count, err := store.CountQueuedCredentials(dpuName)
+	if err != nil {
+		t.Fatalf("failed to count credentials: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 credentials (scrubbed on decommission), got %d", count)
+	}
+
+	t.Log("QueueCredential guard for decommissioned DPUs works correctly")
+}
+
 func TestUpdateAgentHostByDPU(t *testing.T) {
 	t.Log("Creating temporary database for UpdateAgentHostByDPU tests")
 	tmpFile, err := os.CreateTemp("", "update_agent_host_test_*.db")

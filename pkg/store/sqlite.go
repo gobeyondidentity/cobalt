@@ -1072,10 +1072,10 @@ func (s *Store) ReactivateDPUAtomic(id string, enrollmentExpiresAt time.Time) er
 	return nil
 }
 
-// DecommissionDPUAtomic atomically decommissions a DPU and optionally scrubs its credentials.
+// DecommissionDPUAtomic atomically decommissions a DPU and scrubs its credential queue.
 // Returns ErrAlreadyDecommissioned if the DPU is already decommissioned (for 409 response).
-// Returns the count of credentials scrubbed if scrubCredentials is true.
-func (s *Store) DecommissionDPUAtomic(id, decommissionedBy, reason string, scrubCredentials bool) (int, error) {
+// Returns the count of credentials scrubbed.
+func (s *Store) DecommissionDPUAtomic(id, decommissionedBy, reason string) (int, error) {
 	// Start transaction for atomicity
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -1105,21 +1105,17 @@ func (s *Store) DecommissionDPUAtomic(id, decommissionedBy, reason string, scrub
 		return 0, fmt.Errorf("failed to decommission DPU: %w", err)
 	}
 
-	// Scrub credentials if requested
+	// Always scrub credential queue on decommission
 	var credentialsScrubbed int
-	if scrubCredentials {
-		// Count credentials first
-		err = tx.QueryRow(`SELECT COUNT(*) FROM credential_queue WHERE dpu_name = ?`, name).Scan(&credentialsScrubbed)
-		if err != nil {
-			return 0, fmt.Errorf("failed to count credentials: %w", err)
-		}
+	err = tx.QueryRow(`SELECT COUNT(*) FROM credential_queue WHERE dpu_name = ?`, name).Scan(&credentialsScrubbed)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count credentials: %w", err)
+	}
 
-		// Delete credentials
-		if credentialsScrubbed > 0 {
-			_, err = tx.Exec(`DELETE FROM credential_queue WHERE dpu_name = ?`, name)
-			if err != nil {
-				return 0, fmt.Errorf("failed to scrub credentials: %w", err)
-			}
+	if credentialsScrubbed > 0 {
+		_, err = tx.Exec(`DELETE FROM credential_queue WHERE dpu_name = ?`, name)
+		if err != nil {
+			return 0, fmt.Errorf("failed to scrub credentials: %w", err)
 		}
 	}
 

@@ -47,7 +47,6 @@ func init() {
 	dpuDecommissionCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	dpuDecommissionCmd.Flags().String("reason", "", "Reason for decommissioning (required)")
 	dpuDecommissionCmd.MarkFlagRequired("reason")
-	dpuDecommissionCmd.Flags().Bool("scrub-credentials", false, "Scrub queued credentials (default: false)")
 
 	// Flags for dpu reactivate
 	dpuReactivateCmd.Flags().String("reason", "", "Reason for reactivating (required, min 20 chars)")
@@ -507,29 +506,27 @@ but audit records are preserved. Use this for hardware removal scenarios.
 
 Unlike 'dpu remove' which deletes the record entirely, decommissioning:
   - Blocks all authentication attempts (returns auth.decommissioned)
-  - Optionally scrubs queued credentials
+  - Scrubs all queued credentials
   - Retains audit trail for compliance
 
 Examples:
   bluectl dpu decommission bf3-lab --reason "Hardware removal"
-  bluectl dpu decommission bf3-lab --reason "RMA" --scrub-credentials
   bluectl dpu decommission bf3-lab --reason "Decommissioning" --yes`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		nameOrID := args[0]
 		skipConfirm, _ := cmd.Flags().GetBool("yes")
 		reason, _ := cmd.Flags().GetString("reason")
-		scrubCredentials, _ := cmd.Flags().GetBool("scrub-credentials")
 
 		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-		return decommissionDPURemote(cmd.Context(), serverURL, nameOrID, reason, skipConfirm, scrubCredentials)
+		return decommissionDPURemote(cmd.Context(), serverURL, nameOrID, reason, skipConfirm)
 	},
 }
 
-func decommissionDPURemote(ctx context.Context, serverURL, nameOrID, reason string, skipConfirm, scrubCredentials bool) error {
+func decommissionDPURemote(ctx context.Context, serverURL, nameOrID, reason string, skipConfirm bool) error {
 	client, err := NewNexusClientWithDPoP(serverURL)
 	if err != nil {
 		return err
@@ -550,9 +547,7 @@ func decommissionDPURemote(ctx context.Context, serverURL, nameOrID, reason stri
 	if !skipConfirm {
 		fmt.Printf("Decommission DPU '%s' (%s:%d)?\n", dpu.Name, dpu.Host, dpu.Port)
 		fmt.Printf("  Status: %s\n", dpu.Status)
-		if scrubCredentials {
-			fmt.Println("  WARNING: Queued credentials will be scrubbed")
-		}
+		fmt.Println("  Queued credentials will be scrubbed")
 		fmt.Printf("  Reason: %s\n", reason)
 		fmt.Println()
 		fmt.Print("Type 'yes' to confirm: ")
@@ -570,7 +565,7 @@ func decommissionDPURemote(ctx context.Context, serverURL, nameOrID, reason stri
 		}
 	}
 
-	result, err := client.DecommissionDPU(ctx, dpu.ID, reason, scrubCredentials)
+	result, err := client.DecommissionDPU(ctx, dpu.ID, reason)
 	if err != nil {
 		return fmt.Errorf("failed to decommission DPU: %w", err)
 	}

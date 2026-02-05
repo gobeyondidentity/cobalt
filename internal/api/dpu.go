@@ -25,8 +25,7 @@ const (
 
 // DecommissionDPURequest is the request body for decommissioning a DPU.
 type DecommissionDPURequest struct {
-	Reason           string `json:"reason"`
-	ScrubCredentials bool   `json:"scrub_credentials"`
+	Reason string `json:"reason"`
 }
 
 // DecommissionDPUResponse is the response for a successful DPU decommissioning.
@@ -89,7 +88,7 @@ func (s *Server) handleDecommissionDPU(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Atomically decommission (handles concurrent decommission with 409)
-	credentialsScrubbed, err := s.store.DecommissionDPUAtomic(id, identity.KID, req.Reason, req.ScrubCredentials)
+	credentialsScrubbed, err := s.store.DecommissionDPUAtomic(id, identity.KID, req.Reason)
 	if err != nil {
 		if err == store.ErrAlreadyDecommissioned {
 			writeError(w, r, http.StatusConflict, "DPU already decommissioned")

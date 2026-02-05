@@ -1537,8 +1537,7 @@ func (c *NexusClient) RevokeAdminKey(ctx context.Context, id, reason string) err
 
 // decommissionDPURequest is the request body for decommissioning a DPU.
 type decommissionDPURequest struct {
-	Reason           string `json:"reason"`
-	ScrubCredentials bool   `json:"scrub_credentials"`
+	Reason string `json:"reason"`
 }
 
 // DecommissionDPUResponse is the response for a successful DPU decommissioning.
@@ -1550,11 +1549,10 @@ type DecommissionDPUResponse struct {
 }
 
 // DecommissionDPU decommissions a DPU by ID with a reason.
-// This blocks authentication, optionally scrubs credentials, and retains audit records.
-func (c *NexusClient) DecommissionDPU(ctx context.Context, id, reason string, scrubCredentials bool) (*DecommissionDPUResponse, error) {
+// This blocks authentication, scrubs queued credentials, and retains audit records.
+func (c *NexusClient) DecommissionDPU(ctx context.Context, id, reason string) (*DecommissionDPUResponse, error) {
 	reqBody := decommissionDPURequest{
-		Reason:           reason,
-		ScrubCredentials: scrubCredentials,
+		Reason: reason,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

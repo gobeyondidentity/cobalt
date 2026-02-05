@@ -17,10 +17,21 @@ type QueuedCredential struct {
 	QueuedAt  time.Time
 }
 
+// ErrDPUDecommissioned is returned when attempting to queue credentials for a decommissioned DPU.
+var ErrDPUDecommissioned = fmt.Errorf("cannot queue credentials for decommissioned DPU")
+
 // QueueCredential adds a credential to the queue for a specific DPU.
+// Returns ErrDPUDecommissioned if the DPU is decommissioned.
 func (s *Store) QueueCredential(dpuName, credType, credName string, data []byte) error {
+	// Guard: reject writes to decommissioned DPUs
+	var status string
+	err := s.db.QueryRow(`SELECT status FROM dpus WHERE name = ?`, dpuName).Scan(&status)
+	if err == nil && status == "decommissioned" {
+		return ErrDPUDecommissioned
+	}
+
 	now := time.Now().Unix()
-	_, err := s.db.Exec(
+	_, err = s.db.Exec(
 		`INSERT INTO credential_queue (dpu_name, cred_type, cred_name, data, queued_at)
 		VALUES (?, ?, ?, ?, ?)`,
 		dpuName, credType, credName, data, now,

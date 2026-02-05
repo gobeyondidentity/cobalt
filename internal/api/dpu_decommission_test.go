@@ -412,9 +412,9 @@ func TestDecommissionDPU_NotFoundReturns404(t *testing.T) {
 	t.Log("Non-existent DPU correctly returns 404")
 }
 
-// TestDecommissionDPU_CredentialScrubbing tests that credential scrubbing works atomically.
+// TestDecommissionDPU_CredentialScrubbing tests that credentials are always scrubbed on decommission.
 func TestDecommissionDPU_CredentialScrubbing(t *testing.T) {
-	t.Log("Testing that credential scrubbing works")
+	t.Log("Testing that credentials are always scrubbed on decommission")
 
 	server, mux := setupTestServer(t)
 
@@ -434,7 +434,6 @@ func TestDecommissionDPU_CredentialScrubbing(t *testing.T) {
 	}
 
 	t.Log("Queuing credentials for the DPU")
-	// Queue some credentials
 	if err := server.store.QueueCredential(dpuName, "ssh-ca", "prod-ca", []byte("pubkey1")); err != nil {
 		t.Fatalf("failed to queue credential 1: %v", err)
 	}
@@ -445,7 +444,6 @@ func TestDecommissionDPU_CredentialScrubbing(t *testing.T) {
 		t.Fatalf("failed to queue credential 3: %v", err)
 	}
 
-	// Verify credentials exist
 	count, err := server.store.CountQueuedCredentials(dpuName)
 	if err != nil {
 		t.Fatalf("failed to count credentials: %v", err)
@@ -465,8 +463,8 @@ func TestDecommissionDPU_CredentialScrubbing(t *testing.T) {
 	}
 	adminKID := "adm_" + uuid.New().String()[:8]
 
-	t.Log("Decommissioning DPU with scrub_credentials=true")
-	body := `{"reason": "Hardware removal", "scrub_credentials": true}`
+	t.Log("Decommissioning DPU (credentials always scrubbed)")
+	body := `{"reason": "Hardware removal"}`
 	req := httptest.NewRequest("DELETE", "/api/v1/dpus/"+dpuID, bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
@@ -499,89 +497,10 @@ func TestDecommissionDPU_CredentialScrubbing(t *testing.T) {
 		t.Fatalf("failed to count credentials: %v", err)
 	}
 	if count != 0 {
-		t.Errorf("expected 0 credentials after scrub, got %d", count)
+		t.Errorf("expected 0 credentials after decommission, got %d", count)
 	}
 
-	t.Log("Credential scrubbing works correctly")
-}
-
-// TestDecommissionDPU_NoScrubByDefault tests that credentials are NOT scrubbed by default.
-func TestDecommissionDPU_NoScrubByDefault(t *testing.T) {
-	t.Log("Testing that credentials are NOT scrubbed by default")
-
-	server, mux := setupTestServer(t)
-
-	t.Log("Creating tenant and DPU")
-	tenantID := "tenant_" + uuid.New().String()[:8]
-	if err := server.store.AddTenant(tenantID, "Acme Corp", "Test tenant", "admin@acme.com", []string{}); err != nil {
-		t.Fatalf("failed to create tenant: %v", err)
-	}
-
-	dpuName := "test-dpu-" + uuid.New().String()[:8]
-	dpuID := "dpu_" + uuid.New().String()[:8]
-	if err := server.store.Add(dpuID, dpuName, "192.168.1.100", 50051); err != nil {
-		t.Fatalf("failed to create DPU: %v", err)
-	}
-	if err := server.store.AssignDPUToTenant(dpuID, tenantID); err != nil {
-		t.Fatalf("failed to assign DPU to tenant: %v", err)
-	}
-
-	t.Log("Queuing credentials for the DPU")
-	if err := server.store.QueueCredential(dpuName, "ssh-ca", "prod-ca", []byte("pubkey1")); err != nil {
-		t.Fatalf("failed to queue credential: %v", err)
-	}
-	if err := server.store.QueueCredential(dpuName, "ssh-ca", "stage-ca", []byte("pubkey2")); err != nil {
-		t.Fatalf("failed to queue credential: %v", err)
-	}
-
-	t.Log("Creating tenant admin")
-	operatorID := "op_" + uuid.New().String()[:8]
-	if err := server.store.CreateOperator(operatorID, "admin@acme.com", "Admin"); err != nil {
-		t.Fatalf("failed to create operator: %v", err)
-	}
-	if err := server.store.AddOperatorToTenant(operatorID, tenantID, "tenant:admin"); err != nil {
-		t.Fatalf("failed to add operator to tenant: %v", err)
-	}
-	adminKID := "adm_" + uuid.New().String()[:8]
-
-	t.Log("Decommissioning DPU WITHOUT scrub_credentials flag")
-	body := `{"reason": "Hardware removal"}`
-	req := httptest.NewRequest("DELETE", "/api/v1/dpus/"+dpuID, bytes.NewReader([]byte(body)))
-	req.Header.Set("Content-Type", "application/json")
-	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
-		KID:        adminKID,
-		CallerType: dpop.CallerTypeAdmin,
-		Status:     dpop.IdentityStatusActive,
-		OperatorID: operatorID,
-	})
-	req = req.WithContext(ctx)
-
-	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	t.Log("Verifying response has credentials_scrubbed=0")
-	var resp DecommissionDPUResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	if resp.CredentialsScrubbed != 0 {
-		t.Errorf("expected credentials_scrubbed=0, got %d", resp.CredentialsScrubbed)
-	}
-
-	t.Log("Verifying credentials are still present")
-	count, err := server.store.CountQueuedCredentials(dpuName)
-	if err != nil {
-		t.Fatalf("failed to count credentials: %v", err)
-	}
-	if count != 2 {
-		t.Errorf("expected 2 credentials still present, got %d", count)
-	}
-
-	t.Log("Default behavior (no scrub) works correctly")
+	t.Log("Mandatory credential scrubbing works correctly")
 }
 
 // TestDecommissionDPU_AuditEntry tests that decommissioning creates an audit log entry.

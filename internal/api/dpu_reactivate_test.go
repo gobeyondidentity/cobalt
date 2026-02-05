@@ -43,7 +43,7 @@ func TestReactivateDPU_SuperAdminCanReactivate(t *testing.T) {
 	superKID := "adm_super_" + uuid.New().String()[:8]
 
 	t.Log("Decommissioning the DPU first")
-	_, err := server.store.DecommissionDPUAtomic(dpuID, superKID, "Test decommission", false)
+	_, err := server.store.DecommissionDPUAtomic(dpuID, superKID, "Test decommission")
 	if err != nil {
 		t.Fatalf("failed to decommission DPU: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestReactivateDPU_TenantAdminForbidden(t *testing.T) {
 	}
 
 	// Decommission the DPU
-	_, err := server.store.DecommissionDPUAtomic(dpuID, "adm_super", "Test decommission", false)
+	_, err := server.store.DecommissionDPUAtomic(dpuID, "adm_super", "Test decommission")
 	if err != nil {
 		t.Fatalf("failed to decommission DPU: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestReactivateDPU_ReasonMinLength(t *testing.T) {
 	superKID := "adm_super_" + uuid.New().String()[:8]
 
 	// Decommission the DPU
-	_, err := server.store.DecommissionDPUAtomic(dpuID, superKID, "Test decommission", false)
+	_, err := server.store.DecommissionDPUAtomic(dpuID, superKID, "Test decommission")
 	if err != nil {
 		t.Fatalf("failed to decommission DPU: %v", err)
 	}
@@ -424,7 +424,7 @@ func TestReactivateDPU_AuditEntry(t *testing.T) {
 	superKID := "adm_super_" + uuid.New().String()[:8]
 
 	// Decommission the DPU first
-	_, err := server.store.DecommissionDPUAtomic(dpuID, superKID, "Test decommission", false)
+	_, err := server.store.DecommissionDPUAtomic(dpuID, superKID, "Test decommission")
 	if err != nil {
 		t.Fatalf("failed to decommission DPU: %v", err)
 	}
@@ -530,7 +530,7 @@ func TestReactivateDPU_ClearsCredentials(t *testing.T) {
 	superKID := "adm_super_" + uuid.New().String()[:8]
 
 	// Decommission the DPU
-	_, err = server.store.DecommissionDPUAtomic(dpuID, superKID, "Test decommission", false)
+	_, err = server.store.DecommissionDPUAtomic(dpuID, superKID, "Test decommission")
 	if err != nil {
 		t.Fatalf("failed to decommission DPU: %v", err)
 	}
