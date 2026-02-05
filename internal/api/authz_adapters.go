@@ -200,7 +200,7 @@ func actionToResourceType(action string) string {
 
 // isSelfAction returns true if the action is self-referential.
 func isSelfAction(action string) bool {
-	return action == authz.ActionOperatorReadSelf || action == authz.ActionDPUReadOwnConfig
+	return action == authz.ActionOperatorReadSelf || action == authz.ActionDPUReadOwnConfig || action == authz.ActionHostRegister
 }
 
 // extractIDFromBody tries to extract a resource ID from the request body.

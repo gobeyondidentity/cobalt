@@ -209,6 +209,31 @@ func TestActionToResourceType(t *testing.T) {
 	}
 }
 
+// TestIsSelfAction verifies self-referential action detection.
+func TestIsSelfAction(t *testing.T) {
+	tests := []struct {
+		action   string
+		expected bool
+	}{
+		{authz.ActionOperatorReadSelf, true},
+		{authz.ActionDPUReadOwnConfig, true},
+		{authz.ActionHostRegister, true},
+		{"operator:list", false},
+		{"dpu:register", false},
+		{"host:list", false},
+		{"unknown:action", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.action, func(t *testing.T) {
+			got := isSelfAction(tt.action)
+			if got != tt.expected {
+				t.Errorf("isSelfAction(%q) = %v, want %v", tt.action, got, tt.expected)
+			}
+		})
+	}
+}
+
 // setupTestStore creates a test store with required tables.
 func setupTestStore(t *testing.T) *store.Store {
 	t.Helper()
