@@ -156,7 +156,7 @@ func TestNewAuthFailure(t *testing.T) {
 	t.Parallel()
 	t.Log("Verifying NewAuthFailure sets correct type, severity, and reason")
 
-	e := NewAuthFailure("km_bad", "10.0.0.1", "invalid_signature", "req-2")
+	e := NewAuthFailure("km_bad", "10.0.0.1", "invalid_signature", "GET", "/api/v1/protected", "req-2")
 
 	if e.Type != EventAuthFailure {
 		t.Errorf("Type = %q, want %q", e.Type, EventAuthFailure)
@@ -169,6 +169,12 @@ func TestNewAuthFailure(t *testing.T) {
 	}
 	if e.Details["reason"] != "invalid_signature" {
 		t.Errorf("Details[reason] = %q, want %q", e.Details["reason"], "invalid_signature")
+	}
+	if e.Details["method"] != "GET" {
+		t.Errorf("Details[method] = %q, want %q", e.Details["method"], "GET")
+	}
+	if e.Details["path"] != "/api/v1/protected" {
+		t.Errorf("Details[path] = %q, want %q", e.Details["path"], "/api/v1/protected")
 	}
 }
 
@@ -320,7 +326,7 @@ func TestAllHelpers_SetTimestamp(t *testing.T) {
 
 	events := []Event{
 		NewAuthSuccess("a", "1.2.3.4", "GET", "/", "r", 0),
-		NewAuthFailure("a", "1.2.3.4", "bad", "r"),
+		NewAuthFailure("a", "1.2.3.4", "bad", "GET", "/", "r"),
 		NewEnrollComplete("a", "1.2.3.4", "r"),
 		NewEnrollFailure("1.2.3.4", "bad", "r"),
 		NewLifecycleRevoke("a", "1.2.3.4", "k", "r"),
@@ -344,7 +350,7 @@ func TestAllHelpers_SeverityMatchesMapping(t *testing.T) {
 
 	events := []Event{
 		NewAuthSuccess("a", "1.2.3.4", "GET", "/", "r", 0),
-		NewAuthFailure("a", "1.2.3.4", "bad", "r"),
+		NewAuthFailure("a", "1.2.3.4", "bad", "GET", "/", "r"),
 		NewEnrollComplete("a", "1.2.3.4", "r"),
 		NewEnrollFailure("1.2.3.4", "bad", "r"),
 		NewLifecycleRevoke("a", "1.2.3.4", "k", "r"),

@@ -65,6 +65,22 @@ type IdentityLookup interface {
 	LookupByKID(ctx context.Context, kid string) (*Identity, error)
 }
 
+// AuditEmitter emits structured audit events for authentication outcomes.
+// Implementations live in pkg/audit; defined here to avoid import cycles
+// (pkg/audit -> pkg/authz -> pkg/dpop).
+type AuditEmitter interface {
+	// EmitAuthSuccess records a successful DPoP authentication.
+	EmitAuthSuccess(kid, ip, method, path string, latencyMS int64)
+	// EmitAuthFailure records a failed DPoP authentication.
+	EmitAuthFailure(kid, ip, reason, method, path string)
+}
+
+// nopAuditEmitter discards all events. Used when no emitter is configured.
+type nopAuditEmitter struct{}
+
+func (nopAuditEmitter) EmitAuthSuccess(string, string, string, string, int64) {}
+func (nopAuditEmitter) EmitAuthFailure(string, string, string, string, string) {}
+
 // contextKey is an unexported type for context keys to prevent collisions.
 type contextKey int
 
@@ -92,6 +108,7 @@ type AuthMiddleware struct {
 	identityLookup IdentityLookup
 	jtiCache       JTICache
 	logger         *slog.Logger
+	auditEmitter   AuditEmitter
 
 	// bypassPaths contains paths that don't require DPoP authentication.
 	// Paths are normalized (lowercase, no trailing slash).
@@ -129,6 +146,17 @@ func WithDebugMode(enabled bool) AuthMiddlewareOption {
 	}
 }
 
+// WithAuditEmitter sets the audit event emitter for recording authentication outcomes.
+// When set, the middleware emits auth.success and auth.failure events through the emitter
+// in addition to the existing slog output.
+func WithAuditEmitter(emitter AuditEmitter) AuthMiddlewareOption {
+	return func(m *AuthMiddleware) {
+		if emitter != nil {
+			m.auditEmitter = emitter
+		}
+	}
+}
+
 // NewAuthMiddleware creates a new DPoP authentication middleware.
 func NewAuthMiddleware(
 	validator ProofValidator,
@@ -141,6 +169,7 @@ func NewAuthMiddleware(
 		identityLookup: identityLookup,
 		jtiCache:       jtiCache,
 		logger:         slog.Default(),
+		auditEmitter:   nopAuditEmitter{},
 		bypassPaths: map[string]bool{
 			"/health": true,
 			"/ready":  true,
@@ -162,6 +191,8 @@ func NewAuthMiddleware(
 // The handler will only be called if authentication succeeds or the path is bypassed.
 func (m *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
 		// Recover from panics to prevent unauthenticated access
 		defer func() {
 			if err := recover(); err != nil {
@@ -285,7 +316,8 @@ func (m *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		// Authentication successful - log and proceed
-		m.logAuthSuccess(r, result.KID)
+		latencyMS := time.Since(start).Milliseconds()
+		m.logAuthSuccess(r, result.KID, latencyMS)
 
 		// Add identity to context
 		ctx := context.WithValue(r.Context(), identityKey, identity)
@@ -362,30 +394,35 @@ func (m *AuthMiddleware) writeError(w http.ResponseWriter, status int, code, _ s
 	})
 }
 
-// logAuthSuccess logs a successful authentication event.
-func (m *AuthMiddleware) logAuthSuccess(r *http.Request, kid string) {
+// logAuthSuccess logs a successful authentication event and emits an audit event.
+func (m *AuthMiddleware) logAuthSuccess(r *http.Request, kid string, latencyMS int64) {
+	ip := getClientIP(r)
 	m.logger.Info("auth.success",
 		"kid", sanitizeForLog(kid),
 		"method", r.Method,
 		"path", r.URL.Path,
-		"ip", getClientIP(r),
+		"ip", ip,
+		"latency_ms", latencyMS,
 	)
+	m.auditEmitter.EmitAuthSuccess(kid, ip, r.Method, r.URL.Path, latencyMS)
 }
 
-// logAuthFailure logs an authentication failure event.
+// logAuthFailure logs an authentication failure event and emits an audit event.
 // The detail parameter provides additional context for server logs.
 func (m *AuthMiddleware) logAuthFailure(r *http.Request, kid, reason, detail string) {
+	ip := getClientIP(r)
 	args := []any{
 		"reason", reason,
 		"kid", sanitizeForLog(kid),
 		"method", r.Method,
 		"path", r.URL.Path,
-		"ip", getClientIP(r),
+		"ip", ip,
 	}
 	if detail != "" {
 		args = append(args, "detail", detail)
 	}
 	m.logger.Warn("auth.failure", args...)
+	m.auditEmitter.EmitAuthFailure(kid, ip, reason, r.Method, r.URL.Path)
 }
 
 // sanitizeForLog sanitizes a string for logging to prevent log injection.
@@ -438,14 +475,3 @@ func getClientIP(r *http.Request) string {
 	return addr
 }
 
-// AuthEvent represents an authentication event for audit logging.
-type AuthEvent struct {
-	Timestamp time.Time `json:"ts"`
-	Event     string    `json:"event"`
-	KID       string    `json:"kid,omitempty"`
-	Reason    string    `json:"reason,omitempty"`
-	Method    string    `json:"method"`
-	Path      string    `json:"path"`
-	IP        string    `json:"ip"`
-	LatencyMS int64     `json:"latency_ms,omitempty"`
-}

@@ -109,7 +109,7 @@ func NewAuthSuccess(actorID, ip, method, path, requestID string, latencyMS int64
 }
 
 // NewAuthFailure creates an auth.failure event for rejected authentication.
-func NewAuthFailure(actorID, ip, reason, requestID string) Event {
+func NewAuthFailure(actorID, ip, reason, method, path, requestID string) Event {
 	return Event{
 		Type:      EventAuthFailure,
 		Severity:  SeverityWarning,
@@ -119,6 +119,8 @@ func NewAuthFailure(actorID, ip, reason, requestID string) Event {
 		RequestID: requestID,
 		Details: map[string]string{
 			"reason": reason,
+			"method": method,
+			"path":   path,
 		},
 	}
 }
