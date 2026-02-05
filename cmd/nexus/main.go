@@ -17,6 +17,7 @@ import (
 
 	"github.com/gobeyondidentity/cobalt/internal/api"
 	"github.com/gobeyondidentity/cobalt/internal/version"
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/authz"
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
@@ -79,9 +80,23 @@ func main() {
 		log.Fatalf("Failed to initialize bootstrap: %v", err)
 	}
 
+	// Initialize audit logging (StoreAuditLogger + SyslogAuditLogger)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	storeAudit := authz.NewStoreAuditLogger(&auditStoreAdapter{s: db})
+	var auditLogger authz.AuditLogger = storeAudit
+	syslogAudit, syslogErr := audit.NewSyslogWriter(audit.SyslogConfig{AppName: "nexus"})
+	if syslogErr != nil {
+		slog.Warn("syslog unavailable, audit will use SQLite only", "error", syslogErr)
+	} else {
+		auditLogger = authz.NewMultiAuditLogger(storeAudit, syslogAudit)
+		defer syslogAudit.Close()
+		log.Printf("Syslog audit writer initialized (RFC 5424)")
+	}
+
 	// Create API server with configuration
 	server := api.NewServerWithConfig(db, api.ServerConfig{
 		AttestationStaleAfter: staleAfter,
+		AuditEmitter:         syslogAudit,
 	})
 
 	// Set up HTTP server
@@ -99,11 +114,15 @@ func main() {
 	proofValidator := api.NewStoreProofValidator(validator, db)
 	identityLookup := api.NewStoreIdentityLookup(db)
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpop.WithLogger(logger))
+	dpopOpts := []dpop.AuthMiddlewareOption{dpop.WithLogger(logger)}
+	if syslogAudit != nil {
+		authEmitter := audit.NewAuthEventEmitter(logger, syslogAudit)
+		dpopOpts = append(dpopOpts, dpop.WithAuditEmitter(authEmitter))
+	}
+	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache, dpopOpts...)
 
 	// Initialize Cedar authorization middleware
-	authorizer, err := authz.NewAuthorizer(authz.Config{Logger: logger})
+	authorizer, err := authz.NewAuthorizer(authz.Config{Logger: logger, AuditLogger: auditLogger})
 	if err != nil {
 		log.Fatalf("Failed to initialize authorizer: %v", err)
 	}
@@ -117,13 +136,27 @@ func main() {
 	// before the handler can trigger a refresh. This lookup auto-refreshes when needed.
 	attestationLookup := api.NewAutoRefreshAttestationLookup(db, server.Gate()).WithLogger(logger)
 
+	// Create bypass audit emitter (emits attestation.bypass events to syslog)
+	var bypassAuditOpt authz.MiddlewareOption
+	if syslogAudit != nil {
+		bypassEmitter := audit.NewBypassEventEmitter(logger, syslogAudit)
+		bypassAuditOpt = authz.WithBypassAuditEmitter(bypassEmitter)
+	}
+
+	authzOpts := []authz.MiddlewareOption{
+		authz.WithLogger(logger),
+		authz.WithAttestationLookup(attestationLookup),
+	}
+	if bypassAuditOpt != nil {
+		authzOpts = append(authzOpts, bypassAuditOpt)
+	}
+
 	authzMiddleware := authz.NewAuthzMiddleware(
 		authorizer,
 		actionRegistry,
 		principalLookup,
 		resourceExtractor,
-		authz.WithLogger(logger),
-		authz.WithAttestationLookup(attestationLookup),
+		authzOpts...,
 	)
 
 	// Apply middleware: logging -> CORS -> DPoP auth -> Cedar authz -> routes
@@ -291,6 +324,20 @@ func initBootstrapWindow(db *store.Store) (context.CancelFunc, error) {
 	go runBootstrapCountdown(ctx, db, expiresAt)
 
 	return cancel, nil
+}
+
+// auditStoreAdapter wraps store.Store to satisfy authz.AuditStore interface.
+// Needed because store.AuditEntry and authz.AuditEntry are separate types.
+type auditStoreAdapter struct{ s *store.Store }
+
+func (a *auditStoreAdapter) InsertAuditEntry(entry *authz.AuditEntry) (int64, error) {
+	return a.s.InsertAuditEntry(&store.AuditEntry{
+		Timestamp: entry.Timestamp,
+		Action:    entry.Action,
+		Target:    entry.Target,
+		Decision:  entry.Decision,
+		Details:   entry.Details,
+	})
 }
 
 // runBootstrapCountdown logs countdown messages every minute until window expires.

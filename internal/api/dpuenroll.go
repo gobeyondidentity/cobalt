@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/enrollment"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
@@ -50,18 +52,21 @@ func (s *Server) handleDPUEnrollInit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dpu == nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "dpu_not_registered", "dpu", ""))
 		writeError(w, r, http.StatusNotFound, "DPU not registered")
 		return
 	}
 
 	// Validate DPU status is 'pending'
 	if dpu.Status != "pending" {
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "already_enrolled", "dpu", ""))
 		writeError(w, r, http.StatusConflict, "DPU already enrolled or decommissioned")
 		return
 	}
 
 	// Validate enrollment_expires_at > now
 	if dpu.EnrollmentExpiresAt == nil || time.Now().After(*dpu.EnrollmentExpiresAt) {
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "expired", "dpu", ""))
 		writeEnrollmentError(w, enrollment.ErrExpiredCode())
 		return
 	}
@@ -83,7 +88,7 @@ func (s *Server) handleDPUEnrollInit(w http.ResponseWriter, r *http.Request) {
 		SessionType:      "dpu",
 		ChallengeBytesHex: challengeHex,
 		DPUID:            &dpu.ID,
-		IPAddress:        getClientIP(r),
+		IPAddress:        netutil.ClientIP(r),
 		CreatedAt:        time.Now(),
 		ExpiresAt:        time.Now().Add(DPUChallengeTTL),
 	}
@@ -100,7 +105,7 @@ func (s *Server) handleDPUEnrollInit(w http.ResponseWriter, r *http.Request) {
 		Target:    enrollmentID,
 		Decision:  "challenge_issued",
 		Details: map[string]string{
-			"ip":            getClientIP(r),
+			"ip":            netutil.ClientIP(r),
 			"enrollment_id": enrollmentID,
 			"dpu_id":        dpu.ID,
 			"dpu_serial":    req.Serial,
@@ -134,6 +139,7 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 	// Check fingerprint uniqueness across all enrolled DPUs
 	existingDPU, err := s.store.GetDPUByFingerprint(fingerprint)
 	if err == nil && existingDPU != nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "key_exists", "dpu", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
@@ -141,11 +147,13 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 	// Also check keymakers and admin_keys tables for duplicate fingerprints
 	existingKM, err := s.store.GetKeyMakerByFingerprint(fingerprint)
 	if err == nil && existingKM != nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "key_exists", "dpu", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
 	existingAdminKey, err := s.store.GetAdminKeyByFingerprint(fingerprint)
 	if err == nil && existingAdminKey != nil {
+		s.emitAuditEvent(audit.NewEnrollFailure(netutil.ClientIP(r), "key_exists", "dpu", ""))
 		writeEnrollmentError(w, enrollment.ErrKeyExists(fingerprint))
 		return
 	}
@@ -164,7 +172,7 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 		// Log but don't fail - enrollment succeeded
 	}
 
-	// Audit log entry
+	// Audit log entry (SQLite)
 	s.store.InsertAuditEntry(&store.AuditEntry{
 		Timestamp: time.Now(),
 		Action:    "enroll.dpu.complete",
@@ -172,12 +180,15 @@ func (s *Server) handleDPUEnrollComplete(w http.ResponseWriter, r *http.Request,
 		Decision:  "enrolled",
 		Details: map[string]string{
 			"fingerprint":   fingerprint,
-			"ip":            getClientIP(r),
+			"ip":            netutil.ClientIP(r),
 			"dpu_id":        dpu.ID,
 			"dpu_name":      dpu.Name,
 			"serial_number": dpu.SerialNumber,
 		},
 	})
+
+	// Audit event (syslog)
+	s.emitAuditEvent(audit.NewEnrollComplete(dpuIdentityID, netutil.ClientIP(r), "dpu", dpuIdentityID, ""))
 
 	// Return response
 	resp := EnrollCompleteResponse{

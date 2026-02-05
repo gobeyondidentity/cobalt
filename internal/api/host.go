@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
+	"github.com/gobeyondidentity/cobalt/pkg/netutil"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
@@ -159,6 +161,9 @@ func (s *Server) handleHostRegister(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("Warning: failed to update posture for host %s: %v\n", host.ID, err)
 		}
 	}
+
+	// Audit event (syslog): sentry enrollment complete
+	s.emitAuditEvent(audit.NewEnrollComplete(host.ID, netutil.ClientIP(r), "sentry", host.ID, ""))
 
 	writeJSON(w, http.StatusCreated, hostRegisterResponse{
 		HostID:          host.ID,

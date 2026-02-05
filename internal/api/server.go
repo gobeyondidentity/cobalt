@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gobeyondidentity/cobalt/internal/version"
 	"github.com/gobeyondidentity/cobalt/pkg/attestation"
+	"github.com/gobeyondidentity/cobalt/pkg/audit"
 	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/gobeyondidentity/cobalt/pkg/grpcclient"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
@@ -28,12 +29,17 @@ type ServerConfig struct {
 	// AttestationStaleAfter is the duration after which attestation is considered stale.
 	// Defaults to 1 hour if zero.
 	AttestationStaleAfter time.Duration
+
+	// AuditEmitter receives structured audit events for lifecycle and security operations.
+	// If nil, a NopEmitter is used (events are silently discarded).
+	AuditEmitter audit.EventEmitter
 }
 
 // Server is the HTTP API server.
 type Server struct {
 	store *store.Store
 	gate  *attestation.Gate
+	audit audit.EventEmitter
 }
 
 // NewServer creates a new API server with default configuration.
@@ -50,15 +56,32 @@ func NewServerWithConfig(s *store.Store, cfg ServerConfig) *Server {
 		gate.FreshnessWindow = cfg.AttestationStaleAfter
 	}
 
+	emitter := cfg.AuditEmitter
+	if emitter == nil {
+		emitter = audit.NopEmitter{}
+	}
+
 	return &Server{
 		store: s,
 		gate:  gate,
+		audit: emitter,
 	}
 }
 
 // Gate returns the attestation gate for testing configuration.
 func (s *Server) Gate() *attestation.Gate {
 	return s.gate
+}
+
+// emitAuditEvent logs a security event to syslog if an audit logger is configured.
+// Errors are logged but not propagated; audit failures must not break enrollment flows.
+func (s *Server) emitAuditEvent(e audit.Event) {
+	if s.audit == nil {
+		return
+	}
+	if err := s.audit.Emit(e); err != nil {
+		log.Printf("audit: failed to emit %s event: %v", e.Type, err)
+	}
 }
 
 // RegisterRoutes registers all API routes.

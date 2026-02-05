@@ -1131,3 +1131,392 @@ func TestProductionModeUnknownKeyMasked(t *testing.T) {
 	}
 	t.Log("Production mode correctly masks unknown_key as auth.failed")
 }
+
+// ============================================================================
+// Audit Event Emission Tests
+// Verify that auth.success and auth.failure events are emitted with correct fields.
+// ============================================================================
+
+// recordingAuditEmitter captures emitted events for test verification.
+type recordingAuditEmitter struct {
+	successEvents []auditSuccessEvent
+	failureEvents []auditFailureEvent
+}
+
+type auditSuccessEvent struct {
+	KID       string
+	IP        string
+	Method    string
+	Path      string
+	LatencyMS int64
+}
+
+type auditFailureEvent struct {
+	KID    string
+	IP     string
+	Reason string
+	Method string
+	Path   string
+}
+
+func (r *recordingAuditEmitter) EmitAuthSuccess(kid, ip, method, path string, latencyMS int64) {
+	r.successEvents = append(r.successEvents, auditSuccessEvent{
+		KID: kid, IP: ip, Method: method, Path: path, LatencyMS: latencyMS,
+	})
+}
+
+func (r *recordingAuditEmitter) EmitAuthFailure(kid, ip, reason, method, path string) {
+	r.failureEvents = append(r.failureEvents, auditFailureEvent{
+		KID: kid, IP: ip, Reason: reason, Method: method, Path: path,
+	})
+}
+
+func TestAuditSuccessEvent(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing auth.success audit event emitted with correct fields on valid authentication")
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: true,
+		KID:   "km_audit_test",
+		JTI:   "test-jti-audit-success",
+	}}
+	lookup := &mockIdentityLookup{identity: &Identity{
+		KID:        "km_audit_test",
+		CallerType: CallerTypeKeyMaker,
+		Status:     IdentityStatusActive,
+	}}
+	cache := &mockJTICache{isReplay: false}
+	recorder := &recordingAuditEmitter{}
+
+	middleware := newTestMiddleware(validator, lookup, cache, WithAuditEmitter(recorder))
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("POST", "/api/v1/credentials/push", nil)
+	req.Header.Set("DPoP", "valid.proof.here")
+	req.RemoteAddr = "10.0.0.42:12345"
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	t.Log("Verifying response is 200 OK")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	t.Log("Verifying exactly one auth.success event emitted")
+	if len(recorder.successEvents) != 1 {
+		t.Fatalf("expected 1 success event, got %d", len(recorder.successEvents))
+	}
+
+	ev := recorder.successEvents[0]
+
+	t.Logf("  kid=%s method=%s path=%s ip=%s latency_ms=%d",
+		ev.KID, ev.Method, ev.Path, ev.IP, ev.LatencyMS)
+
+	if ev.KID != "km_audit_test" {
+		t.Errorf("kid = %q, want %q", ev.KID, "km_audit_test")
+	}
+	if ev.Method != "POST" {
+		t.Errorf("method = %q, want %q", ev.Method, "POST")
+	}
+	if ev.Path != "/api/v1/credentials/push" {
+		t.Errorf("path = %q, want %q", ev.Path, "/api/v1/credentials/push")
+	}
+	if ev.IP != "10.0.0.42" {
+		t.Errorf("ip = %q, want %q", ev.IP, "10.0.0.42")
+	}
+	if ev.LatencyMS < 0 {
+		t.Errorf("latency_ms = %d, expected >= 0", ev.LatencyMS)
+	}
+
+	t.Log("Verifying no failure events emitted")
+	if len(recorder.failureEvents) != 0 {
+		t.Errorf("expected 0 failure events, got %d", len(recorder.failureEvents))
+	}
+
+	t.Log("auth.success audit event correctly emitted with all required fields")
+}
+
+func TestAuditFailureEvent_MissingProof(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing auth.failure audit event emitted when DPoP proof is missing")
+
+	validator := &mockValidator{}
+	lookup := &mockIdentityLookup{}
+	cache := &mockJTICache{}
+	recorder := &recordingAuditEmitter{}
+
+	middleware := newTestMiddleware(validator, lookup, cache, WithAuditEmitter(recorder))
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not have been called")
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/operators/me", nil)
+	// No DPoP header
+	req.RemoteAddr = "192.168.1.50:8080"
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	t.Log("Verifying exactly one auth.failure event emitted")
+	if len(recorder.failureEvents) != 1 {
+		t.Fatalf("expected 1 failure event, got %d", len(recorder.failureEvents))
+	}
+
+	ev := recorder.failureEvents[0]
+	t.Logf("  kid=%q reason=%s method=%s path=%s ip=%s",
+		ev.KID, ev.Reason, ev.Method, ev.Path, ev.IP)
+
+	if ev.KID != "" {
+		t.Errorf("kid = %q, want empty (no proof to extract kid from)", ev.KID)
+	}
+	if ev.Reason != "dpop.missing_proof" {
+		t.Errorf("reason = %q, want %q", ev.Reason, "dpop.missing_proof")
+	}
+	if ev.Method != "GET" {
+		t.Errorf("method = %q, want %q", ev.Method, "GET")
+	}
+	if ev.Path != "/api/v1/operators/me" {
+		t.Errorf("path = %q, want %q", ev.Path, "/api/v1/operators/me")
+	}
+	if ev.IP != "192.168.1.50" {
+		t.Errorf("ip = %q, want %q", ev.IP, "192.168.1.50")
+	}
+
+	t.Log("Verifying no success events emitted")
+	if len(recorder.successEvents) != 0 {
+		t.Errorf("expected 0 success events, got %d", len(recorder.successEvents))
+	}
+
+	t.Log("auth.failure audit event correctly emitted for missing proof")
+}
+
+func TestAuditFailureEvent_InvalidProof(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing auth.failure audit event emitted for invalid proof with correct reason")
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: false,
+		KID:   "km_bad_proof",
+		Code:  "dpop.invalid_proof",
+		Error: "malformed JWT",
+	}}
+	lookup := &mockIdentityLookup{}
+	cache := &mockJTICache{}
+	recorder := &recordingAuditEmitter{}
+
+	middleware := newTestMiddleware(validator, lookup, cache, WithAuditEmitter(recorder))
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not have been called")
+	}))
+
+	req := httptest.NewRequest("DELETE", "/api/v1/operators/op_123", nil)
+	req.Header.Set("DPoP", "bad.proof.value")
+	req.RemoteAddr = "172.16.0.1:9999"
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if len(recorder.failureEvents) != 1 {
+		t.Fatalf("expected 1 failure event, got %d", len(recorder.failureEvents))
+	}
+
+	ev := recorder.failureEvents[0]
+	t.Logf("  kid=%s reason=%s method=%s path=%s", ev.KID, ev.Reason, ev.Method, ev.Path)
+
+	if ev.KID != "km_bad_proof" {
+		t.Errorf("kid = %q, want %q", ev.KID, "km_bad_proof")
+	}
+	if ev.Reason != "dpop.invalid_proof" {
+		t.Errorf("reason = %q, want %q", ev.Reason, "dpop.invalid_proof")
+	}
+	if ev.Method != "DELETE" {
+		t.Errorf("method = %q, want %q", ev.Method, "DELETE")
+	}
+	if ev.Path != "/api/v1/operators/op_123" {
+		t.Errorf("path = %q, want %q", ev.Path, "/api/v1/operators/op_123")
+	}
+
+	t.Log("auth.failure audit event correctly emitted for invalid proof")
+}
+
+func TestAuditFailureEvent_RevokedIdentity(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing auth.failure audit event emitted for revoked identity")
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: true,
+		KID:   "km_revoked_audit",
+		JTI:   "test-jti-audit-revoked",
+	}}
+	lookup := &mockIdentityLookup{identity: &Identity{
+		KID:    "km_revoked_audit",
+		Status: IdentityStatusRevoked,
+	}}
+	cache := &mockJTICache{isReplay: false}
+	recorder := &recordingAuditEmitter{}
+
+	middleware := newTestMiddleware(validator, lookup, cache, WithAuditEmitter(recorder))
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not have been called")
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/protected", nil)
+	req.Header.Set("DPoP", "valid.proof")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if len(recorder.failureEvents) != 1 {
+		t.Fatalf("expected 1 failure event, got %d", len(recorder.failureEvents))
+	}
+
+	ev := recorder.failureEvents[0]
+
+	if ev.KID != "km_revoked_audit" {
+		t.Errorf("kid = %q, want %q", ev.KID, "km_revoked_audit")
+	}
+	// Server-side audit always gets the detailed reason, regardless of debug mode
+	if ev.Reason != "auth.revoked" {
+		t.Errorf("reason = %q, want %q", ev.Reason, "auth.revoked")
+	}
+
+	t.Log("auth.failure audit event correctly emitted for revoked identity")
+}
+
+func TestAuditBypassNoEvent(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing no audit events emitted for bypass paths (e.g., /health)")
+
+	validator := &mockValidator{}
+	lookup := &mockIdentityLookup{}
+	cache := &mockJTICache{}
+	recorder := &recordingAuditEmitter{}
+
+	middleware := newTestMiddleware(validator, lookup, cache, WithAuditEmitter(recorder))
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/health", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	if len(recorder.successEvents) != 0 {
+		t.Errorf("expected 0 success events for bypass path, got %d", len(recorder.successEvents))
+	}
+	if len(recorder.failureEvents) != 0 {
+		t.Errorf("expected 0 failure events for bypass path, got %d", len(recorder.failureEvents))
+	}
+
+	t.Log("No audit events emitted for bypass paths")
+}
+
+func TestAuditNoProofContentInEvent(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing that DPoP proof content never appears in audit events (no secrets logged)")
+
+	// Use a distinctive proof string that we can search for in events
+	secretProof := "eyJhbGciOiJFZERTQSIsInR5cCI6ImRwb3Arand0In0.SECRET_PAYLOAD.SECRET_SIGNATURE"
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: true,
+		KID:   "km_no_secrets",
+		JTI:   "test-jti-no-secrets",
+	}}
+	lookup := &mockIdentityLookup{identity: &Identity{
+		KID:    "km_no_secrets",
+		Status: IdentityStatusActive,
+	}}
+	cache := &mockJTICache{isReplay: false}
+	recorder := &recordingAuditEmitter{}
+
+	middleware := newTestMiddleware(validator, lookup, cache, WithAuditEmitter(recorder))
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/protected", nil)
+	req.Header.Set("DPoP", secretProof)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if len(recorder.successEvents) != 1 {
+		t.Fatalf("expected 1 success event, got %d", len(recorder.successEvents))
+	}
+
+	ev := recorder.successEvents[0]
+
+	// Verify none of the event fields contain the proof content
+	if strings.Contains(ev.KID, "SECRET") {
+		t.Error("kid field contains proof content")
+	}
+	if strings.Contains(ev.IP, "SECRET") {
+		t.Error("ip field contains proof content")
+	}
+	if strings.Contains(ev.Method, "SECRET") {
+		t.Error("method field contains proof content")
+	}
+	if strings.Contains(ev.Path, "SECRET") {
+		t.Error("path field contains proof content")
+	}
+
+	t.Log("Confirmed: proof content does not appear in audit events")
+}
+
+func TestAuditSuccessWithXForwardedFor(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing audit event captures client IP from X-Forwarded-For header")
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: true,
+		KID:   "km_xff",
+		JTI:   "test-jti-xff",
+	}}
+	lookup := &mockIdentityLookup{identity: &Identity{
+		KID:    "km_xff",
+		Status: IdentityStatusActive,
+	}}
+	cache := &mockJTICache{isReplay: false}
+	recorder := &recordingAuditEmitter{}
+
+	middleware := newTestMiddleware(validator, lookup, cache, WithAuditEmitter(recorder))
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/protected", nil)
+	req.Header.Set("DPoP", "valid.proof")
+	req.Header.Set("X-Forwarded-For", "203.0.113.50, 10.0.0.1")
+	req.RemoteAddr = "10.0.0.1:9999"
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if len(recorder.successEvents) != 1 {
+		t.Fatalf("expected 1 success event, got %d", len(recorder.successEvents))
+	}
+
+	ev := recorder.successEvents[0]
+	// X-Forwarded-For should take precedence, using the first IP
+	if ev.IP != "203.0.113.50" {
+		t.Errorf("ip = %q, want %q (first IP from X-Forwarded-For)", ev.IP, "203.0.113.50")
+	}
+
+	t.Log("Audit event correctly extracts client IP from X-Forwarded-For")
+}

@@ -691,6 +691,225 @@ func TestMiddleware_ForceBypass_NoHeader_BypassAvailable(t *testing.T) {
 	t.Log("Super admin correctly received 412 with bypass_available=true")
 }
 
+// mockBypassAuditEmitter records bypass audit emissions for test verification.
+type mockBypassAuditEmitter struct {
+	calls []bypassAuditCall
+}
+
+type bypassAuditCall struct {
+	OperatorID        string
+	IP                string
+	DPUID             string
+	BypassReason      string
+	AttestationStatus string
+	RequestID         string
+}
+
+func (m *mockBypassAuditEmitter) EmitAttestationBypass(operatorID, ip, dpuID, bypassReason, attestationStatus, requestID string) {
+	m.calls = append(m.calls, bypassAuditCall{
+		OperatorID:        operatorID,
+		IP:                ip,
+		DPUID:             dpuID,
+		BypassReason:      bypassReason,
+		AttestationStatus: attestationStatus,
+		RequestID:         requestID,
+	})
+}
+
+func TestMiddleware_ForceBypass_EmitsAuditEvent(t *testing.T) {
+	t.Log("Testing that force bypass emits attestation.bypass audit event with all required fields")
+
+	registry := NewActionRegistry()
+	authorizer, _ := NewAuthorizer(Config{})
+	bypassAudit := &mockBypassAuditEmitter{}
+
+	principal := &Principal{
+		UID:       "km_admin123",
+		Type:      PrincipalOperator,
+		Role:      RoleSuperAdmin,
+		TenantIDs: []string{"tenant1"},
+	}
+
+	resource := &Resource{
+		UID:      "dpu_stale",
+		Type:     "DPU",
+		TenantID: "tenant1",
+	}
+
+	middleware := NewAuthzMiddleware(
+		authorizer,
+		registry,
+		&mockPrincipalLookup{principal: principal},
+		&mockResourceExtractor{resource: resource},
+		WithAttestationLookup(&mockAttestationLookup{status: AttestationStale}),
+		WithBypassAuditEmitter(bypassAudit),
+	)
+
+	handlerCalled := false
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Log("Super admin requesting credential:push with stale attestation and X-Force-Bypass")
+	req := httptest.NewRequest("POST", "/api/v1/push", nil)
+	req.Header.Set("X-Force-Bypass", "emergency maintenance")
+	req.Header.Set("X-Request-ID", "req-audit-test")
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        "km_admin123",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_admin",
+	})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if !handlerCalled {
+		t.Fatal("handler should have been called with force bypass")
+	}
+
+	t.Log("Verifying attestation.bypass audit event was emitted")
+	if len(bypassAudit.calls) != 1 {
+		t.Fatalf("expected 1 bypass audit call, got %d", len(bypassAudit.calls))
+	}
+
+	call := bypassAudit.calls[0]
+	if call.OperatorID != "km_admin123" {
+		t.Errorf("OperatorID = %q, want %q", call.OperatorID, "km_admin123")
+	}
+	if call.DPUID != "dpu_stale" {
+		t.Errorf("DPUID = %q, want %q", call.DPUID, "dpu_stale")
+	}
+	if call.BypassReason != "emergency maintenance" {
+		t.Errorf("BypassReason = %q, want %q", call.BypassReason, "emergency maintenance")
+	}
+	if call.AttestationStatus != "stale" {
+		t.Errorf("AttestationStatus = %q, want %q", call.AttestationStatus, "stale")
+	}
+	if call.RequestID != "req-audit-test" {
+		t.Errorf("RequestID = %q, want %q", call.RequestID, "req-audit-test")
+	}
+
+	t.Log("attestation.bypass audit event emitted with correct fields")
+}
+
+func TestMiddleware_ForceBypass_UnavailableAttestationEmitsAudit(t *testing.T) {
+	t.Log("Testing that bypass with unavailable attestation emits correct status")
+
+	registry := NewActionRegistry()
+	authorizer, _ := NewAuthorizer(Config{})
+	bypassAudit := &mockBypassAuditEmitter{}
+
+	principal := &Principal{
+		UID:       "km_admin456",
+		Type:      PrincipalOperator,
+		Role:      RoleSuperAdmin,
+		TenantIDs: []string{"tenant1"},
+	}
+
+	resource := &Resource{
+		UID:      "dpu_noattest",
+		Type:     "DPU",
+		TenantID: "tenant1",
+	}
+
+	middleware := NewAuthzMiddleware(
+		authorizer,
+		registry,
+		&mockPrincipalLookup{principal: principal},
+		&mockResourceExtractor{resource: resource},
+		WithAttestationLookup(&mockAttestationLookup{status: AttestationUnavailable}),
+		WithBypassAuditEmitter(bypassAudit),
+	)
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("POST", "/api/v1/push", nil)
+	req.Header.Set("X-Force-Bypass", "new DPU deployment")
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        "km_admin456",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_admin456",
+	})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if len(bypassAudit.calls) != 1 {
+		t.Fatalf("expected 1 bypass audit call, got %d", len(bypassAudit.calls))
+	}
+
+	call := bypassAudit.calls[0]
+	if call.AttestationStatus != "unavailable" {
+		t.Errorf("AttestationStatus = %q, want %q", call.AttestationStatus, "unavailable")
+	}
+	if call.BypassReason != "new DPU deployment" {
+		t.Errorf("BypassReason = %q, want %q", call.BypassReason, "new DPU deployment")
+	}
+
+	t.Log("Unavailable attestation bypass emitted correct attestation_status")
+}
+
+func TestMiddleware_NoBypassAudit_NoEmitter(t *testing.T) {
+	t.Log("Testing that bypass without audit emitter configured does not panic")
+
+	registry := NewActionRegistry()
+	authorizer, _ := NewAuthorizer(Config{})
+
+	principal := &Principal{
+		UID:       "km_admin123",
+		Type:      PrincipalOperator,
+		Role:      RoleSuperAdmin,
+		TenantIDs: []string{"tenant1"},
+	}
+
+	resource := &Resource{
+		UID:      "dpu_stale",
+		Type:     "DPU",
+		TenantID: "tenant1",
+	}
+
+	// No WithBypassAuditEmitter option
+	middleware := NewAuthzMiddleware(
+		authorizer,
+		registry,
+		&mockPrincipalLookup{principal: principal},
+		&mockResourceExtractor{resource: resource},
+		WithAttestationLookup(&mockAttestationLookup{status: AttestationStale}),
+	)
+
+	handlerCalled := false
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("POST", "/api/v1/push", nil)
+	req.Header.Set("X-Force-Bypass", "test")
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        "km_admin123",
+		CallerType: dpop.CallerTypeAdmin,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: "op_admin",
+	})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if !handlerCalled {
+		t.Error("handler should still be called even without audit emitter")
+	}
+
+	t.Log("Bypass works correctly without audit emitter (graceful nil check)")
+}
+
 func TestMiddleware_ForceBypass_TenantAdmin_Rejected(t *testing.T) {
 	t.Log("Testing that tenant:admin cannot use force bypass (only super:admin)")
 
