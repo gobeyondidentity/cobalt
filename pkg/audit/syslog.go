@@ -7,19 +7,33 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gobeyondidentity/cobalt/pkg/authz"
+)
+
+const (
+	reconnectBackoffInit = 100 * time.Millisecond
+	reconnectBackoffMax  = 30 * time.Second
 )
 
 // SyslogAuditLogger writes authorization audit events to the local syslog daemon
 // as RFC 5424 messages with structured data. It implements authz.AuditLogger
 // and slots into the existing MultiAuditLogger composition pattern.
+//
+// On write failure the logger attempts to reconnect to the syslog socket with
+// exponential backoff (100ms initial, 30s cap). This handles transient syslog
+// restarts without tight-looping.
 type SyslogAuditLogger struct {
-	conn     net.Conn
-	hostname string
-	appName  string
-	facility Facility
-	mu       sync.Mutex
+	conn       net.Conn
+	hostname   string
+	appName    string
+	facility   Facility
+	socketPath string
+
+	mu              sync.Mutex
+	backoff         time.Duration
+	lastReconnectAt time.Time
 }
 
 // SyslogConfig holds configuration for the syslog writer.
@@ -58,10 +72,11 @@ func NewSyslogWriter(cfg SyslogConfig) (*SyslogAuditLogger, error) {
 	}
 
 	return &SyslogAuditLogger{
-		conn:     conn,
-		hostname: cfg.Hostname,
-		appName:  cfg.AppName,
-		facility: cfg.Facility,
+		conn:       conn,
+		hostname:   cfg.Hostname,
+		appName:    cfg.AppName,
+		facility:   cfg.Facility,
+		socketPath: cfg.SocketPath,
 	}, nil
 }
 
@@ -111,12 +126,7 @@ func (w *SyslogAuditLogger) LogDecision(_ context.Context, entry authz.AuthzAudi
 		Text: entry.Reason,
 	}
 
-	data := FormatMessage(msg)
-
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	_, err := w.conn.Write(data)
-	return err
+	return w.writeOrReconnect(FormatMessage(msg))
 }
 
 // Emit converts an audit Event to an RFC 5424 message and writes it to the
@@ -149,12 +159,62 @@ func (w *SyslogAuditLogger) Emit(ev Event) error {
 		}},
 	}
 
-	data := FormatMessage(msg)
+	return w.writeOrReconnect(FormatMessage(msg))
+}
 
+// writeOrReconnect writes data to the syslog socket. On failure it attempts
+// one reconnect (subject to backoff) and retries the write.
+func (w *SyslogAuditLogger) writeOrReconnect(data []byte) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
 	_, err := w.conn.Write(data)
+	if err == nil {
+		w.backoff = 0
+		return nil
+	}
+
+	// Write failed. Attempt reconnect (backoff-gated).
+	if reconnErr := w.reconnectLocked(); reconnErr != nil {
+		return fmt.Errorf("syslog write failed (%v), reconnect failed: %w", err, reconnErr)
+	}
+
+	// Retry on the fresh connection.
+	_, err = w.conn.Write(data)
+	if err == nil {
+		w.backoff = 0
+	}
 	return err
+}
+
+// reconnectLocked closes the dead connection and dials a new one.
+// Must be called with w.mu held. Respects exponential backoff to avoid
+// tight reconnect loops during sustained syslog outages.
+func (w *SyslogAuditLogger) reconnectLocked() error {
+	if w.backoff > 0 && time.Since(w.lastReconnectAt) < w.backoff {
+		return fmt.Errorf("syslog reconnect backoff: retry in %v", w.backoff-time.Since(w.lastReconnectAt))
+	}
+
+	w.conn.Close()
+
+	conn, err := dialSyslog(w.socketPath)
+	if err != nil {
+		w.lastReconnectAt = time.Now()
+		if w.backoff == 0 {
+			w.backoff = reconnectBackoffInit
+		} else {
+			w.backoff *= 2
+			if w.backoff > reconnectBackoffMax {
+				w.backoff = reconnectBackoffMax
+			}
+		}
+		return fmt.Errorf("syslog reconnect: %w", err)
+	}
+
+	w.conn = conn
+	w.backoff = 0
+	w.lastReconnectAt = time.Time{}
+	return nil
 }
 
 // Close closes the syslog socket connection.
