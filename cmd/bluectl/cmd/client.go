@@ -150,6 +150,14 @@ type dpuResponse struct {
 	Labels   map[string]string `json:"labels,omitempty"`
 }
 
+// dpuListResponse is the paginated response for listing DPUs.
+type dpuListResponse struct {
+	DPUs   []dpuResponse `json:"dpus"`
+	Total  int           `json:"total"`
+	Limit  int           `json:"limit"`
+	Offset int           `json:"offset"`
+}
+
 // tenantResponse matches the API response for tenant operations.
 type tenantResponse struct {
 	ID          string   `json:"id"`
@@ -221,9 +229,14 @@ func (c *NexusClient) AddDPU(ctx context.Context, name, host string, port int) (
 	return &dpu, nil
 }
 
-// ListDPUs retrieves all registered DPUs from the Nexus server.
-func (c *NexusClient) ListDPUs(ctx context.Context) ([]dpuResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/dpus", nil)
+// ListDPUs retrieves all registered DPUs from the Nexus server, optionally filtered by status.
+func (c *NexusClient) ListDPUs(ctx context.Context, status string) ([]dpuResponse, error) {
+	url := c.baseURL + "/api/v1/dpus"
+	if status != "" {
+		url += "?status=" + status
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -239,12 +252,12 @@ func (c *NexusClient) ListDPUs(ctx context.Context) ([]dpuResponse, error) {
 		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var dpus []dpuResponse
-	if err := json.NewDecoder(resp.Body).Decode(&dpus); err != nil {
+	var listResp dpuListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return dpus, nil
+	return listResp.DPUs, nil
 }
 
 // RemoveDPU deletes a DPU from the Nexus server.
@@ -586,16 +599,36 @@ type operatorResponse struct {
 	UpdatedAt  string `json:"updated_at"`
 }
 
+// operatorListResponse is the paginated response for listing operators.
+type operatorListResponse struct {
+	Operators []operatorResponse `json:"operators"`
+	Total     int                `json:"total"`
+	Limit     int                `json:"limit"`
+	Offset    int                `json:"offset"`
+}
+
 // updateOperatorStatusRequest is the request body for updating operator status.
 type updateOperatorStatusRequest struct {
 	Status string `json:"status"`
 }
 
-// ListOperators retrieves all operators from the Nexus server, optionally filtered by tenant.
-func (c *NexusClient) ListOperators(ctx context.Context, tenant string) ([]operatorResponse, error) {
+// suspendOperatorRequest is the request body for suspending/unsuspending an operator.
+type suspendOperatorRequest struct {
+	Reason string `json:"reason"`
+}
+
+// ListOperators retrieves all operators from the Nexus server, optionally filtered by tenant and/or status.
+func (c *NexusClient) ListOperators(ctx context.Context, tenant, status string) ([]operatorResponse, error) {
 	url := c.baseURL + "/api/v1/operators"
+	params := []string{}
 	if tenant != "" {
-		url += "?tenant=" + tenant
+		params = append(params, "tenant="+tenant)
+	}
+	if status != "" {
+		params = append(params, "status="+status)
+	}
+	if len(params) > 0 {
+		url += "?" + strings.Join(params, "&")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -614,12 +647,12 @@ func (c *NexusClient) ListOperators(ctx context.Context, tenant string) ([]opera
 		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var operators []operatorResponse
-	if err := json.NewDecoder(resp.Body).Decode(&operators); err != nil {
+	var listResp operatorListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return operators, nil
+	return listResp.Operators, nil
 }
 
 // GetOperator retrieves an operator by email from the Nexus server.
@@ -664,6 +697,68 @@ func (c *NexusClient) UpdateOperatorStatus(ctx context.Context, email, status st
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/v1/operators/"+email+"/status", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// SuspendOperator suspends an operator by ID.
+func (c *NexusClient) SuspendOperator(ctx context.Context, id, reason string) error {
+	reqBody := suspendOperatorRequest{
+		Reason: reason,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/operators/"+id+"/suspend", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// UnsuspendOperator unsuspends an operator by ID.
+func (c *NexusClient) UnsuspendOperator(ctx context.Context, id, reason string) error {
+	reqBody := suspendOperatorRequest{
+		Reason: reason,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/operators/"+id+"/unsuspend", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -1017,6 +1112,7 @@ type authorizationResponse struct {
 	DeviceNames []string `json:"device_names"`
 	CreatedAt   string   `json:"created_at"`
 	CreatedBy   string   `json:"created_by"`
+	ExpiresAt   *string  `json:"expires_at,omitempty"`
 }
 
 // GrantAuthorization creates an authorization for an operator to access CAs and devices.
@@ -1056,6 +1152,58 @@ func (c *NexusClient) GrantAuthorization(ctx context.Context, email, tenantID st
 	}
 
 	return &auth, nil
+}
+
+// GetOperatorAuthorizations retrieves all authorizations for an operator by their ID.
+func (c *NexusClient) GetOperatorAuthorizations(ctx context.Context, operatorID string) ([]authorizationResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/authorizations?operator_id="+operatorID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var auths []authorizationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&auths); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return auths, nil
+}
+
+// DeleteAuthorization deletes an authorization by ID.
+// API: DELETE /api/v1/authorizations/{id}
+func (c *NexusClient) DeleteAuthorization(ctx context.Context, id string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/authorizations/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("authorization not found: %s", id)
+	}
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 }
 
 // ----- Role Management Methods -----
@@ -1136,11 +1284,18 @@ type keymakerResponse struct {
 	Status        string  `json:"status"`
 }
 
-// ListKeyMakers retrieves all KeyMakers from the Nexus server, optionally filtered by operator.
-func (c *NexusClient) ListKeyMakers(ctx context.Context, operatorID string) ([]keymakerResponse, error) {
+// ListKeyMakers retrieves all KeyMakers from the Nexus server, optionally filtered by operator and/or status.
+func (c *NexusClient) ListKeyMakers(ctx context.Context, operatorID, status string) ([]keymakerResponse, error) {
 	url := c.baseURL + "/api/v1/keymakers"
+	params := []string{}
 	if operatorID != "" {
-		url += "?operator_id=" + operatorID
+		params = append(params, "operator_id="+operatorID)
+	}
+	if status != "" {
+		params = append(params, "status="+status)
+	}
+	if len(params) > 0 {
+		url += "?" + strings.Join(params, "&")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -1262,4 +1417,236 @@ func (c *NexusClient) GetHostPostureByDPU(ctx context.Context, dpuName string) (
 	}
 
 	return &posture, nil
+}
+
+// ----- Admin Key Methods -----
+
+// adminKeyResponse matches the API response for admin key operations.
+type adminKeyResponse struct {
+	ID             string  `json:"id"`
+	OperatorID     string  `json:"operator_id"`
+	Name           string  `json:"name,omitempty"`
+	Kid            string  `json:"kid"`
+	KeyFingerprint string  `json:"key_fingerprint"`
+	Status         string  `json:"status"`
+	BoundAt        string  `json:"bound_at"`
+	LastSeen       *string `json:"last_seen,omitempty"`
+	RevokedAt      *string `json:"revoked_at,omitempty"`
+	RevokedBy      *string `json:"revoked_by,omitempty"`
+	RevokedReason  *string `json:"revoked_reason,omitempty"`
+}
+
+// revokeAdminKeyRequest is the request body for revoking an admin key.
+type revokeAdminKeyRequest struct {
+	Reason string `json:"reason"`
+}
+
+// ListAdminKeys retrieves all admin keys from the Nexus server, optionally filtered by status.
+func (c *NexusClient) ListAdminKeys(ctx context.Context, status string) ([]adminKeyResponse, error) {
+	url := c.baseURL + "/api/v1/admin-keys"
+	if status != "" {
+		url += "?status=" + status
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var adminKeys []adminKeyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&adminKeys); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return adminKeys, nil
+}
+
+// GetAdminKey retrieves an admin key by ID from the Nexus server.
+func (c *NexusClient) GetAdminKey(ctx context.Context, id string) (*adminKeyResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/admin-keys/"+id, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("admin key not found: %s", id)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ak adminKeyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&ak); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &ak, nil
+}
+
+// RevokeAdminKey revokes an admin key by ID with a reason.
+func (c *NexusClient) RevokeAdminKey(ctx context.Context, id, reason string) error {
+	reqBody := revokeAdminKeyRequest{
+		Reason: reason,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/admin-keys/"+id, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// ----- DPU Decommission Methods -----
+
+// decommissionDPURequest is the request body for decommissioning a DPU.
+type decommissionDPURequest struct {
+	Reason string `json:"reason"`
+}
+
+// DecommissionDPUResponse is the response for a successful DPU decommissioning.
+type DecommissionDPUResponse struct {
+	ID                  string `json:"id"`
+	Status              string `json:"status"`
+	DecommissionedAt    string `json:"decommissioned_at"`
+	CredentialsScrubbed int    `json:"credentials_scrubbed"`
+}
+
+// DecommissionDPU decommissions a DPU by ID with a reason.
+// This blocks authentication, scrubs queued credentials, and retains audit records.
+func (c *NexusClient) DecommissionDPU(ctx context.Context, id, reason string) (*DecommissionDPUResponse, error) {
+	reqBody := decommissionDPURequest{
+		Reason: reason,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/dpus/"+id, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("DPU not found: %s", id)
+	}
+	if resp.StatusCode == http.StatusConflict {
+		return nil, fmt.Errorf("DPU already decommissioned")
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result DecommissionDPUResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// ----- DPU Reactivate Methods -----
+
+// reactivateDPURequest is the request body for reactivating a decommissioned DPU.
+type reactivateDPURequest struct {
+	Reason string `json:"reason"`
+}
+
+// ReactivateDPUResponse is the response for a successful DPU reactivation.
+type ReactivateDPUResponse struct {
+	ID                  string `json:"id"`
+	Status              string `json:"status"`
+	ReactivatedAt       string `json:"reactivated_at"`
+	ReactivatedBy       string `json:"reactivated_by"`
+	EnrollmentExpiresAt string `json:"enrollment_expires_at"`
+}
+
+// ReactivateDPU reactivates a decommissioned DPU by ID with a reason.
+// This sets status to pending, clears old public key, and creates a 24h enrollment window.
+// Only super:admin can call this endpoint.
+func (c *NexusClient) ReactivateDPU(ctx context.Context, id, reason string) (*ReactivateDPUResponse, error) {
+	reqBody := reactivateDPURequest{
+		Reason: reason,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/dpus/"+id+"/reactivate", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("DPU not found: %s", id)
+	}
+	if resp.StatusCode == http.StatusConflict {
+		return nil, fmt.Errorf("DPU is not decommissioned")
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result ReactivateDPUResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
 }

@@ -139,8 +139,8 @@ func TestBindKeyMaker_InvalidCode(t *testing.T) {
 
 	var result map[string]string
 	json.NewDecoder(w.Body).Decode(&result)
-	if result["error"] != "invalid invite code" {
-		t.Errorf("expected error 'invalid invite code', got '%s'", result["error"])
+	if result["error"] != "invalid or expired invite code" {
+		t.Errorf("expected error 'invalid or expired invite code', got '%s'", result["error"])
 	}
 }
 
@@ -200,8 +200,8 @@ func TestBindKeyMaker_ExpiredCode(t *testing.T) {
 
 	var result map[string]string
 	json.NewDecoder(w.Body).Decode(&result)
-	if result["error"] != "invite code has expired" {
-		t.Errorf("expected error 'invite code has expired', got '%s'", result["error"])
+	if result["error"] != "invalid or expired invite code" {
+		t.Errorf("expected error 'invalid or expired invite code', got '%s'", result["error"])
 	}
 }
 
@@ -261,8 +261,8 @@ func TestBindKeyMaker_AlreadyUsed(t *testing.T) {
 
 	var result map[string]string
 	json.NewDecoder(w.Body).Decode(&result)
-	if result["error"] != "invite code has already been used" {
-		t.Errorf("expected error 'invite code has already been used', got '%s'", result["error"])
+	if result["error"] != "invalid or expired invite code" {
+		t.Errorf("expected error 'invalid or expired invite code', got '%s'", result["error"])
 	}
 }
 
@@ -322,8 +322,8 @@ func TestBindKeyMaker_RevokedCode(t *testing.T) {
 
 	var result map[string]string
 	json.NewDecoder(w.Body).Decode(&result)
-	if result["error"] != "invite code has been revoked" {
-		t.Errorf("expected error 'invite code has been revoked', got '%s'", result["error"])
+	if result["error"] != "invalid or expired invite code" {
+		t.Errorf("expected error 'invalid or expired invite code', got '%s'", result["error"])
 	}
 }
 
@@ -384,8 +384,8 @@ func TestBindKeyMaker_ExpiredStatusCode(t *testing.T) {
 
 	var result map[string]string
 	json.NewDecoder(w.Body).Decode(&result)
-	if result["error"] != "invite code has expired" {
-		t.Errorf("expected error 'invite code has expired', got '%s'", result["error"])
+	if result["error"] != "invalid or expired invite code" {
+		t.Errorf("expected error 'invalid or expired invite code', got '%s'", result["error"])
 	}
 }
 
@@ -470,8 +470,8 @@ func TestBindKeyMaker_CannotReuse(t *testing.T) {
 
 	var result map[string]string
 	json.NewDecoder(w2.Body).Decode(&result)
-	if result["error"] != "invite code has already been used" {
-		t.Errorf("expected error 'invite code has already been used', got '%s'", result["error"])
+	if result["error"] != "invalid or expired invite code" {
+		t.Errorf("expected error 'invalid or expired invite code', got '%s'", result["error"])
 	}
 }
 

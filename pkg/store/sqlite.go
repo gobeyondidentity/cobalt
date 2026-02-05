@@ -25,20 +25,23 @@ func SetCLIName(name string) {
 
 // DPU represents a registered DPU in the store.
 type DPU struct {
-	ID                  string
-	Name                string
-	Host                string
-	Port                int
-	Status              string
-	LastSeen            *time.Time
-	CreatedAt           time.Time
-	TenantID            *string
-	Labels              map[string]string
-	PublicKey           []byte     // DPoP public key (set during enrollment)
-	Kid                 *string    // Key ID for DPoP lookup
-	KeyFingerprint      *string    // SHA256 hex of public key
-	EnrollmentExpiresAt *time.Time // Set on registration, cleared on enrollment
-	SerialNumber        string     // Hardware serial number from DICE/SPDM attestation
+	ID                     string
+	Name                   string
+	Host                   string
+	Port                   int
+	Status                 string
+	LastSeen               *time.Time
+	CreatedAt              time.Time
+	TenantID               *string
+	Labels                 map[string]string
+	PublicKey              []byte     // DPoP public key (set during enrollment)
+	Kid                    *string    // Key ID for DPoP lookup
+	KeyFingerprint         *string    // SHA256 hex of public key
+	EnrollmentExpiresAt    *time.Time // Set on registration, cleared on enrollment
+	SerialNumber           string     // Hardware serial number from DICE/SPDM attestation
+	DecommissionedAt       *time.Time // When DPU was decommissioned (lifecycle tracking)
+	DecommissionedBy       *string    // Admin ID who performed decommissioning
+	DecommissionedReason   *string    // Reason for decommissioning
 }
 
 // Tenant represents a logical grouping of DPUs.
@@ -66,12 +69,15 @@ type Host struct {
 
 // Operator represents a user who can manage DPUs.
 type Operator struct {
-	ID          string
-	Email       string
-	DisplayName string
-	Status      string // pending, active, suspended
-	CreatedAt   time.Time
-	LastLogin   *time.Time
+	ID              string
+	Email           string
+	DisplayName     string
+	Status          string // pending, active, suspended
+	CreatedAt       time.Time
+	LastLogin       *time.Time
+	SuspendedAt     *time.Time // When operator was suspended (lifecycle tracking)
+	SuspendedBy     *string    // Admin ID who performed suspension
+	SuspendedReason *string    // Reason for suspension
 }
 
 // InviteCode represents a one-time code for operator onboarding.
@@ -111,6 +117,9 @@ type KeyMaker struct {
 	Status            string // active, revoked
 	Kid               string // DPoP key identifier (equal to ID for keymakers)
 	KeyFingerprint    string // SHA256 hex of public key for duplicate detection
+	RevokedAt         *time.Time // When keymaker was revoked (lifecycle tracking)
+	RevokedBy         *string    // Admin ID who performed revocation
+	RevokedReason     *string    // Reason for revocation
 }
 
 // AdminKey represents a file-based admin credential for system operations.
@@ -125,6 +134,9 @@ type AdminKey struct {
 	Status         string // active, revoked
 	BoundAt        time.Time
 	LastSeen       *time.Time
+	RevokedAt      *time.Time // When admin key was revoked (lifecycle tracking)
+	RevokedBy      *string    // Admin ID who performed revocation
+	RevokedReason  *string    // Reason for revocation
 }
 
 
@@ -175,10 +187,25 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", path)
+	// Use _txlock=immediate so db.Begin() issues BEGIN IMMEDIATE instead of
+	// BEGIN (deferred). This prevents TOCTOU races between concurrent write
+	// transactions (e.g., QueueCredential vs DecommissionDPUAtomic) by
+	// acquiring the write lock upfront rather than deferring until the first
+	// write statement. SQLite only allows one writer at a time regardless,
+	// so this has no performance impact.
+	dsn := path + "?_txlock=immediate"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// SQLite allows only one writer at a time. Go's database/sql pool creates
+	// multiple connections by default, and PRAGMAs are per-connection. A second
+	// connection won't have busy_timeout/foreign_keys/WAL set, causing immediate
+	// SQLITE_BUSY failures under concurrency. Limiting to one connection forces
+	// all transactions to serialize at the Go level, which matches SQLite's
+	// single-writer constraint and guarantees PRAGMAs stay effective.
+	db.SetMaxOpenConns(1)
 
 	// Enable foreign key constraints
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
@@ -195,10 +222,9 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
-	// Set busy timeout to handle concurrent access gracefully.
-	// Without this, concurrent writes immediately return SQLITE_BUSY.
-	// 5 seconds allows retries under contention (especially on Windows
-	// where file locking behavior differs from Unix).
+	// Set busy timeout to wait up to 5 seconds for locks instead of failing
+	// immediately. This handles cross-process contention (e.g., CLI and server
+	// accessing the same DB file concurrently).
 	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
@@ -235,7 +261,10 @@ func (s *Store) migrate() error {
 		port INTEGER DEFAULT 18051,
 		status TEXT DEFAULT 'unknown',
 		last_seen INTEGER,
-		created_at INTEGER DEFAULT (strftime('%s', 'now'))
+		created_at INTEGER DEFAULT (strftime('%s', 'now')),
+		decommissioned_at INTEGER,
+		decommissioned_by TEXT,
+		decommissioned_reason TEXT
 	);
 	CREATE INDEX IF NOT EXISTS idx_dpus_name ON dpus(name);
 
@@ -322,7 +351,10 @@ func (s *Store) migrate() error {
 		display_name TEXT,
 		created_at INTEGER DEFAULT (strftime('%s', 'now')),
 		last_login INTEGER,
-		status TEXT NOT NULL DEFAULT 'pending'
+		status TEXT NOT NULL DEFAULT 'pending',
+		suspended_at INTEGER,
+		suspended_by TEXT,
+		suspended_reason TEXT
 	);
 	CREATE INDEX IF NOT EXISTS idx_operators_email ON operators(email);
 	CREATE INDEX IF NOT EXISTS idx_operators_status ON operators(status);
@@ -347,7 +379,10 @@ func (s *Store) migrate() error {
 		public_key TEXT NOT NULL,
 		bound_at INTEGER DEFAULT (strftime('%s', 'now')),
 		last_seen INTEGER,
-		status TEXT NOT NULL DEFAULT 'active'
+		status TEXT NOT NULL DEFAULT 'active',
+		revoked_at INTEGER,
+		revoked_by TEXT,
+		revoked_reason TEXT
 	);
 	CREATE INDEX IF NOT EXISTS idx_keymakers_operator ON keymakers(operator_id);
 
@@ -361,7 +396,10 @@ func (s *Store) migrate() error {
 		key_fingerprint TEXT NOT NULL UNIQUE,
 		status TEXT NOT NULL DEFAULT 'active',
 		bound_at INTEGER DEFAULT (strftime('%s', 'now')),
-		last_seen INTEGER
+		last_seen INTEGER,
+		revoked_at INTEGER,
+		revoked_by TEXT,
+		revoked_reason TEXT
 	);
 	CREATE INDEX IF NOT EXISTS idx_admin_keys_kid ON admin_keys(kid);
 	CREATE INDEX IF NOT EXISTS idx_admin_keys_operator ON admin_keys(operator_id);
@@ -525,6 +563,19 @@ func (s *Store) migrate() error {
 		"ALTER TABLE dpus ADD COLUMN serial_number TEXT",
 		// DPU enrollment session reference
 		"ALTER TABLE enrollment_sessions ADD COLUMN dpu_id TEXT REFERENCES dpus(id)",
+		// Phase 4: Lifecycle tracking columns
+		"ALTER TABLE operators ADD COLUMN suspended_at INTEGER",
+		"ALTER TABLE operators ADD COLUMN suspended_by TEXT",
+		"ALTER TABLE operators ADD COLUMN suspended_reason TEXT",
+		"ALTER TABLE keymakers ADD COLUMN revoked_at INTEGER",
+		"ALTER TABLE keymakers ADD COLUMN revoked_by TEXT",
+		"ALTER TABLE keymakers ADD COLUMN revoked_reason TEXT",
+		"ALTER TABLE admin_keys ADD COLUMN revoked_at INTEGER",
+		"ALTER TABLE admin_keys ADD COLUMN revoked_by TEXT",
+		"ALTER TABLE admin_keys ADD COLUMN revoked_reason TEXT",
+		"ALTER TABLE dpus ADD COLUMN decommissioned_at INTEGER",
+		"ALTER TABLE dpus ADD COLUMN decommissioned_by TEXT",
+		"ALTER TABLE dpus ADD COLUMN decommissioned_reason TEXT",
 	}
 
 	for _, m := range migrations {
@@ -590,7 +641,7 @@ func (s *Store) Remove(idOrName string) error {
 // Get retrieves a DPU by ID or name.
 func (s *Store) Get(idOrName string) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus WHERE id = ? OR name = ?`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number, decommissioned_at, decommissioned_by, decommissioned_reason FROM dpus WHERE id = ? OR name = ?`,
 		idOrName, idOrName,
 	)
 	return s.scanDPU(row)
@@ -599,7 +650,7 @@ func (s *Store) Get(idOrName string) (*DPU, error) {
 // GetDPUByAddress returns a DPU with the given host:port, or nil if not found.
 func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus WHERE host = ? AND port = ?`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number, decommissioned_at, decommissioned_by, decommissioned_reason FROM dpus WHERE host = ? AND port = ?`,
 		host, port,
 	)
 
@@ -613,8 +664,11 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	var keyFingerprint sql.NullString
 	var enrollmentExpiresAt sql.NullInt64
 	var serialNumber sql.NullString
+	var decommissionedAt sql.NullInt64
+	var decommissionedBy sql.NullString
+	var decommissionedReason sql.NullString
 
-	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber)
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber, &decommissionedAt, &decommissionedBy, &decommissionedReason)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -648,6 +702,16 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 	if serialNumber.Valid {
 		dpu.SerialNumber = serialNumber.String
 	}
+	if decommissionedAt.Valid {
+		t := time.Unix(decommissionedAt.Int64, 0)
+		dpu.DecommissionedAt = &t
+	}
+	if decommissionedBy.Valid {
+		dpu.DecommissionedBy = &decommissionedBy.String
+	}
+	if decommissionedReason.Valid {
+		dpu.DecommissionedReason = &decommissionedReason.String
+	}
 
 	return &dpu, nil
 }
@@ -655,7 +719,7 @@ func (s *Store) GetDPUByAddress(host string, port int) (*DPU, error) {
 // List returns all registered DPUs.
 func (s *Store) List() ([]*DPU, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus ORDER BY name`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number, decommissioned_at, decommissioned_by, decommissioned_reason FROM dpus ORDER BY name`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list DPUs: %w", err)
@@ -671,6 +735,64 @@ func (s *Store) List() ([]*DPU, error) {
 		dpus = append(dpus, dpu)
 	}
 	return dpus, rows.Err()
+}
+
+// ListDPUsFiltered returns DPUs with optional status and tenant filters.
+// Returns DPUs ordered by name with lifecycle fields populated.
+func (s *Store) ListDPUsFiltered(opts ListOptions) ([]*DPU, int, error) {
+	// Build query based on filters
+	query := `SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels,
+			public_key, kid, key_fingerprint, enrollment_expires_at, serial_number,
+			decommissioned_at, decommissioned_by, decommissioned_reason
+			FROM dpus WHERE 1=1`
+	countQuery := `SELECT COUNT(*) FROM dpus WHERE 1=1`
+	var args []interface{}
+
+	// Add tenant filter
+	if opts.TenantID != "" {
+		query += " AND tenant_id = ?"
+		countQuery += " AND tenant_id = ?"
+		args = append(args, opts.TenantID)
+	}
+
+	// Add status filter
+	if opts.Status != "" {
+		query += " AND status = ?"
+		countQuery += " AND status = ?"
+		args = append(args, opts.Status)
+	}
+
+	// Get total count first
+	var total int
+	err := s.db.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count DPUs: %w", err)
+	}
+
+	// Add ordering and pagination
+	query += " ORDER BY name"
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+	}
+	if opts.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", opts.Offset)
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list DPUs: %w", err)
+	}
+	defer rows.Close()
+
+	var dpus []*DPU
+	for rows.Next() {
+		dpu, err := s.scanDPURows(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		dpus = append(dpus, dpu)
+	}
+	return dpus, total, rows.Err()
 }
 
 // UpdateStatus updates the status and last_seen time for a DPU.
@@ -721,7 +843,7 @@ func (s *Store) GetDPUBySerial(serial string) (*DPU, error) {
 		return nil, nil
 	}
 	row := s.db.QueryRow(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus WHERE serial_number = ?`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number, decommissioned_at, decommissioned_by, decommissioned_reason FROM dpus WHERE serial_number = ?`,
 		serial,
 	)
 
@@ -735,8 +857,11 @@ func (s *Store) GetDPUBySerial(serial string) (*DPU, error) {
 	var keyFingerprint sql.NullString
 	var enrollmentExpiresAt sql.NullInt64
 	var serialNumber sql.NullString
+	var decommissionedAt sql.NullInt64
+	var decommissionedBy sql.NullString
+	var decommissionedReason sql.NullString
 
-	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber)
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber, &decommissionedAt, &decommissionedBy, &decommissionedReason)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -770,8 +895,45 @@ func (s *Store) GetDPUBySerial(serial string) (*DPU, error) {
 	if serialNumber.Valid {
 		dpu.SerialNumber = serialNumber.String
 	}
+	if decommissionedAt.Valid {
+		t := time.Unix(decommissionedAt.Int64, 0)
+		dpu.DecommissionedAt = &t
+	}
+	if decommissionedBy.Valid {
+		dpu.DecommissionedBy = &decommissionedBy.String
+	}
+	if decommissionedReason.Valid {
+		dpu.DecommissionedReason = &decommissionedReason.String
+	}
 
 	return &dpu, nil
+}
+
+// GetDPUByKid retrieves a DPU by its DPoP key identifier.
+// Used for O(1) lookup during DPoP token validation.
+func (s *Store) GetDPUByKid(kid string) (*DPU, error) {
+	row := s.db.QueryRow(
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number, decommissioned_at, decommissioned_by, decommissioned_reason
+		 FROM dpus WHERE kid = ?`,
+		kid,
+	)
+	return s.scanDPU(row)
+}
+
+// GetDPUByFingerprint retrieves a DPU by its key fingerprint.
+// Used for duplicate key detection during DPU enrollment.
+// Returns nil, nil if not found (does not return error for not-found case).
+func (s *Store) GetDPUByFingerprint(fingerprint string) (*DPU, error) {
+	row := s.db.QueryRow(
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number, decommissioned_at, decommissioned_by, decommissioned_reason
+		 FROM dpus WHERE key_fingerprint = ?`,
+		fingerprint,
+	)
+	dpu, err := s.scanDPU(row)
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		return nil, nil
+	}
+	return dpu, err
 }
 
 // SetDPUSerialNumber sets the serial number for a DPU.
@@ -826,6 +988,152 @@ func (s *Store) UpdateDPUEnrollment(id string, publicKey []byte, fingerprint, ki
 	return nil
 }
 
+// DecommissionDPU marks a DPU as decommissioned with full audit tracking.
+// Records who performed the decommissioning and why for audit compliance.
+func (s *Store) DecommissionDPU(id, decommissionedBy, reason string) error {
+	now := time.Now().Unix()
+	result, err := s.db.Exec(
+		`UPDATE dpus SET status = 'decommissioned', decommissioned_at = ?, decommissioned_by = ?, decommissioned_reason = ? WHERE id = ? OR name = ?`,
+		now, decommissionedBy, reason, id, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to decommission DPU: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("DPU not found: %s", id)
+	}
+	return nil
+}
+
+// ReactivateDPU restores a decommissioned DPU to pending status for re-enrollment.
+// Clears the decommissioning tracking fields and sets a new enrollment window.
+func (s *Store) ReactivateDPU(id string, enrollmentExpiresAt time.Time) error {
+	result, err := s.db.Exec(
+		`UPDATE dpus SET status = 'pending', decommissioned_at = NULL, decommissioned_by = NULL, decommissioned_reason = NULL, enrollment_expires_at = ?, public_key = NULL, kid = NULL, key_fingerprint = NULL WHERE id = ? OR name = ?`,
+		enrollmentExpiresAt.Unix(), id, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to reactivate DPU: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("DPU not found: %s", id)
+	}
+	return nil
+}
+
+// ErrAlreadyDecommissioned is returned when attempting to decommission an already-decommissioned DPU.
+var ErrAlreadyDecommissioned = fmt.Errorf("DPU already decommissioned")
+
+// ErrNotDecommissioned is returned when attempting to reactivate a DPU that is not decommissioned.
+var ErrNotDecommissioned = fmt.Errorf("DPU is not decommissioned")
+
+// ReactivateDPUAtomic atomically reactivates a decommissioned DPU.
+// Returns ErrNotDecommissioned if the DPU is not in decommissioned status (for 409 response).
+// Sets status=pending, clears decommissioning fields, clears public_key/kid/key_fingerprint,
+// and sets a new enrollment_expires_at window.
+func (s *Store) ReactivateDPUAtomic(id string, enrollmentExpiresAt time.Time) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check current status
+	var status string
+	err = tx.QueryRow(`SELECT status FROM dpus WHERE id = ? OR name = ?`, id, id).Scan(&status)
+	if err != nil {
+		return fmt.Errorf("DPU not found: %s", id)
+	}
+
+	// Must be decommissioned to reactivate
+	if status != "decommissioned" {
+		return ErrNotDecommissioned
+	}
+
+	// Update to pending, clear decommissioning and enrollment fields
+	_, err = tx.Exec(
+		`UPDATE dpus SET
+			status = 'pending',
+			decommissioned_at = NULL,
+			decommissioned_by = NULL,
+			decommissioned_reason = NULL,
+			enrollment_expires_at = ?,
+			public_key = NULL,
+			kid = NULL,
+			key_fingerprint = NULL
+		WHERE id = ? OR name = ?`,
+		enrollmentExpiresAt.Unix(), id, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to reactivate DPU: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// DecommissionDPUAtomic atomically decommissions a DPU and scrubs its credential queue.
+// Returns ErrAlreadyDecommissioned if the DPU is already decommissioned (for 409 response).
+// Returns the count of credentials scrubbed.
+func (s *Store) DecommissionDPUAtomic(id, decommissionedBy, reason string) (int, error) {
+	// Start transaction for atomicity
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// First check if DPU exists and get its current status and name
+	var status, name string
+	err = tx.QueryRow(`SELECT status, name FROM dpus WHERE id = ? OR name = ?`, id, id).Scan(&status, &name)
+	if err != nil {
+		return 0, fmt.Errorf("DPU not found: %s", id)
+	}
+
+	// Check if already decommissioned
+	if status == "decommissioned" {
+		return 0, ErrAlreadyDecommissioned
+	}
+
+	// Update status to decommissioned
+	now := time.Now().Unix()
+	_, err = tx.Exec(
+		`UPDATE dpus SET status = 'decommissioned', decommissioned_at = ?, decommissioned_by = ?, decommissioned_reason = ? WHERE id = ? OR name = ?`,
+		now, decommissionedBy, reason, id, id,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to decommission DPU: %w", err)
+	}
+
+	// Always scrub credential queue on decommission
+	var credentialsScrubbed int
+	err = tx.QueryRow(`SELECT COUNT(*) FROM credential_queue WHERE dpu_name = ?`, name).Scan(&credentialsScrubbed)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count credentials: %w", err)
+	}
+
+	if credentialsScrubbed > 0 {
+		_, err = tx.Exec(`DELETE FROM credential_queue WHERE dpu_name = ?`, name)
+		if err != nil {
+			return 0, fmt.Errorf("failed to scrub credentials: %w", err)
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return credentialsScrubbed, nil
+}
+
 func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	var dpu DPU
 	var lastSeen sql.NullInt64
@@ -837,8 +1145,11 @@ func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	var keyFingerprint sql.NullString
 	var enrollmentExpiresAt sql.NullInt64
 	var serialNumber sql.NullString
+	var decommissionedAt sql.NullInt64
+	var decommissionedBy sql.NullString
+	var decommissionedReason sql.NullString
 
-	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber)
+	err := row.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber, &decommissionedAt, &decommissionedBy, &decommissionedReason)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("DPU not found")
 	}
@@ -872,6 +1183,16 @@ func (s *Store) scanDPU(row *sql.Row) (*DPU, error) {
 	if serialNumber.Valid {
 		dpu.SerialNumber = serialNumber.String
 	}
+	if decommissionedAt.Valid {
+		t := time.Unix(decommissionedAt.Int64, 0)
+		dpu.DecommissionedAt = &t
+	}
+	if decommissionedBy.Valid {
+		dpu.DecommissionedBy = &decommissionedBy.String
+	}
+	if decommissionedReason.Valid {
+		dpu.DecommissionedReason = &decommissionedReason.String
+	}
 
 	return &dpu, nil
 }
@@ -887,8 +1208,11 @@ func (s *Store) scanDPURows(rows *sql.Rows) (*DPU, error) {
 	var keyFingerprint sql.NullString
 	var enrollmentExpiresAt sql.NullInt64
 	var serialNumber sql.NullString
+	var decommissionedAt sql.NullInt64
+	var decommissionedBy sql.NullString
+	var decommissionedReason sql.NullString
 
-	err := rows.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber)
+	err := rows.Scan(&dpu.ID, &dpu.Name, &dpu.Host, &dpu.Port, &dpu.Status, &lastSeen, &createdAt, &tenantID, &labelsJSON, &publicKey, &kid, &keyFingerprint, &enrollmentExpiresAt, &serialNumber, &decommissionedAt, &decommissionedBy, &decommissionedReason)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan DPU: %w", err)
 	}
@@ -918,6 +1242,16 @@ func (s *Store) scanDPURows(rows *sql.Rows) (*DPU, error) {
 	}
 	if serialNumber.Valid {
 		dpu.SerialNumber = serialNumber.String
+	}
+	if decommissionedAt.Valid {
+		t := time.Unix(decommissionedAt.Int64, 0)
+		dpu.DecommissionedAt = &t
+	}
+	if decommissionedBy.Valid {
+		dpu.DecommissionedBy = &decommissionedBy.String
+	}
+	if decommissionedReason.Valid {
+		dpu.DecommissionedReason = &decommissionedReason.String
 	}
 
 	return &dpu, nil
@@ -1042,7 +1376,7 @@ func (s *Store) UnassignDPUFromTenant(dpuID string) error {
 // ListDPUsByTenant returns all DPUs for a specific tenant.
 func (s *Store) ListDPUsByTenant(tenantID string) ([]*DPU, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number FROM dpus WHERE tenant_id = ? ORDER BY name`,
+		`SELECT id, name, host, port, status, last_seen, created_at, tenant_id, labels, public_key, kid, key_fingerprint, enrollment_expires_at, serial_number, decommissioned_at, decommissioned_by, decommissioned_reason FROM dpus WHERE tenant_id = ? ORDER BY name`,
 		tenantID,
 	)
 	if err != nil {

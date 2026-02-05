@@ -18,6 +18,7 @@ func init() {
 
 	// Flags for keymaker list
 	keymakerListCmd.Flags().String("operator", "", "Filter by operator email")
+	keymakerListCmd.Flags().String("status", "", "Filter by status (active, revoked)")
 
 	// Flags for keymaker revoke
 	keymakerRevokeCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
@@ -41,27 +42,47 @@ Workflow:
   4. Admin can list/revoke:      bluectl keymaker list`,
 }
 
+// validKeymakerStatuses defines the valid status values for keymaker list filtering.
+var validKeymakerStatuses = []string{"active", "revoked"}
+
 var keymakerListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List KeyMakers",
-	Long: `List all KeyMakers, optionally filtered by operator email.
+	Long: `List all KeyMakers, optionally filtered by operator email and/or status.
 
 Examples:
   bluectl keymaker list
   bluectl keymaker list --operator nelson@acme.com
+  bluectl keymaker list --status revoked
+  bluectl keymaker list --operator nelson@acme.com --status active
   bluectl keymaker list --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		operatorFilter, _ := cmd.Flags().GetString("operator")
+		statusFilter, _ := cmd.Flags().GetString("status")
+
+		// Validate status if provided
+		if statusFilter != "" {
+			valid := false
+			for _, s := range validKeymakerStatuses {
+				if statusFilter == s {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return fmt.Errorf("invalid status: %s (must be one of: %s)", statusFilter, strings.Join(validKeymakerStatuses, ", "))
+			}
+		}
 
 		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-		return listKeyMakersRemote(cmd.Context(), serverURL, operatorFilter)
+		return listKeyMakersRemote(cmd.Context(), serverURL, operatorFilter, statusFilter)
 	},
 }
 
-func listKeyMakersRemote(ctx context.Context, serverURL, operatorFilter string) error {
+func listKeyMakersRemote(ctx context.Context, serverURL, operatorFilter, statusFilter string) error {
 	client, err := NewNexusClientWithDPoP(serverURL)
 	if err != nil {
 		return err
@@ -77,7 +98,7 @@ func listKeyMakersRemote(ctx context.Context, serverURL, operatorFilter string) 
 		operatorID = op.ID
 	}
 
-	keymakers, err := client.ListKeyMakers(ctx, operatorID)
+	keymakers, err := client.ListKeyMakers(ctx, operatorID, statusFilter)
 	if err != nil {
 		return fmt.Errorf("failed to list KeyMakers: %w", err)
 	}
@@ -118,7 +139,7 @@ distribute credentials.
 Examples:
   bluectl keymaker revoke km-abc123
   bluectl keymaker revoke km-abc123 --yes`,
-	Args: cobra.ExactArgs(1),
+	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id := args[0]
 		skipConfirm, _ := cmd.Flags().GetBool("yes")

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/gobeyondidentity/cobalt/pkg/dpop"
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
@@ -89,12 +90,21 @@ func TestKeyMakerRevocation_BlocksAuthorization(t *testing.T) {
 	t.Log("Authorization check passed with active KeyMaker")
 
 	t.Log("Revoking KeyMaker via DELETE /api/v1/keymakers/{id}")
-	req = httptest.NewRequest("DELETE", "/api/v1/keymakers/"+keymakerID, nil)
+	revokeBody := `{"reason": "Test revocation"}`
+	req = httptest.NewRequest("DELETE", "/api/v1/keymakers/"+keymakerID, bytes.NewReader([]byte(revokeBody)))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        keymakerID,
+		CallerType: dpop.CallerTypeKeyMaker,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: operatorID,
+	})
+	req = req.WithContext(ctx)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected status 204 for revoke, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for revoke, got %d: %s", w.Code, w.Body.String())
 	}
 	t.Log("KeyMaker revoked successfully")
 
@@ -168,12 +178,21 @@ func TestKeyMakerRevocation_Permanent(t *testing.T) {
 	}
 
 	t.Log("Revoking KeyMaker")
-	req := httptest.NewRequest("DELETE", "/api/v1/keymakers/"+keymakerID, nil)
+	revokeBody := `{"reason": "Test revocation"}`
+	req := httptest.NewRequest("DELETE", "/api/v1/keymakers/"+keymakerID, bytes.NewReader([]byte(revokeBody)))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        keymakerID,
+		CallerType: dpop.CallerTypeKeyMaker,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: operatorID,
+	})
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected status 204 for revoke, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for revoke, got %d: %s", w.Code, w.Body.String())
 	}
 
 	t.Log("Verifying KeyMaker status is 'revoked' via GET endpoint")
@@ -404,12 +423,21 @@ func TestKeyMakerRevocation_NewKeyMakerForSameOperatorWorks(t *testing.T) {
 	}
 
 	t.Log("Revoking KeyMaker-A")
-	req := httptest.NewRequest("DELETE", "/api/v1/keymakers/"+keymakerAID, nil)
+	revokeBody := `{"reason": "Test revocation"}`
+	req := httptest.NewRequest("DELETE", "/api/v1/keymakers/"+keymakerAID, bytes.NewReader([]byte(revokeBody)))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := dpop.ContextWithIdentity(req.Context(), &dpop.Identity{
+		KID:        keymakerAID,
+		CallerType: dpop.CallerTypeKeyMaker,
+		Status:     dpop.IdentityStatusActive,
+		OperatorID: operatorID,
+	})
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected status 204 for revoke, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for revoke, got %d: %s", w.Code, w.Body.String())
 	}
 	t.Log("KeyMaker-A revoked")
 

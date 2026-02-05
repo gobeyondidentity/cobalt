@@ -65,6 +65,18 @@ namespace Cobalt {
     // Cobalt: Root entity representing the Nexus Server
     type Cobalt = {};
 
+    // KeyMaker: Device bound to an operator for cryptographic operations
+    type KeyMaker = {
+        tenant: String,
+        // Owner operator ID (for self-revocation authorization)
+        owner_id: String,
+    };
+
+    // AdminKey: Administrator key used by bluectl
+    type AdminKey = {
+        tenant: String,
+    };
+
     // =========================================================================
     // Entity Definitions with Parent Relationships
     // =========================================================================
@@ -77,6 +89,8 @@ namespace Cobalt {
     entity Authorization in [Tenant] = Authorization;
     entity IssuedCredential in [Tenant] = IssuedCredential;
     entity Cobalt = Cobalt;
+    entity KeyMaker in [Tenant] = KeyMaker;
+    entity AdminKey in [Tenant] = AdminKey;
 
     // =========================================================================
     // Action Definitions (map 1:1 with API endpoints per ADR-011)
@@ -151,11 +165,37 @@ namespace Cobalt {
         principal: [Operator],
         resource: [Tenant],
     };
-    action "dpu:delete" appliesTo {
+    action "dpu:read_attestation" appliesTo {
         principal: [Operator],
         resource: [DPU],
     };
-    action "dpu:read_attestation" appliesTo {
+
+    // ----- Lifecycle Management (Phase 4) -----
+    action "keymaker:revoke" appliesTo {
+        principal: [Operator],
+        resource: [KeyMaker],
+        context: {
+            // True if principal owns this KeyMaker
+            is_resource_owner: Bool,
+        },
+    };
+    action "adminkey:revoke" appliesTo {
+        principal: [Operator],
+        resource: [AdminKey],
+    };
+    action "operator:suspend" appliesTo {
+        principal: [Operator],
+        resource: [Operator],
+    };
+    action "operator:unsuspend" appliesTo {
+        principal: [Operator],
+        resource: [Operator],
+    };
+    action "dpu:decommission" appliesTo {
+        principal: [Operator],
+        resource: [DPU],
+    };
+    action "dpu:reactivate" appliesTo {
         principal: [Operator],
         resource: [DPU],
     };

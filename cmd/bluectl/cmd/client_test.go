@@ -113,16 +113,19 @@ func TestNexusClient_ListDPUs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name       string
-		serverResp []dpuResponse
+		serverResp dpuListResponse
 		serverCode int
 		wantErr    bool
 		wantCount  int
 	}{
 		{
 			name: "successful list with DPUs",
-			serverResp: []dpuResponse{
-				{ID: "abc12345", Name: "bf3-lab", Host: "192.168.1.204", Port: 18051, Status: "healthy"},
-				{ID: "def67890", Name: "bf3-dev", Host: "192.168.1.205", Port: 18051, Status: "offline"},
+			serverResp: dpuListResponse{
+				DPUs: []dpuResponse{
+					{ID: "abc12345", Name: "bf3-lab", Host: "192.168.1.204", Port: 18051, Status: "healthy"},
+					{ID: "def67890", Name: "bf3-dev", Host: "192.168.1.205", Port: 18051, Status: "offline"},
+				},
+				Total: 2, Limit: 100, Offset: 0,
 			},
 			serverCode: http.StatusOK,
 			wantErr:    false,
@@ -130,7 +133,7 @@ func TestNexusClient_ListDPUs(t *testing.T) {
 		},
 		{
 			name:       "empty list",
-			serverResp: []dpuResponse{},
+			serverResp: dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0},
 			serverCode: http.StatusOK,
 			wantErr:    false,
 			wantCount:  0,
@@ -160,7 +163,7 @@ func TestNexusClient_ListDPUs(t *testing.T) {
 			defer server.Close()
 
 			client := NewNexusClient(server.URL)
-			resp, err := client.ListDPUs(context.Background())
+			resp, err := client.ListDPUs(context.Background(), "")
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListDPUs() error = %v, wantErr %v", err, tt.wantErr)
@@ -812,13 +815,13 @@ func TestAssignDPURemote_ResolvesNames(t *testing.T) {
 					json.NewEncoder(w).Encode(tenants)
 
 				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/dpus":
-					// Return list of DPUs for name resolution
+					// Return list of DPUs for name resolution (wrapped format)
 					dpus := []dpuResponse{
 						{ID: dpuID, Name: dpuName, Host: "192.168.1.204", Port: 18051},
 						{ID: "dpu_other", Name: "bf3-dev", Host: "192.168.1.205", Port: 18051},
 					}
 					w.WriteHeader(http.StatusOK)
-					json.NewEncoder(w).Encode(dpus)
+					json.NewEncoder(w).Encode(dpuListResponse{DPUs: dpus, Total: len(dpus), Limit: 100, Offset: 0})
 
 				case r.Method == http.MethodPost && len(r.URL.Path) > len("/api/v1/tenants/") && r.URL.Path[len(r.URL.Path)-5:] == "/dpus":
 					// This is the assign call: POST /api/tenants/{tenantID}/dpus
@@ -1252,7 +1255,7 @@ func TestNexusClient_DPoP_HeaderPresent(t *testing.T) {
 		receivedPath = r.URL.Path
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]dpuResponse{})
+		json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 	}))
 	defer server.Close()
 
@@ -1266,7 +1269,7 @@ func TestNexusClient_DPoP_HeaderPresent(t *testing.T) {
 	}
 
 	t.Log("Calling ListDPUs to verify DPoP header is sent")
-	_, err = client.ListDPUs(context.Background())
+	_, err = client.ListDPUs(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1324,7 +1327,7 @@ func TestNexusClient_DPoP_HeaderNotPresentWhenDisabled(t *testing.T) {
 		receivedDPoPHeader = r.Header.Get("DPoP")
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]dpuResponse{})
+		json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 	}))
 	defer server.Close()
 
@@ -1337,7 +1340,7 @@ func TestNexusClient_DPoP_HeaderNotPresentWhenDisabled(t *testing.T) {
 	}
 
 	t.Log("Calling ListDPUs to verify no DPoP header is sent")
-	_, err := client.ListDPUs(context.Background())
+	_, err := client.ListDPUs(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1369,7 +1372,7 @@ func TestNexusClient_DPoP_AllHTTPMethods(t *testing.T) {
 			name:   "GET request (ListDPUs)",
 			method: "GET",
 			callMethod: func(c *NexusClient) error {
-				_, err := c.ListDPUs(context.Background())
+				_, err := c.ListDPUs(context.Background(), "")
 				return err
 			},
 		},
@@ -1411,7 +1414,7 @@ func TestNexusClient_DPoP_AllHTTPMethods(t *testing.T) {
 				switch r.Method {
 				case "GET":
 					w.WriteHeader(http.StatusOK)
-					json.NewEncoder(w).Encode([]dpuResponse{})
+					json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 				case "POST":
 					w.WriteHeader(http.StatusCreated)
 					json.NewEncoder(w).Encode(dpuResponse{ID: "new-id"})
@@ -1516,7 +1519,7 @@ func TestNexusClient_DPoP_AuthErrorHandling(t *testing.T) {
 			client := NewNexusClient(server.URL)
 			client.SetDPoP(proofGen, testKID)
 
-			_, err := client.ListDPUs(context.Background())
+			_, err := client.ListDPUs(context.Background(), "")
 
 			t.Logf("Verifying error message contains expected text for %s", tt.errorCode)
 			if err == nil {
@@ -1548,7 +1551,7 @@ func TestNexusClient_DPoP_FreshProofPerRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		proofs = append(proofs, r.Header.Get("DPoP"))
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]dpuResponse{})
+		json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 	}))
 	defer server.Close()
 
@@ -1556,8 +1559,8 @@ func TestNexusClient_DPoP_FreshProofPerRequest(t *testing.T) {
 	client.SetDPoP(proofGen, testKID)
 
 	t.Log("Making two consecutive requests")
-	_, _ = client.ListDPUs(context.Background())
-	_, _ = client.ListDPUs(context.Background())
+	_, _ = client.ListDPUs(context.Background(), "")
+	_, _ = client.ListDPUs(context.Background(), "")
 
 	if len(proofs) != 2 {
 		t.Fatalf("expected 2 proofs captured, got %d", len(proofs))
@@ -1619,7 +1622,7 @@ func TestNewNexusClientWithDPoPFromPaths_LoadsFromFiles(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedDPoPHeader = r.Header.Get("DPoP")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]dpuResponse{})
+		json.NewEncoder(w).Encode(dpuListResponse{DPUs: []dpuResponse{}, Total: 0, Limit: 100, Offset: 0})
 	}))
 	defer server.Close()
 
@@ -1635,7 +1638,7 @@ func TestNewNexusClientWithDPoPFromPaths_LoadsFromFiles(t *testing.T) {
 	}
 
 	t.Log("Making request to verify DPoP header is sent")
-	_, err = client.ListDPUs(context.Background())
+	_, err = client.ListDPUs(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1884,6 +1887,245 @@ func TestNexusClient_RemoveRole(t *testing.T) {
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RemoveRole() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNexusClient_GetOperatorAuthorizations(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing GetOperatorAuthorizations retrieves authorizations by operator ID")
+
+	tests := []struct {
+		name       string
+		operatorID string
+		response   []map[string]interface{}
+		statusCode int
+		wantLen    int
+		wantErr    bool
+	}{
+		{
+			name:       "successful_get_with_authorizations",
+			operatorID: "op_abc123",
+			response: []map[string]interface{}{
+				{
+					"id":           "auth_xyz789",
+					"operator_id":  "op_abc123",
+					"tenant_id":    "tnt_test",
+					"ca_ids":       []string{"ca_ops"},
+					"ca_names":     []string{"ops-ca"},
+					"device_ids":   []string{"all"},
+					"device_names": []string{"all"},
+					"created_at":   "2026-01-15T10:00:00Z",
+					"created_by":   "admin@test.com",
+				},
+				{
+					"id":           "auth_abc456",
+					"operator_id":  "op_abc123",
+					"tenant_id":    "tnt_test",
+					"ca_ids":       []string{"ca_dev"},
+					"ca_names":     []string{"dev-ca"},
+					"device_ids":   []string{"dpu_001", "dpu_002"},
+					"device_names": []string{"bf3-lab-01", "bf3-lab-02"},
+					"created_at":   "2026-01-16T11:00:00Z",
+					"created_by":   "admin@test.com",
+					"expires_at":   "2026-12-31T23:59:59Z",
+				},
+			},
+			statusCode: http.StatusOK,
+			wantLen:    2,
+			wantErr:    false,
+		},
+		{
+			name:       "successful_get_empty_authorizations",
+			operatorID: "op_noauths",
+			response:   []map[string]interface{}{},
+			statusCode: http.StatusOK,
+			wantLen:    0,
+			wantErr:    false,
+		},
+		{
+			name:       "server_error",
+			operatorID: "op_error",
+			statusCode: http.StatusInternalServerError,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			t.Logf("Received request: GET /api/v1/authorizations?operator_id=%s", tt.operatorID)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					t.Errorf("expected GET request, got %s", r.Method)
+				}
+				expectedPath := "/api/v1/authorizations"
+				if r.URL.Path != expectedPath {
+					t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
+				}
+				gotOperatorID := r.URL.Query().Get("operator_id")
+				if gotOperatorID != tt.operatorID {
+					t.Errorf("expected operator_id=%s, got %s", tt.operatorID, gotOperatorID)
+				}
+
+				w.WriteHeader(tt.statusCode)
+				if tt.statusCode == http.StatusOK {
+					json.NewEncoder(w).Encode(tt.response)
+				} else {
+					w.Write([]byte(`{"error": "internal server error"}`))
+				}
+			}))
+			defer server.Close()
+
+			client := NewNexusClient(server.URL)
+			auths, err := client.GetOperatorAuthorizations(context.Background(), tt.operatorID)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetOperatorAuthorizations() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && len(auths) != tt.wantLen {
+				t.Errorf("GetOperatorAuthorizations() returned %d authorizations, want %d", len(auths), tt.wantLen)
+			}
+			if !tt.wantErr && tt.wantLen > 0 {
+				if auths[0].ID != tt.response[0]["id"] {
+					t.Errorf("First auth ID = %s, want %s", auths[0].ID, tt.response[0]["id"])
+				}
+				// Check second authorization has expiration
+				if tt.wantLen > 1 && auths[1].ExpiresAt == nil {
+					t.Error("Second auth should have ExpiresAt set")
+				}
+			}
+		})
+	}
+}
+
+// ----- DPU Reactivate Client Tests -----
+
+func TestNexusClient_ReactivateDPU(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing ReactivateDPU client method")
+
+	tests := []struct {
+		name       string
+		dpuID      string
+		reason     string
+		serverResp ReactivateDPUResponse
+		serverCode int
+		wantErr    bool
+		errContains string
+	}{
+		{
+			name:   "successful reactivate",
+			dpuID:  "dpu_abc123",
+			reason: "Hardware returned from RMA repair",
+			serverResp: ReactivateDPUResponse{
+				ID:                  "dpu_abc123",
+				Status:              "pending",
+				ReactivatedAt:       "2026-02-04T15:04:05Z",
+				ReactivatedBy:       "adm_super123",
+				EnrollmentExpiresAt: "2026-02-05T15:04:05Z",
+			},
+			serverCode: http.StatusOK,
+			wantErr:    false,
+		},
+		{
+			name:        "DPU not found",
+			dpuID:       "dpu_nonexistent",
+			reason:      "Hardware returned from RMA repair",
+			serverCode:  http.StatusNotFound,
+			wantErr:     true,
+			errContains: "DPU not found",
+		},
+		{
+			name:        "DPU not decommissioned",
+			dpuID:       "dpu_active",
+			reason:      "Hardware returned from RMA repair",
+			serverCode:  http.StatusConflict,
+			wantErr:     true,
+			errContains: "not decommissioned",
+		},
+		{
+			name:        "reason too short",
+			dpuID:       "dpu_abc123",
+			reason:      "short",
+			serverCode:  http.StatusBadRequest,
+			wantErr:     true,
+		},
+		{
+			name:        "forbidden for tenant admin",
+			dpuID:       "dpu_abc123",
+			reason:      "Hardware returned from RMA repair",
+			serverCode:  http.StatusForbidden,
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Logf("Received request: %s %s", r.Method, r.URL.Path)
+
+				if r.Method != http.MethodPost {
+					t.Errorf("expected POST, got %s", r.Method)
+				}
+
+				expectedPath := "/api/v1/dpus/" + tt.dpuID + "/reactivate"
+				if r.URL.Path != expectedPath {
+					t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
+				}
+
+				// Verify request body
+				var req reactivateDPURequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("failed to decode request body: %v", err)
+				}
+				if req.Reason != tt.reason {
+					t.Errorf("expected reason %s, got %s", tt.reason, req.Reason)
+				}
+
+				w.WriteHeader(tt.serverCode)
+				if tt.serverCode == http.StatusOK {
+					json.NewEncoder(w).Encode(tt.serverResp)
+				} else {
+					json.NewEncoder(w).Encode(map[string]string{"error": "test error"})
+				}
+			}))
+			defer server.Close()
+
+			client := NewNexusClient(server.URL)
+			resp, err := client.ReactivateDPU(context.Background(), tt.dpuID, tt.reason)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReactivateDPU() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr && tt.errContains != "" {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("expected error containing %q, got %q", tt.errContains, err.Error())
+				}
+				return
+			}
+
+			if !tt.wantErr {
+				if resp.ID != tt.serverResp.ID {
+					t.Errorf("expected ID %s, got %s", tt.serverResp.ID, resp.ID)
+				}
+				if resp.Status != tt.serverResp.Status {
+					t.Errorf("expected Status %s, got %s", tt.serverResp.Status, resp.Status)
+				}
+				if resp.ReactivatedAt != tt.serverResp.ReactivatedAt {
+					t.Errorf("expected ReactivatedAt %s, got %s", tt.serverResp.ReactivatedAt, resp.ReactivatedAt)
+				}
+				if resp.ReactivatedBy != tt.serverResp.ReactivatedBy {
+					t.Errorf("expected ReactivatedBy %s, got %s", tt.serverResp.ReactivatedBy, resp.ReactivatedBy)
+				}
+				if resp.EnrollmentExpiresAt != tt.serverResp.EnrollmentExpiresAt {
+					t.Errorf("expected EnrollmentExpiresAt %s, got %s", tt.serverResp.EnrollmentExpiresAt, resp.EnrollmentExpiresAt)
+				}
 			}
 		})
 	}

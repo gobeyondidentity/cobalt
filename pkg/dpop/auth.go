@@ -99,6 +99,13 @@ type AuthMiddleware struct {
 
 	// bypassPrefixes contains path prefixes that don't require DPoP.
 	bypassPrefixes []string
+
+	// debugMode enables detailed error codes in responses.
+	// Per security-architecture.md §5: In production mode (default), lifecycle errors
+	// return generic "auth.failed" to prevent identity enumeration.
+	// In debug mode, returns detailed codes (auth.revoked, auth.suspended, etc.)
+	// Detailed codes are ALWAYS logged server-side regardless of this setting.
+	debugMode bool
 }
 
 // AuthMiddlewareOption configures an AuthMiddleware.
@@ -108,6 +115,17 @@ type AuthMiddlewareOption func(*AuthMiddleware)
 func WithLogger(logger *slog.Logger) AuthMiddlewareOption {
 	return func(m *AuthMiddleware) {
 		m.logger = logger
+	}
+}
+
+// WithDebugMode enables detailed error codes in responses.
+// Per security-architecture.md §5: Production mode (default) masks lifecycle
+// errors as "auth.failed" to prevent identity enumeration attacks.
+// Debug mode returns specific codes like auth.revoked, auth.suspended.
+// Detailed codes are ALWAYS logged server-side regardless of this setting.
+func WithDebugMode(enabled bool) AuthMiddlewareOption {
+	return func(m *AuthMiddleware) {
+		m.debugMode = enabled
 	}
 }
 
@@ -220,25 +238,49 @@ func (m *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 			return
 		}
 		if identity == nil {
+			// Log detailed code server-side, mask in production mode
 			m.logAuthFailure(r, result.KID, "dpop.unknown_key", "kid not found")
-			m.writeError(w, http.StatusUnauthorized, "dpop.unknown_key", "unknown key")
+			if m.debugMode {
+				m.writeError(w, http.StatusUnauthorized, "dpop.unknown_key", "unknown key")
+			} else {
+				// Production: mask as generic auth.failed to prevent key enumeration
+				m.writeError(w, http.StatusUnauthorized, "auth.failed", "authentication failed")
+			}
 			return
 		}
 
-		// Check identity status
+		// Check identity status (step 10 per security-architecture.md §2.5)
+		// Detailed codes are ALWAYS logged server-side for forensics.
+		// Response codes depend on debug mode to prevent identity enumeration.
 		switch identity.Status {
 		case IdentityStatusRevoked:
 			m.logAuthFailure(r, result.KID, "auth.revoked", "identity revoked")
-			m.writeError(w, http.StatusUnauthorized, "auth.revoked", "access revoked")
+			if m.debugMode {
+				m.writeError(w, http.StatusUnauthorized, "auth.revoked", "access revoked")
+			} else {
+				// Production: mask as generic auth.failed (prevents enumeration)
+				m.writeError(w, http.StatusUnauthorized, "auth.failed", "authentication failed")
+			}
 			return
 		case IdentityStatusSuspended:
 			m.logAuthFailure(r, result.KID, "auth.suspended", "identity suspended")
-			// Suspended returns 403 per security-architecture.md
-			m.writeError(w, http.StatusForbidden, "auth.suspended", "access suspended")
+			if m.debugMode {
+				// Debug: 403 reveals suspension status
+				m.writeError(w, http.StatusForbidden, "auth.suspended", "access suspended")
+			} else {
+				// Production: mask as generic 401 auth.failed (prevents enumeration)
+				// Note: returning 401 instead of 403 to avoid leaking suspended vs revoked
+				m.writeError(w, http.StatusUnauthorized, "auth.failed", "authentication failed")
+			}
 			return
 		case IdentityStatusDecommissioned:
 			m.logAuthFailure(r, result.KID, "auth.decommissioned", "dpu decommissioned")
-			m.writeError(w, http.StatusUnauthorized, "auth.decommissioned", "device decommissioned")
+			if m.debugMode {
+				m.writeError(w, http.StatusUnauthorized, "auth.decommissioned", "device decommissioned")
+			} else {
+				// Production: mask as generic auth.failed
+				m.writeError(w, http.StatusUnauthorized, "auth.failed", "authentication failed")
+			}
 			return
 		}
 

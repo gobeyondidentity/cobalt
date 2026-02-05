@@ -184,3 +184,97 @@ forbid(
 ) when {
     principal != resource
 };
+
+// ============================================================================
+// LIFECYCLE MANAGEMENT (Phase 4)
+// ============================================================================
+
+// ----- KeyMaker Revocation -----
+// Operators can revoke their OWN KeyMakers only
+// Uses context.is_resource_owner set by the application
+permit(
+    principal is Operator,
+    action == Action::"keymaker:revoke",
+    resource is KeyMaker
+) when {
+    principal.role == "operator" &&
+    context.is_resource_owner == true
+};
+
+// tenant:admin can revoke KeyMakers for operators in their tenant
+// (handled by generic tenant:admin policy, included here for documentation)
+
+// super:admin can revoke any KeyMaker
+// (handled by generic super:admin policy)
+
+// ----- AdminKey Revocation -----
+// ONLY super:admin can revoke admin keys (security-critical)
+// Tenant admins are explicitly forbidden
+forbid(
+    principal is Operator,
+    action == Action::"adminkey:revoke",
+    resource
+) when {
+    principal.role == "tenant:admin"
+};
+
+// Operators cannot revoke admin keys
+forbid(
+    principal is Operator,
+    action == Action::"adminkey:revoke",
+    resource
+) when {
+    principal.role == "operator"
+};
+
+// ----- Operator Suspension -----
+// tenant:admin can suspend/unsuspend operators in their tenant
+// (handled by generic tenant:admin policy)
+
+// super:admin can suspend/unsuspend any operator
+// (handled by generic super:admin policy)
+
+// Operators cannot suspend other operators
+forbid(
+    principal is Operator,
+    action in [Action::"operator:suspend", Action::"operator:unsuspend"],
+    resource
+) when {
+    principal.role == "operator"
+};
+
+// ----- DPU Decommissioning -----
+// tenant:admin can decommission DPUs in their tenant
+// (handled by generic tenant:admin policy)
+
+// super:admin can decommission any DPU
+// (handled by generic super:admin policy)
+
+// Operators cannot decommission DPUs
+forbid(
+    principal is Operator,
+    action == Action::"dpu:decommission",
+    resource
+) when {
+    principal.role == "operator"
+};
+
+// ----- DPU Reactivation -----
+// ONLY super:admin can reactivate DPUs (security-critical recovery operation)
+// Tenant admins are explicitly forbidden
+forbid(
+    principal is Operator,
+    action == Action::"dpu:reactivate",
+    resource
+) when {
+    principal.role == "tenant:admin"
+};
+
+// Operators cannot reactivate DPUs
+forbid(
+    principal is Operator,
+    action == Action::"dpu:reactivate",
+    resource
+) when {
+    principal.role == "operator"
+};

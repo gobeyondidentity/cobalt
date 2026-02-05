@@ -26,7 +26,6 @@ const (
 	ActionDPUList            = "dpu:list"
 	ActionDPURead            = "dpu:read"
 	ActionDPURegister        = "dpu:register"
-	ActionDPUDelete          = "dpu:delete"
 	ActionDPUReadAttestation = "dpu:read_attestation"
 
 	// Credential distribution
@@ -67,6 +66,15 @@ const (
 	ActionHostReadPosture   = "host:read_posture"
 	ActionHostRequestCert   = "host:request_cert"
 	ActionHostScan          = "host:scan"
+
+	// Lifecycle management (Phase 4)
+	ActionKeyMakerList      = "keymaker:list"
+	ActionKeyMakerRevoke    = "keymaker:revoke"
+	ActionAdminKeyRevoke    = "adminkey:revoke"
+	ActionOperatorSuspend   = "operator:suspend"
+	ActionOperatorUnsuspend = "operator:unsuspend"
+	ActionDPUDecommission   = "dpu:decommission"
+	ActionDPUReactivate     = "dpu:reactivate"
 )
 
 // validActions is the set of all valid action strings.
@@ -86,7 +94,6 @@ var validActions = map[string]bool{
 	ActionDPUList:              true,
 	ActionDPURead:              true,
 	ActionDPURegister:          true,
-	ActionDPUDelete:            true,
 	ActionDPUReadAttestation:   true,
 	ActionCredentialPush:       true,
 	ActionCredentialPull:       true,
@@ -113,6 +120,14 @@ var validActions = map[string]bool{
 	ActionHostReadPosture:      true,
 	ActionHostRequestCert:      true,
 	ActionHostScan:             true,
+	// Lifecycle management (Phase 4)
+	ActionKeyMakerList:      true,
+	ActionKeyMakerRevoke:    true,
+	ActionAdminKeyRevoke:    true,
+	ActionOperatorSuspend:   true,
+	ActionOperatorUnsuspend: true,
+	ActionDPUDecommission:   true,
+	ActionDPUReactivate:     true,
 }
 
 // attestationGatedActions require valid attestation status.
@@ -201,7 +216,7 @@ func NewActionRegistry() *ActionRegistry {
 	r.register("GET", "/api/v1/dpus", Action(ActionDPUList))
 	r.register("GET", "/api/v1/dpus/{id}", Action(ActionDPURead))
 	r.register("POST", "/api/v1/dpus", Action(ActionDPURegister))
-	r.register("DELETE", "/api/v1/dpus/{id}", Action(ActionDPUDelete))
+	// Note: DELETE /api/v1/dpus/{id} is registered in Lifecycle section as dpu:decommission
 	r.register("GET", "/api/v1/dpus/{id}/attestation", Action(ActionDPUReadAttestation))
 
 	// ----- Credential Distribution Endpoints -----
@@ -242,6 +257,15 @@ func NewActionRegistry() *ActionRegistry {
 	r.register("GET", "/api/v1/hosts/{dpuName}/posture", Action(ActionHostReadPosture))
 	r.register("POST", "/api/v1/hosts/{hostname}/cert", Action(ActionHostRequestCert))
 	r.register("POST", "/api/v1/hosts/{hostname}/scan", Action(ActionHostScan))
+
+	// ----- Lifecycle Management Endpoints (Phase 4) -----
+	r.register("GET", "/api/v1/keymakers", Action(ActionKeyMakerList))
+	r.register("DELETE", "/api/v1/keymakers/{id}", Action(ActionKeyMakerRevoke))
+	r.register("DELETE", "/api/v1/admin-keys/{id}", Action(ActionAdminKeyRevoke))
+	r.register("POST", "/api/v1/operators/{id}/suspend", Action(ActionOperatorSuspend))
+	r.register("POST", "/api/v1/operators/{id}/unsuspend", Action(ActionOperatorUnsuspend))
+	r.register("DELETE", "/api/v1/dpus/{id}", Action(ActionDPUDecommission))
+	r.register("POST", "/api/v1/dpus/{id}/reactivate", Action(ActionDPUReactivate))
 
 	return r
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -18,7 +19,7 @@ func init() {
 	operatorCmd.AddCommand(operatorInviteCmd)
 	operatorCmd.AddCommand(operatorListCmd)
 	operatorCmd.AddCommand(operatorSuspendCmd)
-	operatorCmd.AddCommand(operatorActivateCmd)
+	operatorCmd.AddCommand(operatorUnsuspendCmd)
 	operatorCmd.AddCommand(operatorGrantCmd)
 	operatorCmd.AddCommand(operatorAuthorizationsCmd)
 	operatorCmd.AddCommand(operatorRevokeCmd)
@@ -30,10 +31,21 @@ func init() {
 
 	// Flags for operator list
 	operatorListCmd.Flags().String("tenant", "", "Filter by tenant")
+	operatorListCmd.Flags().String("status", "", "Filter by status (active, suspended)")
+
+	// Flags for operator suspend
+	operatorSuspendCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+	operatorSuspendCmd.Flags().String("reason", "", "Reason for suspension (required)")
+	operatorSuspendCmd.MarkFlagRequired("reason")
+
+	// Flags for operator unsuspend
+	operatorUnsuspendCmd.Flags().String("reason", "", "Reason for unsuspension (required)")
+	operatorUnsuspendCmd.MarkFlagRequired("reason")
 
 	// Flags for operator revoke
 	operatorRevokeCmd.Flags().String("tenant", "", "Tenant name (required)")
 	operatorRevokeCmd.Flags().String("ca", "", "CA name to revoke access from (required)")
+	operatorRevokeCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	operatorRevokeCmd.MarkFlagRequired("tenant")
 	operatorRevokeCmd.MarkFlagRequired("ca")
 
@@ -144,31 +156,51 @@ func inviteOperatorRemote(ctx context.Context, serverURL, email, tenantName, rol
 	return nil
 }
 
+// validOperatorStatuses defines the valid status values for operator list filtering.
+var validOperatorStatuses = []string{"active", "suspended"}
+
 var operatorListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List operators",
-	Long: `List all operators, optionally filtered by tenant.
+	Long: `List all operators, optionally filtered by tenant and/or status.
 
 Examples:
   bluectl operator list
-  bluectl operator list --tenant acme`,
+  bluectl operator list --tenant acme
+  bluectl operator list --status suspended
+  bluectl operator list --tenant acme --status active`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tenantFilter, _ := cmd.Flags().GetString("tenant")
+		statusFilter, _ := cmd.Flags().GetString("status")
+
+		// Validate status if provided
+		if statusFilter != "" {
+			valid := false
+			for _, s := range validOperatorStatuses {
+				if statusFilter == s {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return fmt.Errorf("invalid status: %s (must be one of: %s)", statusFilter, strings.Join(validOperatorStatuses, ", "))
+			}
+		}
 
 		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-		return listOperatorsRemote(cmd.Context(), serverURL, tenantFilter)
+		return listOperatorsRemote(cmd.Context(), serverURL, tenantFilter, statusFilter)
 	},
 }
 
-func listOperatorsRemote(ctx context.Context, serverURL, tenantFilter string) error {
+func listOperatorsRemote(ctx context.Context, serverURL, tenantFilter, statusFilter string) error {
 	client, err := NewNexusClientWithDPoP(serverURL)
 	if err != nil {
 		return err
 	}
-	operators, err := client.ListOperators(ctx, tenantFilter)
+	operators, err := client.ListOperators(ctx, tenantFilter, statusFilter)
 	if err != nil {
 		return fmt.Errorf("failed to list operators: %w", err)
 	}
@@ -202,10 +234,13 @@ var operatorSuspendCmd = &cobra.Command{
 authorization checks will fail until reactivated.
 
 Examples:
-  bluectl operator suspend marcus@acme.com`,
+  bluectl operator suspend marcus@acme.com --reason "Security investigation"
+  bluectl operator suspend marcus@acme.com --reason "Leave of absence" --yes`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
+		skipConfirm, _ := cmd.Flags().GetBool("yes")
+		reason, _ := cmd.Flags().GetString("reason")
 
 		serverURL, err := requireServer()
 		if err != nil {
@@ -228,7 +263,24 @@ Examples:
 			return nil
 		}
 
-		if err := client.UpdateOperatorStatus(cmd.Context(), email, "suspended"); err != nil {
+		if !skipConfirm {
+			fmt.Printf("Suspend operator '%s'? Their KeyMakers will be blocked from distributing credentials.\n", email)
+			fmt.Print("Type 'yes' to confirm: ")
+
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read confirmation: %w", err)
+			}
+
+			response = strings.TrimSpace(strings.ToLower(response))
+			if response != "yes" {
+				fmt.Println("Suspension cancelled.")
+				return nil
+			}
+		}
+
+		if err := client.SuspendOperator(cmd.Context(), op.ID, reason); err != nil {
 			return err
 		}
 
@@ -237,16 +289,18 @@ Examples:
 	},
 }
 
-var operatorActivateCmd = &cobra.Command{
-	Use:   "activate <email>",
-	Short: "Activate a suspended operator",
-	Long: `Activate an operator who was previously suspended or pending.
+var operatorUnsuspendCmd = &cobra.Command{
+	Use:     "unsuspend <email>",
+	Aliases: []string{"activate"},
+	Short:   "Unsuspend a suspended operator",
+	Long: `Unsuspend an operator who was previously suspended.
 
 Examples:
-  bluectl operator activate marcus@acme.com`,
+  bluectl operator unsuspend marcus@acme.com --reason "Investigation complete"`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
+		reason, _ := cmd.Flags().GetString("reason")
 
 		serverURL, err := requireServer()
 		if err != nil {
@@ -269,11 +323,11 @@ Examples:
 			return nil
 		}
 
-		if err := client.UpdateOperatorStatus(cmd.Context(), email, "active"); err != nil {
+		if err := client.UnsuspendOperator(cmd.Context(), op.ID, reason); err != nil {
 			return err
 		}
 
-		fmt.Printf("Operator %s activated.\n", email)
+		fmt.Printf("Operator %s unsuspended.\n", email)
 		return nil
 	},
 }
@@ -340,7 +394,7 @@ Examples:
 			deviceIDs = []string{"all"}
 		} else {
 			deviceNames := strings.Split(devicesArg, ",")
-			dpus, err := client.ListDPUs(ctx)
+			dpus, err := client.ListDPUs(ctx, "")
 			if err != nil {
 				return fmt.Errorf("failed to list DPUs: %w", err)
 			}
@@ -385,24 +439,79 @@ var operatorAuthorizationsCmd = &cobra.Command{
 	Short: "List operator's authorizations",
 	Long: `List all authorizations granted to an operator.
 
+Shows CA access, device selectors, and expiration dates.
+
 Examples:
   bluectl operator authorizations nelson@acme.com`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
-		_, err := requireServer()
+		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
 
-		// For now, print informational message
-		fmt.Printf("Authorizations for %s:\n", email)
-		fmt.Println()
-		fmt.Println("Note: Authorization listing via API not yet implemented.")
-		fmt.Println("Use the Nexus web interface or API directly.")
+		client, err := NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
+		ctx := cmd.Context()
+
+		// Get operator by email to resolve ID
+		operator, err := client.GetOperator(ctx, email)
+		if err != nil {
+			return fmt.Errorf("operator not found: %s", email)
+		}
+
+		// Get authorizations for operator
+		auths, err := client.GetOperatorAuthorizations(ctx, operator.ID)
+		if err != nil {
+			return fmt.Errorf("failed to get authorizations: %w", err)
+		}
+
+		if outputFormat == "json" || outputFormat == "yaml" {
+			if len(auths) == 0 {
+				fmt.Println("[]")
+				return nil
+			}
+			return formatOutput(auths)
+		}
+
+		if len(auths) == 0 {
+			fmt.Printf("No authorizations found for %s.\n", email)
+			fmt.Println()
+			fmt.Println("To grant access, use: bluectl operator grant <email> <tenant> <ca> <devices>")
+			return nil
+		}
+
+		fmt.Printf("Authorizations for %s:\n\n", email)
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "CA\tDEVICES\tCREATED\tEXPIRES")
+		for _, auth := range auths {
+			caNames := strings.Join(auth.CANames, ", ")
+			devices := formatDeviceSelector(auth.DeviceNames)
+			expires := "-"
+			if auth.ExpiresAt != nil {
+				expires = *auth.ExpiresAt
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", caNames, devices, auth.CreatedAt, expires)
+		}
+		w.Flush()
 		return nil
 	},
+}
+
+// formatDeviceSelector formats device names for display.
+// Returns "all devices" for ["all"], or comma-separated names otherwise.
+func formatDeviceSelector(deviceNames []string) string {
+	if len(deviceNames) == 0 {
+		return "-"
+	}
+	if len(deviceNames) == 1 && deviceNames[0] == "all" {
+		return "all devices"
+	}
+	return strings.Join(deviceNames, ", ")
 }
 
 var operatorRevokeCmd = &cobra.Command{
@@ -410,29 +519,128 @@ var operatorRevokeCmd = &cobra.Command{
 	Short: "Revoke specific authorization",
 	Long: `Revoke an operator's authorization for a specific CA within a tenant.
 
+This removes the operator's ability to distribute credentials for the specified CA
+to devices in the tenant. Other authorizations for the same operator remain intact.
+
 Examples:
-  bluectl operator revoke nelson@acme.com --tenant acme --ca ops-ca`,
+  bluectl operator revoke nelson@acme.com --tenant acme --ca ops-ca
+  bluectl operator revoke nelson@acme.com --tenant acme --ca ops-ca --yes`,
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		tenantName, _ := cmd.Flags().GetString("tenant")
 		caName, _ := cmd.Flags().GetString("ca")
+		skipConfirm, _ := cmd.Flags().GetBool("yes")
 
-		_, err := requireServer()
+		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
+		return revokeAuthorizationRemote(cmd.Context(), serverURL, email, tenantName, caName, skipConfirm)
+	},
+}
 
-		// For now, print informational message
+func revokeAuthorizationRemote(ctx context.Context, serverURL, email, tenantName, caName string, skipConfirm bool, optClient ...*NexusClient) error {
+	var client *NexusClient
+	var err error
+	if len(optClient) > 0 && optClient[0] != nil {
+		client = optClient[0]
+	} else {
+		client, err = NewNexusClientWithDPoP(serverURL)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Get operator by email
+	operator, err := client.GetOperator(ctx, email)
+	if err != nil {
+		return fmt.Errorf("operator not found: %s", email)
+	}
+
+	// Resolve tenant name to ID
+	tenants, err := client.ListTenants(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list tenants: %w", err)
+	}
+
+	var tenantID string
+	for _, t := range tenants {
+		if t.Name == tenantName || t.ID == tenantName {
+			tenantID = t.ID
+			break
+		}
+	}
+	if tenantID == "" {
+		return fmt.Errorf("tenant not found: %s", tenantName)
+	}
+
+	// Resolve CA name to ID
+	ca, err := client.GetSSHCA(ctx, caName)
+	if err != nil {
+		return fmt.Errorf("CA not found: %s", caName)
+	}
+
+	// Get operator's authorizations
+	auths, err := client.GetOperatorAuthorizations(ctx, operator.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get authorizations: %w", err)
+	}
+
+	// Find matching authorization by tenant ID and CA ID
+	var matchingAuth *authorizationResponse
+	for i := range auths {
+		auth := &auths[i]
+		if auth.TenantID != tenantID {
+			continue
+		}
+		// Check if this authorization includes the specified CA
+		for _, authCAID := range auth.CAIDs {
+			if authCAID == ca.ID {
+				matchingAuth = auth
+				break
+			}
+		}
+		if matchingAuth != nil {
+			break
+		}
+	}
+
+	if matchingAuth == nil {
+		return fmt.Errorf("no authorization found for %s with CA %s in tenant %s", email, caName, tenantName)
+	}
+
+	// Confirmation prompt
+	if !skipConfirm {
+		devices := formatDeviceSelector(matchingAuth.DeviceNames)
 		fmt.Printf("Revoke authorization:\n")
 		fmt.Printf("  Operator: %s\n", email)
 		fmt.Printf("  Tenant:   %s\n", tenantName)
 		fmt.Printf("  CA:       %s\n", caName)
+		fmt.Printf("  Devices:  %s\n", devices)
 		fmt.Println()
-		fmt.Println("Note: Authorization revoke via API not yet implemented.")
-		fmt.Println("Use the Nexus web interface or API directly.")
-		return nil
-	},
+		fmt.Print("Type 'yes' to confirm: ")
+
+		reader := bufio.NewReader(os.Stdin)
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read confirmation: %w", err)
+		}
+
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response != "yes" {
+			fmt.Println("Revocation cancelled.")
+			return nil
+		}
+	}
+
+	// Delete the authorization
+	if err := client.DeleteAuthorization(ctx, matchingAuth.ID); err != nil {
+		return fmt.Errorf("failed to revoke authorization: %w", err)
+	}
+
+	fmt.Printf("Authorization revoked for %s (CA: %s, tenant: %s).\n", email, caName, tenantName)
+	return nil
 }
 
 var operatorRemoveCmd = &cobra.Command{
@@ -449,15 +657,20 @@ Examples:
 	Args: ExactArgsWithUsage(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
-		yes, _ := cmd.Flags().GetBool("yes")
+		skipConfirm, _ := cmd.Flags().GetBool("yes")
 
-		// Confirm deletion unless --yes/-y is set
-		if !yes {
-			fmt.Printf("Are you sure you want to remove operator '%s'? [y/N]: ", email)
-			var response string
-			fmt.Scanln(&response)
-			response = strings.ToLower(strings.TrimSpace(response))
-			if response != "y" && response != "yes" {
+		if !skipConfirm {
+			fmt.Printf("Remove operator '%s'?\n", email)
+			fmt.Print("Type 'yes' to confirm: ")
+
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read confirmation: %w", err)
+			}
+
+			response = strings.TrimSpace(strings.ToLower(response))
+			if response != "yes" {
 				fmt.Println("Removal cancelled.")
 				return nil
 			}

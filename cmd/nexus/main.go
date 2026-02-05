@@ -112,7 +112,10 @@ func main() {
 	actionRegistry := authz.NewActionRegistry()
 	principalLookup := api.NewStorePrincipalLookup(db)
 	resourceExtractor := api.NewStoreResourceExtractor(db)
-	attestationLookup := api.NewStoreAttestationLookup(db)
+	// Use auto-refresh attestation lookup to solve chicken-and-egg problem:
+	// New DPUs have no attestation data, so the middleware would block credential:push
+	// before the handler can trigger a refresh. This lookup auto-refreshes when needed.
+	attestationLookup := api.NewAutoRefreshAttestationLookup(db, server.Gate()).WithLogger(logger)
 
 	authzMiddleware := authz.NewAuthzMiddleware(
 		authorizer,

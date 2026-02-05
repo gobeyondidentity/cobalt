@@ -162,6 +162,8 @@ func (l *StoreIdentityLookup) LookupByKID(ctx context.Context, kid string) (*dpo
 }
 
 // lookupKeyMaker retrieves identity information for a keymaker.
+// Per security-architecture.md §4.1: "Suspension: Operator-level. Blocks all operator's kms."
+// This function checks BOTH keymaker.status AND operator.status to implement cascade.
 func (l *StoreIdentityLookup) lookupKeyMaker(kid string) (*dpop.Identity, error) {
 	km, err := l.store.GetKeyMakerByKid(kid)
 	if err != nil {
@@ -175,15 +177,55 @@ func (l *StoreIdentityLookup) lookupKeyMaker(kid string) (*dpop.Identity, error)
 		return nil, nil
 	}
 
+	// Check KeyMaker's own status first
+	kmStatus := mapKeyMakerStatus(km.Status)
+	if kmStatus != dpop.IdentityStatusActive {
+		return &dpop.Identity{
+			KID:        km.Kid,
+			CallerType: dpop.CallerTypeKeyMaker,
+			Status:     kmStatus,
+			OperatorID: km.OperatorID,
+		}, nil
+	}
+
+	// KeyMaker is active, but operator suspension cascades to all KeyMakers.
+	// Per security-architecture.md: "Suspension: Operator-level. Blocks all operator's kms."
+	// This check MUST NOT be cached; each DPoP validation performs fresh DB query.
+	operator, err := l.store.GetOperator(km.OperatorID)
+	if err != nil {
+		// If we can't verify operator status, fail-secure (deny)
+		if strings.Contains(err.Error(), "not found") {
+			// Orphaned KeyMaker (operator deleted); treat as revoked
+			return &dpop.Identity{
+				KID:        km.Kid,
+				CallerType: dpop.CallerTypeKeyMaker,
+				Status:     dpop.IdentityStatusRevoked,
+				OperatorID: km.OperatorID,
+			}, nil
+		}
+		return nil, err
+	}
+
+	// If operator is suspended, the KeyMaker inherits suspended status
+	if operator.Status == "suspended" {
+		return &dpop.Identity{
+			KID:        km.Kid,
+			CallerType: dpop.CallerTypeKeyMaker,
+			Status:     dpop.IdentityStatusSuspended,
+			OperatorID: km.OperatorID,
+		}, nil
+	}
+
 	return &dpop.Identity{
 		KID:        km.Kid,
 		CallerType: dpop.CallerTypeKeyMaker,
-		Status:     mapKeyMakerStatus(km.Status),
+		Status:     dpop.IdentityStatusActive,
 		OperatorID: km.OperatorID,
 	}, nil
 }
 
 // lookupAdminKey retrieves identity information for an admin key.
+// Like KeyMakers, AdminKeys are owned by operators and operator suspension cascades.
 func (l *StoreIdentityLookup) lookupAdminKey(kid string) (*dpop.Identity, error) {
 	ak, err := l.store.GetAdminKeyByKid(kid)
 	if err != nil {
@@ -196,10 +238,45 @@ func (l *StoreIdentityLookup) lookupAdminKey(kid string) (*dpop.Identity, error)
 		return nil, nil
 	}
 
+	// Check AdminKey's own status first
+	akStatus := mapAdminKeyStatus(ak.Status)
+	if akStatus != dpop.IdentityStatusActive {
+		return &dpop.Identity{
+			KID:        ak.Kid,
+			CallerType: dpop.CallerTypeAdmin,
+			Status:     akStatus,
+			OperatorID: ak.OperatorID,
+		}, nil
+	}
+
+	// AdminKey is active, check operator suspension cascade
+	operator, err := l.store.GetOperator(ak.OperatorID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			// Orphaned AdminKey; treat as revoked
+			return &dpop.Identity{
+				KID:        ak.Kid,
+				CallerType: dpop.CallerTypeAdmin,
+				Status:     dpop.IdentityStatusRevoked,
+				OperatorID: ak.OperatorID,
+			}, nil
+		}
+		return nil, err
+	}
+
+	if operator.Status == "suspended" {
+		return &dpop.Identity{
+			KID:        ak.Kid,
+			CallerType: dpop.CallerTypeAdmin,
+			Status:     dpop.IdentityStatusSuspended,
+			OperatorID: ak.OperatorID,
+		}, nil
+	}
+
 	return &dpop.Identity{
 		KID:        ak.Kid,
 		CallerType: dpop.CallerTypeAdmin,
-		Status:     mapAdminKeyStatus(ak.Status),
+		Status:     dpop.IdentityStatusActive,
 		OperatorID: ak.OperatorID,
 	}, nil
 }

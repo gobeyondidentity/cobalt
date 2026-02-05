@@ -11,6 +11,14 @@ import (
 	"github.com/gobeyondidentity/cobalt/pkg/store"
 )
 
+// Time duration constants in seconds for human-readable formatting.
+const (
+	SecondsPerMinute = 60
+	SecondsPerHour   = 3600
+	SecondsPerDay    = 86400
+	SecondsPerWeek   = 604800
+)
+
 // ----- SSH CA Types -----
 
 type sshCAResponse struct {
@@ -246,19 +254,19 @@ func mapOutcomeFilter(filter string) *store.DistributionOutcome {
 // formatHumanDuration converts seconds to a human-readable duration string.
 // Examples: "5m", "2h", "3d", "1w"
 func formatHumanDuration(seconds int) string {
-	if seconds < 60 {
+	if seconds < SecondsPerMinute {
 		return fmt.Sprintf("%ds", seconds)
 	}
-	if seconds < 3600 {
-		return fmt.Sprintf("%dm", seconds/60)
+	if seconds < SecondsPerHour {
+		return fmt.Sprintf("%dm", seconds/SecondsPerMinute)
 	}
-	if seconds < 86400 {
-		return fmt.Sprintf("%dh", seconds/3600)
+	if seconds < SecondsPerDay {
+		return fmt.Sprintf("%dh", seconds/SecondsPerHour)
 	}
-	if seconds < 604800 {
-		return fmt.Sprintf("%dd", seconds/86400)
+	if seconds < SecondsPerWeek {
+		return fmt.Sprintf("%dd", seconds/SecondsPerDay)
 	}
-	return fmt.Sprintf("%dw", seconds/604800)
+	return fmt.Sprintf("%dw", seconds/SecondsPerWeek)
 }
 
 // distributionToHistoryEntry converts a store.Distribution to DistributionHistoryEntry.

@@ -153,6 +153,17 @@ func TestCallPushAPI_SuccessWithForce(t *testing.T) {
 	if forceHeader != "maintenance window" {
 		t.Errorf("Expected X-Force-Bypass header='maintenance window', got '%s'", forceHeader)
 	}
+
+	// Verify Force field is set in request body
+	t.Log("Verifying Force field is set in request body")
+	var sentReq pushRequest
+	body, _ := io.ReadAll(mockClient.request.Body)
+	if err := json.Unmarshal(body, &sentReq); err != nil {
+		t.Fatalf("Failed to unmarshal request body: %v", err)
+	}
+	if !sentReq.Force {
+		t.Error("Expected Force=true in request body when force reason provided")
+	}
 }
 
 func TestCallPushAPI_CANotFound(t *testing.T) {

@@ -2,7 +2,10 @@ package store
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
@@ -22,6 +25,18 @@ func TestCredentialQueue(t *testing.T) {
 		t.Fatalf("failed to open store: %v", err)
 	}
 	defer store.Close()
+
+	t.Log("Creating DPUs used by queue tests")
+	for _, dpu := range []struct{ id, name string }{
+		{"dpu_test_1", "dpu-test"},
+		{"dpu_other_1", "other-dpu"},
+		{"dpu_a", "dpu-a"},
+		{"dpu_b", "dpu-b"},
+	} {
+		if err := store.Add(dpu.id, dpu.name, "10.0.0.1", 50051); err != nil {
+			t.Fatalf("failed to create DPU %s: %v", dpu.name, err)
+		}
+	}
 
 	t.Run("QueueCredential_New", func(t *testing.T) {
 		t.Log("Queuing a new SSH CA credential for dpu-test")
@@ -169,6 +184,158 @@ func TestCredentialQueue(t *testing.T) {
 			t.Errorf("dpu-b should still have 1 credential, got %d", countB)
 		}
 	})
+}
+
+func TestQueueCredential_RejectsDecommissionedDPU(t *testing.T) {
+	t.Log("Testing that QueueCredential rejects writes to decommissioned DPUs")
+
+	tmpFile, err := os.CreateTemp("", "queue_guard_test_*.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	store, err := Open(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	defer store.Close()
+
+	t.Log("Creating a DPU in the store")
+	dpuName := "guard-test-dpu"
+	dpuID := "dpu_guard_test"
+	if err := store.Add(dpuID, dpuName, "192.168.1.100", 50051); err != nil {
+		t.Fatalf("failed to create DPU: %v", err)
+	}
+
+	t.Log("Queuing a credential for active DPU should succeed")
+	err = store.QueueCredential(dpuName, "ssh-ca", "prod-ca", []byte("pubkey1"))
+	if err != nil {
+		t.Fatalf("QueueCredential should succeed for active DPU: %v", err)
+	}
+
+	t.Log("Decommissioning the DPU")
+	_, err = store.DecommissionDPUAtomic(dpuID, "adm_test", "Hardware removal")
+	if err != nil {
+		t.Fatalf("failed to decommission DPU: %v", err)
+	}
+
+	t.Log("Queuing a credential for decommissioned DPU should fail")
+	err = store.QueueCredential(dpuName, "ssh-ca", "stage-ca", []byte("pubkey2"))
+	if err == nil {
+		t.Fatal("QueueCredential should reject writes to decommissioned DPU")
+	}
+	if err != ErrDPUDecommissioned {
+		t.Errorf("expected ErrDPUDecommissioned, got: %v", err)
+	}
+
+	t.Log("Verifying only the pre-decommission credential exists (was scrubbed by decommission)")
+	count, err := store.CountQueuedCredentials(dpuName)
+	if err != nil {
+		t.Fatalf("failed to count credentials: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 credentials (scrubbed on decommission), got %d", count)
+	}
+
+	t.Log("QueueCredential guard for decommissioned DPUs works correctly")
+}
+
+func TestQueueCredential_RejectsUnknownDPU(t *testing.T) {
+	t.Log("Testing that QueueCredential rejects writes to DPUs not in the dpus table")
+
+	tmpFile, err := os.CreateTemp("", "queue_unknown_dpu_test_*.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	store, err := Open(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	defer store.Close()
+
+	t.Log("Queuing credential for a DPU name that does not exist in the dpus table")
+	err = store.QueueCredential("nonexistent-dpu", "ssh-ca", "prod-ca", []byte("pubkey"))
+	if err == nil {
+		t.Fatal("QueueCredential should reject writes to unknown DPUs")
+	}
+	if !errors.Is(err, ErrDPUNotFound) {
+		t.Errorf("expected ErrDPUNotFound, got: %v", err)
+	}
+
+	t.Log("Verifying no credential was inserted")
+	count, err := store.CountQueuedCredentials("nonexistent-dpu")
+	if err != nil {
+		t.Fatalf("CountQueuedCredentials failed: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 queued credentials for unknown DPU, got %d", count)
+	}
+
+	t.Log("QueueCredential correctly rejects unknown DPUs")
+}
+
+func TestQueueCredential_RaceSafety(t *testing.T) {
+	t.Log("Testing that concurrent QueueCredential and DecommissionDPUAtomic cannot leave orphaned credentials")
+
+	tmpFile, err := os.CreateTemp("", "queue_race_test_*.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	store, err := Open(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	defer store.Close()
+
+	// Run multiple rounds to increase chance of hitting the race window
+	const rounds = 50
+	for i := 0; i < rounds; i++ {
+		dpuName := fmt.Sprintf("race-dpu-%d", i)
+		dpuID := fmt.Sprintf("dpu_race_%d", i)
+
+		// Create a fresh active DPU each round
+		if err := store.Add(dpuID, dpuName, "10.0.0.1", 50051); err != nil {
+			t.Fatalf("round %d: failed to create DPU: %v", i, err)
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		// Goroutine 1: attempt to queue a credential
+		go func() {
+			defer wg.Done()
+			store.QueueCredential(dpuName, "ssh-ca", "ca", []byte("key"))
+		}()
+
+		// Goroutine 2: decommission the DPU (which scrubs its queue)
+		go func() {
+			defer wg.Done()
+			store.DecommissionDPUAtomic(dpuID, "adm_test", "race test")
+		}()
+
+		wg.Wait()
+
+		// Invariant: after decommission completes, no credentials should remain queued.
+		// Either QueueCredential ran first (credential inserted then scrubbed by decommission),
+		// or decommission ran first (QueueCredential returns ErrDPUDecommissioned).
+		count, err := store.CountQueuedCredentials(dpuName)
+		if err != nil {
+			t.Fatalf("round %d: CountQueuedCredentials failed: %v", i, err)
+		}
+		if count != 0 {
+			t.Errorf("round %d: expected 0 credentials after decommission, got %d (TOCTOU race detected)", i, count)
+		}
+	}
+
+	t.Logf("Completed %d race rounds with no orphaned credentials", rounds)
 }
 
 func TestUpdateAgentHostByDPU(t *testing.T) {

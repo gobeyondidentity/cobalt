@@ -53,7 +53,10 @@ func setupAuthTestServer(t *testing.T) (*Server, http.Handler, *store.Store) {
 	validator := dpop.NewValidator(dpop.DefaultValidatorConfig())
 	proofValidator := NewStoreProofValidator(validator, s)
 	identityLookup := NewStoreIdentityLookup(s)
-	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache)
+	// Enable debug mode for tests to get detailed error codes
+	// (production mode masks lifecycle errors as auth.failed)
+	authMiddleware := dpop.NewAuthMiddleware(proofValidator, identityLookup, jtiCache,
+		dpop.WithDebugMode(true))
 
 	// Apply CORS and auth middleware
 	// CORS wraps auth so OPTIONS preflight gets CORS headers and bypasses auth
@@ -159,9 +162,15 @@ func TestProtectedEndpointAcceptsValidProof(t *testing.T) {
 
 	_, handler, s := setupAuthTestServer(t)
 
-	// Create operator and keymaker with DPoP binding
-	t.Log("Creating operator for keymaker enrollment")
-	err := s.CreateOperator("op_test1", "operator@example.com", "Test Operator")
+	// Create tenant and operator with admin role
+	t.Log("Creating tenant and operator for keymaker enrollment")
+	err := s.AddTenant("tenant_test", "test", "", "", nil)
+	require.NoError(t, err)
+	err = s.CreateOperator("op_test1", "operator@example.com", "Test Operator")
+	require.NoError(t, err)
+	err = s.UpdateOperatorStatus("op_test1", "active")
+	require.NoError(t, err)
+	err = s.AddOperatorToTenant("op_test1", "tenant_test", "tenant:admin")
 	require.NoError(t, err)
 
 	// Generate key pair
@@ -213,9 +222,15 @@ func TestProtectedEndpointAcceptsAdminProof(t *testing.T) {
 
 	_, handler, s := setupAuthTestServer(t)
 
-	// Create operator and admin key
-	t.Log("Creating operator for admin key")
-	err := s.CreateOperator("op_admin1", "admin@example.com", "Admin Operator")
+	// Create tenant and operator with super:admin role
+	t.Log("Creating tenant and operator for admin key")
+	err := s.AddTenant("tenant_admin", "admin-tenant", "", "", nil)
+	require.NoError(t, err)
+	err = s.CreateOperator("op_admin1", "admin@example.com", "Admin Operator")
+	require.NoError(t, err)
+	err = s.UpdateOperatorStatus("op_admin1", "active")
+	require.NoError(t, err)
+	err = s.AddOperatorToTenant("op_admin1", "tenant_admin", "super:admin")
 	require.NoError(t, err)
 
 	// Generate key pair
@@ -514,4 +529,163 @@ func (r *readCloser) Read(p []byte) (n int, err error) {
 
 func (r *readCloser) Close() error {
 	return nil
+}
+
+// ============================================================================
+// Operator Suspension Cascade Tests
+// Per security-architecture.md §4.1: "Suspension: Operator-level. Blocks all
+// operator's kms. Reversible."
+// ============================================================================
+
+// TestOperatorSuspensionCascadesToKeyMaker tests that suspending an operator
+// blocks all their KeyMakers at the DPoP authentication level.
+// This is a critical security property: an active KeyMaker must be blocked
+// when its parent operator is suspended.
+func TestOperatorSuspensionCascadesToKeyMaker(t *testing.T) {
+	t.Log("Testing operator suspension cascades to active KeyMaker")
+
+	_, handler, s := setupAuthTestServer(t)
+
+	// Create tenant and operator with admin role
+	t.Log("Creating tenant and active operator with admin role")
+	err := s.AddTenant("tenant_cascade", "cascade-tenant", "", "", nil)
+	require.NoError(t, err)
+	err = s.CreateOperator("op_cascade_test", "cascade@example.com", "Cascade Test Op")
+	require.NoError(t, err)
+	// Activate the operator and add to tenant with admin privileges
+	err = s.UpdateOperatorStatus("op_cascade_test", "active")
+	require.NoError(t, err)
+	err = s.AddOperatorToTenant("op_cascade_test", "tenant_cascade", "tenant:admin")
+	require.NoError(t, err)
+
+	// Create an ACTIVE keymaker for this operator
+	t.Log("Creating ACTIVE keymaker for the operator")
+	pub, priv := generateTestKeyPair(t)
+	kid := "km_" + uuid.New().String()[:8]
+	km := &store.KeyMaker{
+		ID:             kid,
+		OperatorID:     "op_cascade_test",
+		Name:           "Active Device",
+		Platform:       "linux",
+		SecureElement:  "tpm",
+		PublicKey:      base64.StdEncoding.EncodeToString(pub),
+		Status:         "active", // KeyMaker is ACTIVE
+		Kid:            kid,
+		KeyFingerprint: "cascade-test-fingerprint-" + kid,
+		BoundAt:        time.Now(),
+	}
+	err = s.CreateKeyMaker(km)
+	require.NoError(t, err)
+
+	// First, verify that the active KeyMaker works when operator is active
+	t.Log("Verifying active KeyMaker works when operator is active")
+	proof := generateDPoPProof(t, priv, kid, "GET", testHTU("/api/v1/operators"))
+	req := httptest.NewRequest("GET", "/api/v1/operators", nil)
+	req.Header.Set("DPoP", proof)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	// Should succeed (might be 200 or any non-auth-failure status)
+	if w.Code == http.StatusUnauthorized || w.Code == http.StatusForbidden {
+		t.Fatalf("Active KeyMaker should work when operator is active, got %d: %s",
+			w.Code, w.Body.String())
+	}
+	t.Log("Active KeyMaker works when operator is active")
+
+	// Now suspend the operator
+	t.Log("Suspending the operator")
+	err = s.SuspendOperator("op_cascade_test", "admin_test", "Testing suspension cascade")
+	require.NoError(t, err)
+
+	// The KeyMaker is still "active" in the database, but operator is suspended
+	// Per security-architecture.md, this should block the KeyMaker
+
+	// Generate a new proof (different JTI to avoid replay detection)
+	t.Log("Making request with same active KeyMaker after operator suspension")
+	proof2 := generateDPoPProof(t, priv, kid, "GET", testHTU("/api/v1/operators"))
+	req2 := httptest.NewRequest("GET", "/api/v1/operators", nil)
+	req2.Header.Set("DPoP", proof2)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, req2)
+
+	// Should be rejected due to operator suspension (403 in debug mode)
+	t.Logf("Response status: %d, body: %s", w2.Code, w2.Body.String())
+	assert.Equal(t, http.StatusForbidden, w2.Code,
+		"Active KeyMaker should be blocked when operator is suspended")
+
+	var resp map[string]string
+	json.NewDecoder(w2.Body).Decode(&resp)
+	assert.Equal(t, "auth.suspended", resp["error"],
+		"Error should be auth.suspended (operator suspension cascades to KeyMaker)")
+
+	t.Log("PASSED: Operator suspension correctly cascades to block active KeyMaker")
+}
+
+// TestOperatorSuspensionImmediateEffect tests that operator suspension
+// takes effect immediately without any caching delay.
+// This is the LC-2 security requirement: no request from a suspended
+// identity should succeed after the suspension action.
+func TestOperatorSuspensionImmediateEffect(t *testing.T) {
+	t.Log("Testing operator suspension takes effect immediately (LC-2)")
+
+	_, handler, s := setupAuthTestServer(t)
+
+	// Create tenant and operator with admin role
+	err := s.AddTenant("tenant_immediate", "immediate-tenant", "", "", nil)
+	require.NoError(t, err)
+	err = s.CreateOperator("op_immediate", "immediate@example.com", "Immediate Test")
+	require.NoError(t, err)
+	err = s.UpdateOperatorStatus("op_immediate", "active")
+	require.NoError(t, err)
+	err = s.AddOperatorToTenant("op_immediate", "tenant_immediate", "tenant:admin")
+	require.NoError(t, err)
+
+	// Create active KeyMaker
+	pub, priv := generateTestKeyPair(t)
+	kid := "km_" + uuid.New().String()[:8]
+	km := &store.KeyMaker{
+		ID:             kid,
+		OperatorID:     "op_immediate",
+		Name:           "Immediate Test Device",
+		Platform:       "linux",
+		SecureElement:  "tpm",
+		PublicKey:      base64.StdEncoding.EncodeToString(pub),
+		Status:         "active",
+		Kid:            kid,
+		KeyFingerprint: "immediate-fingerprint-" + kid,
+		BoundAt:        time.Now(),
+	}
+	err = s.CreateKeyMaker(km)
+	require.NoError(t, err)
+
+	// Verify initial access works
+	proof1 := generateDPoPProof(t, priv, kid, "GET", testHTU("/api/v1/operators"))
+	req1 := httptest.NewRequest("GET", "/api/v1/operators", nil)
+	req1.Header.Set("DPoP", proof1)
+	w1 := httptest.NewRecorder()
+	handler.ServeHTTP(w1, req1)
+	require.NotEqual(t, http.StatusUnauthorized, w1.Code, "Initial request should succeed")
+	require.NotEqual(t, http.StatusForbidden, w1.Code, "Initial request should succeed")
+
+	// Suspend operator
+	t.Log("Suspending operator and immediately testing access")
+	err = s.SuspendOperator("op_immediate", "admin_test", "Immediate effect test")
+	require.NoError(t, err)
+
+	// Immediately test - should fail WITHOUT any delay
+	// This verifies there's no caching of operator status
+	proof2 := generateDPoPProof(t, priv, kid, "GET", testHTU("/api/v1/operators"))
+	req2 := httptest.NewRequest("GET", "/api/v1/operators", nil)
+	req2.Header.Set("DPoP", proof2)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, req2)
+
+	assert.Equal(t, http.StatusForbidden, w2.Code,
+		"Suspension must take immediate effect - no caching allowed")
+
+	var resp map[string]string
+	json.NewDecoder(w2.Body).Decode(&resp)
+	assert.Equal(t, "auth.suspended", resp["error"])
+
+	t.Log("PASSED: Operator suspension takes immediate effect (no caching)")
 }
