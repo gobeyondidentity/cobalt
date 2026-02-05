@@ -596,8 +596,16 @@ func (s *Server) handleListOperators(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetOperator handles GET /api/v1/operators/{email}
+// Authorization: tenant:admin (same tenant) or super:admin
 func (s *Server) handleGetOperator(w http.ResponseWriter, r *http.Request) {
 	email := r.PathValue("email")
+
+	// Get caller identity for authorization
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
 
 	operator, err := s.store.GetOperatorByEmail(email)
 	if err != nil {
@@ -605,17 +613,47 @@ func (s *Server) handleGetOperator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Authorization check: caller must be able to manage this operator
+	canManage, err := s.canManageOperator(identity.OperatorID, operator.ID)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to check permissions")
+		return
+	}
+	if !canManage {
+		writeError(w, r, http.StatusForbidden, "you do not have permission to view this operator")
+		return
+	}
+
 	writeJSON(w, http.StatusOK, operatorToResponse(operator))
 }
 
 // handleUpdateOperatorStatus handles PATCH /api/v1/operators/{email}/status
+// Authorization: tenant:admin (same tenant) or super:admin
 func (s *Server) handleUpdateOperatorStatus(w http.ResponseWriter, r *http.Request) {
 	email := r.PathValue("email")
+
+	// Get caller identity for authorization
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
 
 	// Look up operator by email
 	operator, err := s.store.GetOperatorByEmail(email)
 	if err != nil {
 		writeError(w, r, http.StatusNotFound, "Operator not found")
+		return
+	}
+
+	// Authorization check: caller must be able to manage this operator
+	canManage, err := s.canManageOperator(identity.OperatorID, operator.ID)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to check permissions")
+		return
+	}
+	if !canManage {
+		writeError(w, r, http.StatusForbidden, "you do not have permission to modify this operator")
 		return
 	}
 
@@ -868,13 +906,32 @@ func (s *Server) canManageOperator(callerOperatorID, targetOperatorID string) (b
 }
 
 // handleDeleteOperator handles DELETE /api/v1/operators/{email}
+// Authorization: tenant:admin (same tenant) or super:admin
 func (s *Server) handleDeleteOperator(w http.ResponseWriter, r *http.Request) {
 	email := r.PathValue("email")
+
+	// Get caller identity for authorization
+	identity := dpop.IdentityFromContext(r.Context())
+	if identity == nil || identity.OperatorID == "" {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
 
 	// Look up operator by email
 	operator, err := s.store.GetOperatorByEmail(email)
 	if err != nil {
 		writeError(w, r, http.StatusNotFound, "Operator not found")
+		return
+	}
+
+	// Authorization check: caller must be able to manage this operator
+	canManage, err := s.canManageOperator(identity.OperatorID, operator.ID)
+	if err != nil {
+		writeInternalError(w, r, err, "failed to check permissions")
+		return
+	}
+	if !canManage {
+		writeError(w, r, http.StatusForbidden, "you do not have permission to delete this operator")
 		return
 	}
 
