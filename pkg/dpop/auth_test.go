@@ -49,9 +49,22 @@ func newTestMiddleware(
 	validator ProofValidator,
 	identityLookup IdentityLookup,
 	jtiCache JTICache,
+	opts ...AuthMiddlewareOption,
 ) *AuthMiddleware {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	return NewAuthMiddleware(validator, identityLookup, jtiCache, WithLogger(logger))
+	// Prepend logger option, then add any custom options
+	allOpts := append([]AuthMiddlewareOption{WithLogger(logger)}, opts...)
+	return NewAuthMiddleware(validator, identityLookup, jtiCache, allOpts...)
+}
+
+// newDebugTestMiddleware creates a test middleware with debug mode enabled.
+// Use this for tests that verify detailed error codes.
+func newDebugTestMiddleware(
+	validator ProofValidator,
+	identityLookup IdentityLookup,
+	jtiCache JTICache,
+) *AuthMiddleware {
+	return newTestMiddleware(validator, identityLookup, jtiCache, WithDebugMode(true))
 }
 
 func TestValidProofToProtectedEndpoint(t *testing.T) {
@@ -209,7 +222,7 @@ func TestReplayedJTI(t *testing.T) {
 
 func TestIdentitySuspended(t *testing.T) {
 	t.Parallel()
-	t.Log("Testing suspended identity returns 403 auth.suspended")
+	t.Log("Testing suspended identity returns 403 auth.suspended (debug mode)")
 
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
@@ -222,7 +235,8 @@ func TestIdentitySuspended(t *testing.T) {
 	}}
 	cache := &mockJTICache{isReplay: false}
 
-	middleware := newTestMiddleware(validator, lookup, cache)
+	// Use debug mode to get detailed error codes
+	middleware := newDebugTestMiddleware(validator, lookup, cache)
 
 	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not have been called")
@@ -249,7 +263,7 @@ func TestIdentitySuspended(t *testing.T) {
 
 func TestIdentityRevoked(t *testing.T) {
 	t.Parallel()
-	t.Log("Testing revoked identity returns 401 auth.revoked")
+	t.Log("Testing revoked identity returns 401 auth.revoked (debug mode)")
 
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
@@ -262,7 +276,8 @@ func TestIdentityRevoked(t *testing.T) {
 	}}
 	cache := &mockJTICache{isReplay: false}
 
-	middleware := newTestMiddleware(validator, lookup, cache)
+	// Use debug mode to get detailed error codes
+	middleware := newDebugTestMiddleware(validator, lookup, cache)
 
 	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not have been called")
@@ -776,7 +791,7 @@ func TestIdentityContextNotFromHeader(t *testing.T) {
 
 func TestDecommissionedDPU(t *testing.T) {
 	t.Parallel()
-	t.Log("Testing decommissioned DPU returns 401 auth.decommissioned")
+	t.Log("Testing decommissioned DPU returns 401 auth.decommissioned (debug mode)")
 
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
@@ -790,7 +805,8 @@ func TestDecommissionedDPU(t *testing.T) {
 	}}
 	cache := &mockJTICache{isReplay: false}
 
-	middleware := newTestMiddleware(validator, lookup, cache)
+	// Use debug mode to get detailed error codes
+	middleware := newDebugTestMiddleware(validator, lookup, cache)
 
 	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not have been called")
@@ -816,7 +832,7 @@ func TestDecommissionedDPU(t *testing.T) {
 
 func TestUnknownKID(t *testing.T) {
 	t.Parallel()
-	t.Log("Testing unknown kid returns 401 dpop.unknown_key")
+	t.Log("Testing unknown kid returns 401 dpop.unknown_key (debug mode)")
 
 	validator := &mockValidator{result: ProofValidationResult{
 		Valid: true,
@@ -826,7 +842,8 @@ func TestUnknownKID(t *testing.T) {
 	lookup := &mockIdentityLookup{identity: nil} // KID not found
 	cache := &mockJTICache{isReplay: false}
 
-	middleware := newTestMiddleware(validator, lookup, cache)
+	// Use debug mode to get detailed error codes
+	middleware := newDebugTestMiddleware(validator, lookup, cache)
 
 	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not have been called")
@@ -948,4 +965,169 @@ func TestJTICacheReceivesActualJTI(t *testing.T) {
 	}
 
 	t.Log("JTI cache correctly receives the actual JTI claim, not the full proof")
+}
+
+// ============================================================================
+// Production Mode Error Masking Tests
+// Per security-architecture.md §5: In production mode (default), return generic
+// "auth.failed" for lifecycle errors to prevent identity enumeration attacks.
+// ============================================================================
+
+func TestProductionModeRevokedMasked(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing production mode masks auth.revoked as auth.failed")
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: true,
+		KID:   "km_revoked",
+		JTI:   "test-jti-prod-revoked",
+	}}
+	lookup := &mockIdentityLookup{identity: &Identity{
+		KID:    "km_revoked",
+		Status: IdentityStatusRevoked,
+	}}
+	cache := &mockJTICache{isReplay: false}
+
+	// Production mode (no debug flag) should mask error codes
+	middleware := newTestMiddleware(validator, lookup, cache)
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not have been called")
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/protected", nil)
+	req.Header.Set("DPoP", "valid.proof")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", rec.Code)
+	}
+
+	var resp map[string]string
+	json.NewDecoder(rec.Body).Decode(&resp)
+	// Production mode should return generic auth.failed
+	if resp["error"] != "auth.failed" {
+		t.Errorf("production mode should mask as auth.failed, got %s", resp["error"])
+	}
+	t.Log("Production mode correctly masks revoked as auth.failed")
+}
+
+func TestProductionModeSuspendedMasked(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing production mode masks auth.suspended as auth.failed")
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: true,
+		KID:   "km_suspended",
+		JTI:   "test-jti-prod-suspended",
+	}}
+	lookup := &mockIdentityLookup{identity: &Identity{
+		KID:    "km_suspended",
+		Status: IdentityStatusSuspended,
+	}}
+	cache := &mockJTICache{isReplay: false}
+
+	// Production mode should mask suspended as 401 (not 403) to prevent enumeration
+	middleware := newTestMiddleware(validator, lookup, cache)
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not have been called")
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/protected", nil)
+	req.Header.Set("DPoP", "valid.proof")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	// Production mode: 401 to prevent status enumeration (not 403)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("production mode should return 401 (not 403), got %d", rec.Code)
+	}
+
+	var resp map[string]string
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["error"] != "auth.failed" {
+		t.Errorf("production mode should mask as auth.failed, got %s", resp["error"])
+	}
+	t.Log("Production mode correctly masks suspended as 401 auth.failed")
+}
+
+func TestProductionModeDecommissionedMasked(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing production mode masks auth.decommissioned as auth.failed")
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: true,
+		KID:   "dpu_decom",
+		JTI:   "test-jti-prod-decom",
+	}}
+	lookup := &mockIdentityLookup{identity: &Identity{
+		KID:        "dpu_decom",
+		CallerType: CallerTypeDPU,
+		Status:     IdentityStatusDecommissioned,
+	}}
+	cache := &mockJTICache{isReplay: false}
+
+	middleware := newTestMiddleware(validator, lookup, cache)
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not have been called")
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/protected", nil)
+	req.Header.Set("DPoP", "valid.proof")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", rec.Code)
+	}
+
+	var resp map[string]string
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["error"] != "auth.failed" {
+		t.Errorf("production mode should mask as auth.failed, got %s", resp["error"])
+	}
+	t.Log("Production mode correctly masks decommissioned as auth.failed")
+}
+
+func TestProductionModeUnknownKeyMasked(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing production mode masks dpop.unknown_key as auth.failed")
+
+	validator := &mockValidator{result: ProofValidationResult{
+		Valid: true,
+		KID:   "km_unknown",
+		JTI:   "test-jti-prod-unknown",
+	}}
+	lookup := &mockIdentityLookup{identity: nil} // KID not found
+	cache := &mockJTICache{isReplay: false}
+
+	middleware := newTestMiddleware(validator, lookup, cache)
+
+	handler := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not have been called")
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/protected", nil)
+	req.Header.Set("DPoP", "valid.proof")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", rec.Code)
+	}
+
+	var resp map[string]string
+	json.NewDecoder(rec.Body).Decode(&resp)
+	// Production mode should mask unknown_key to prevent key enumeration
+	if resp["error"] != "auth.failed" {
+		t.Errorf("production mode should mask as auth.failed, got %s", resp["error"])
+	}
+	t.Log("Production mode correctly masks unknown_key as auth.failed")
 }
