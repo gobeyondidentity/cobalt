@@ -559,6 +559,9 @@ var ErrOperatorAlreadySuspended = fmt.Errorf("operator already suspended")
 // ErrOperatorNotSuspended is returned when attempting to unsuspend an Operator that is not suspended.
 var ErrOperatorNotSuspended = fmt.Errorf("operator is not suspended")
 
+// ErrWouldCauseLockout is returned when revoking an admin key would leave zero active super:admin keys.
+var ErrWouldCauseLockout = fmt.Errorf("would cause system lockout")
+
 // RevokeKeyMakerAtomic atomically revokes a KeyMaker if it is not already revoked.
 // Returns ErrAlreadyRevoked if the KeyMaker is already revoked (for 409 response).
 // Returns "keymaker not found" error if the KeyMaker does not exist.
@@ -1116,10 +1119,49 @@ func (s *Store) RevokeAdminKeyWithReason(id, revokedBy, reason string) error {
 
 // RevokeAdminKeyAtomic atomically revokes an AdminKey if it is not already revoked.
 // Returns ErrAdminKeyAlreadyRevoked if the AdminKey is already revoked (for 409 response).
+// Returns ErrWouldCauseLockout if revoking would leave zero active super:admin keys.
 // Returns "admin key not found" error if the AdminKey does not exist.
 func (s *Store) RevokeAdminKeyAtomic(id, revokedBy, reason string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check if this admin key is active and belongs to a super:admin
+	var isSuperAdminKey int
+	err = tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM admin_keys ak
+		INNER JOIN operator_tenants ot ON ak.operator_id = ot.operator_id
+		WHERE ak.id = ? AND ak.status = 'active' AND ot.role = 'super:admin'
+	`, id).Scan(&isSuperAdminKey)
+	if err != nil {
+		return fmt.Errorf("failed to check super admin status: %w", err)
+	}
+
+	// If this key belongs to a super:admin, check if revoking would cause lockout
+	if isSuperAdminKey > 0 {
+		var totalActiveSuperAdminKeys int
+		err = tx.QueryRow(`
+			SELECT COUNT(DISTINCT ak.id)
+			FROM admin_keys ak
+			INNER JOIN operator_tenants ot ON ak.operator_id = ot.operator_id
+			WHERE ak.status = 'active' AND ot.role = 'super:admin'
+		`).Scan(&totalActiveSuperAdminKeys)
+		if err != nil {
+			return fmt.Errorf("failed to count active super admin keys: %w", err)
+		}
+
+		// If this is the only active super:admin key, reject
+		if totalActiveSuperAdminKeys <= 1 {
+			return ErrWouldCauseLockout
+		}
+	}
+
+	// Perform the revocation
 	now := time.Now().Unix()
-	result, err := s.db.Exec(
+	result, err := tx.Exec(
 		`UPDATE admin_keys SET status = 'revoked', revoked_at = ?, revoked_by = ?, revoked_reason = ?
 		 WHERE id = ? AND status != 'revoked'`,
 		now, revokedBy, reason, id,
@@ -1131,15 +1173,20 @@ func (s *Store) RevokeAdminKeyAtomic(id, revokedBy, reason string) error {
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
 		// Check if the AdminKey exists but is already revoked
-		ak, err := s.GetAdminKey(id)
+		var status string
+		err := tx.QueryRow(`SELECT status FROM admin_keys WHERE id = ?`, id).Scan(&status)
 		if err != nil {
 			return fmt.Errorf("admin key not found: %s", id)
 		}
-		if ak.Status == "revoked" {
+		if status == "revoked" {
 			return ErrAdminKeyAlreadyRevoked
 		}
 		// This shouldn't happen, but handle it
 		return fmt.Errorf("admin key not found: %s", id)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
 }

@@ -192,24 +192,18 @@ func (s *Server) handleRevokeAdminKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if this is the last active super:admin key
-	isLastSuperAdmin, err := s.store.IsAdminKeyLastActiveSuperAdmin(id)
-	if err != nil {
-		writeInternalError(w, r, err, "failed to check admin key status")
-		return
-	}
-	if isLastSuperAdmin {
-		writeError(w, r, http.StatusConflict, "cannot revoke the last active super:admin key (would cause system lockout)")
-		return
-	}
-
 	// Determine if this is self-revocation
 	isSelfRevocation := ak.OperatorID == identity.OperatorID
 
 	// Revoke the admin key atomically (prevents race condition)
+	// The store method checks for last super:admin inside the transaction
 	if err := s.store.RevokeAdminKeyAtomic(id, identity.KID, req.Reason); err != nil {
 		if errors.Is(err, store.ErrAdminKeyAlreadyRevoked) {
 			writeError(w, r, http.StatusConflict, "admin key is already revoked")
+			return
+		}
+		if errors.Is(err, store.ErrWouldCauseLockout) {
+			writeError(w, r, http.StatusConflict, "cannot revoke the last active super:admin key (would cause system lockout)")
 			return
 		}
 		writeInternalError(w, r, err, "failed to revoke admin key")

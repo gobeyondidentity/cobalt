@@ -207,6 +207,13 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
+	// Set busy timeout to wait up to 5 seconds for locks instead of failing immediately.
+	// This prevents "database is locked" errors during concurrent transactions.
+	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
+	}
+
 	// Set busy timeout to handle concurrent access gracefully.
 	// Without this, concurrent writes immediately return SQLITE_BUSY.
 	// 5 seconds allows retries under contention (especially on Windows

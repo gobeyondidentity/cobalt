@@ -905,3 +905,90 @@ func TestGetAdminKey_TenantAdminForbidden(t *testing.T) {
 	}
 	t.Log("tenant:admin correctly receives 403")
 }
+
+func TestRevokeAdminKey_ConcurrentRaceCondition(t *testing.T) {
+	t.Log("Testing TOCTOU race condition: concurrent revocations cannot leave zero super:admins")
+
+	// Note: t.Parallel() deliberately omitted to control test timing
+
+	s, srv, cleanup := setupAdminKeyTest(t)
+	defer cleanup()
+
+	// Setup: create tenant with exactly 2 super:admin keys
+	createTestTenant(t, s, "tenant1", "Test Tenant")
+	createTestOperator(t, s, "op_super1", "super1@test.com")
+	createTestOperator(t, s, "op_super2", "super2@test.com")
+	addOperatorToTenant(t, s, "op_super1", "tenant1", "super:admin")
+	addOperatorToTenant(t, s, "op_super2", "tenant1", "super:admin")
+
+	createTestAdminKey(t, s, "adm_super1", "op_super1", "active")
+	createTestAdminKey(t, s, "adm_super2", "op_super2", "active")
+
+	// Verify initial state: 2 active super:admin keys
+	count, _ := s.CountActiveSuperAdminKeys()
+	t.Logf("Initial super:admin key count: %d", count)
+	if count != 2 {
+		t.Fatalf("expected 2 super:admin keys, got %d", count)
+	}
+
+	// Prepare concurrent revocation requests
+	// super1 tries to revoke super2's key, and super2 tries to revoke super1's key
+	results := make(chan int, 2) // Collect HTTP status codes
+
+	revoke := func(callerID, targetID string) {
+		reqBody := RevokeAdminKeyRequest{Reason: "Concurrent test"}
+		body, _ := json.Marshal(reqBody)
+
+		identity := &dpop.Identity{
+			KID:        callerID,
+			CallerType: dpop.CallerTypeAdmin,
+			Status:     dpop.IdentityStatusActive,
+			OperatorID: "op_" + callerID[4:], // adm_super1 -> op_super1
+		}
+
+		req := requestWithIdentity("DELETE", "/api/v1/admin-keys/"+targetID, body, identity)
+		req.SetPathValue("id", targetID)
+
+		rec := httptest.NewRecorder()
+		srv.handleRevokeAdminKey(rec, req)
+		results <- rec.Code
+	}
+
+	// Launch concurrent revocations
+	t.Log("Launching concurrent revocation requests...")
+	go revoke("adm_super1", "adm_super2")
+	go revoke("adm_super2", "adm_super1")
+
+	// Collect results
+	code1 := <-results
+	code2 := <-results
+	t.Logf("Response codes: %d, %d", code1, code2)
+
+	// Exactly one should succeed (204), one should fail with conflict (409)
+	successCount := 0
+	conflictCount := 0
+	for _, code := range []int{code1, code2} {
+		switch code {
+		case http.StatusNoContent:
+			successCount++
+		case http.StatusConflict:
+			conflictCount++
+		default:
+			t.Errorf("unexpected status code: %d", code)
+		}
+	}
+
+	if successCount != 1 || conflictCount != 1 {
+		t.Errorf("expected exactly 1 success and 1 conflict, got %d successes and %d conflicts",
+			successCount, conflictCount)
+	}
+
+	// Verify final state: exactly 1 active super:admin key remains
+	finalCount, _ := s.CountActiveSuperAdminKeys()
+	t.Logf("Final super:admin key count: %d", finalCount)
+	if finalCount != 1 {
+		t.Errorf("RACE CONDITION BUG: expected 1 super:admin key, got %d (lockout would occur if 0)", finalCount)
+	}
+
+	t.Log("TOCTOU race condition prevented: exactly 1 super:admin key remains")
+}
