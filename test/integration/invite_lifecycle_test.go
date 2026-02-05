@@ -123,16 +123,16 @@ func TestInviteCodeLifecycle(t *testing.T) {
 	logOK(t, "Criterion 2: Operator enrolled successfully")
 
 	// =========================================================================
-	// Criterion 3: Use invite twice -> rejected "already used"
+	// Criterion 3: Use invite twice -> rejected (generic error to prevent enumeration)
 	// =========================================================================
 	logStep(t, 4, "Testing double-use rejection...")
 
 	bindResult2, _ := tryBindInvite(cfg, ctx, serverIP, inviteCode1, "fp-2", "device-2")
 
-	if !strings.Contains(bindResult2, "already been used") {
-		t.Fatalf("Criterion 3 FAILED: Expected 'already been used' error, got: %s", bindResult2)
+	if !strings.Contains(bindResult2, "invalid or expired invite code") {
+		t.Fatalf("Criterion 3 FAILED: Expected 'invalid or expired invite code' error, got: %s", bindResult2)
 	}
-	logOK(t, "Criterion 3: Second use rejected with 'already been used'")
+	logOK(t, "Criterion 3: Second use rejected with generic error (prevents enumeration)")
 
 	// =========================================================================
 	// Criterion 4: Expired invite -> rejected "expired"
@@ -164,13 +164,13 @@ func TestInviteCodeLifecycle(t *testing.T) {
 	// Try to use expired invite
 	bindResult3, _ := tryBindInvite(cfg, ctx, serverIP, inviteCode2, "fp-3", "device-3")
 
-	if !strings.Contains(bindResult3, "expired") {
-		t.Fatalf("Criterion 4 FAILED: Expected 'expired' error, got: %s", bindResult3)
+	if !strings.Contains(bindResult3, "invalid or expired invite code") {
+		t.Fatalf("Criterion 4 FAILED: Expected 'invalid or expired invite code' error, got: %s", bindResult3)
 	}
-	logOK(t, "Criterion 4: Expired invite rejected with 'expired'")
+	logOK(t, "Criterion 4: Expired invite rejected with generic error (prevents enumeration)")
 
 	// =========================================================================
-	// Criterion 5: Revoked invite -> rejected "already been used"
+	// Criterion 5: Revoked invite -> rejected (generic error to prevent enumeration)
 	// =========================================================================
 	logStep(t, 6, "Testing revoked invite rejection...")
 
@@ -199,11 +199,11 @@ func TestInviteCodeLifecycle(t *testing.T) {
 	// Try to use revoked invite
 	bindResult4, _ := tryBindInvite(cfg, ctx, serverIP, inviteCode3, "fp-4", "device-4")
 
-	// Revoked invites return specific error message
-	if !strings.Contains(bindResult4, "has been revoked") {
-		t.Fatalf("Criterion 5 FAILED: Expected 'has been revoked' error for revoked invite, got: %s", bindResult4)
+	// Revoked invites now return generic error to prevent enumeration
+	if !strings.Contains(bindResult4, "invalid or expired invite code") {
+		t.Fatalf("Criterion 5 FAILED: Expected 'invalid or expired invite code' error for revoked invite, got: %s", bindResult4)
 	}
-	logOK(t, "Criterion 5: Revoked invite rejected with 'has been revoked'")
+	logOK(t, "Criterion 5: Revoked invite rejected with generic error (prevents enumeration)")
 
 	// =========================================================================
 	// Criterion 6: Invite for deleted tenant -> rejected

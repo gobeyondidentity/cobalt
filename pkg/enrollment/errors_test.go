@@ -66,7 +66,8 @@ func TestEnrollmentErrorHTTPStatuses(t *testing.T) {
 func TestEnrollmentErrorString(t *testing.T) {
 	t.Log("Testing error string format")
 	err := ErrInvalidCode()
-	want := "enroll.invalid_code: invite code not found"
+	// Generic message to prevent invite code enumeration
+	want := "enroll.invalid_code: invalid or expired invite code"
 	if err.Error() != want {
 		t.Errorf("Error() = %q, want %q", err.Error(), want)
 	}

@@ -56,31 +56,26 @@ func (s *Server) handleBindKeyMaker(w http.ResponseWriter, r *http.Request) {
 	// Step 2: Lookup invite by hash
 	invite, err := s.store.GetInviteCodeByHash(codeHash)
 	if err != nil {
-		// Invite code not found
-		writeError(w, r, http.StatusBadRequest, "invalid invite code")
+		// Use generic error to prevent invite code enumeration
+		writeError(w, r, http.StatusBadRequest, "invalid or expired invite code")
 		return
 	}
 
 	// Step 3: Validate invite status and expiration
+	// Use generic error for all failure cases to prevent enumeration
 	switch invite.Status {
 	case "pending":
 		// fall through to expiration check
-	case "used":
-		writeError(w, r, http.StatusBadRequest, "invite code has already been used")
-		return
-	case "revoked":
-		writeError(w, r, http.StatusBadRequest, "invite code has been revoked")
-		return
-	case "expired":
-		writeError(w, r, http.StatusBadRequest, "invite code has expired")
+	case "used", "revoked", "expired":
+		writeError(w, r, http.StatusBadRequest, "invalid or expired invite code")
 		return
 	default:
-		writeError(w, r, http.StatusBadRequest, "invalid invite code")
+		writeError(w, r, http.StatusBadRequest, "invalid or expired invite code")
 		return
 	}
 
 	if time.Now().After(invite.ExpiresAt) {
-		writeError(w, r, http.StatusBadRequest, "invite code has expired")
+		writeError(w, r, http.StatusBadRequest, "invalid or expired invite code")
 		return
 	}
 

@@ -84,18 +84,21 @@ func newError(code, message string) *EnrollmentError {
 }
 
 // ErrInvalidCode creates an error for invite code not found.
+// Uses generic message to prevent invite code enumeration.
 func ErrInvalidCode() *EnrollmentError {
-	return newError(ErrCodeInvalidCode, "invite code not found")
+	return newError(ErrCodeInvalidCode, "invalid or expired invite code")
 }
 
 // ErrExpiredCode creates an error for invite code TTL exceeded.
+// Uses generic message to prevent invite code enumeration.
 func ErrExpiredCode() *EnrollmentError {
-	return newError(ErrCodeExpiredCode, "invite code has expired")
+	return newError(ErrCodeExpiredCode, "invalid or expired invite code")
 }
 
 // ErrCodeConsumed creates an error for invite code already used.
+// Uses generic message to prevent invite code enumeration.
 func ErrCodeConsumed() *EnrollmentError {
-	return newError(ErrCodeCodeConsumed, "invite code has already been used")
+	return newError(ErrCodeCodeConsumed, "invalid or expired invite code")
 }
 
 // ErrInvalidSession creates an error for enrollment ID not found.
