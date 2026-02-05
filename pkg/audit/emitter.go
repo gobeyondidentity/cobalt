@@ -57,3 +57,35 @@ func (e *AuthEventEmitter) EmitAuthFailure(kid, ip, reason, method, path string)
 		}
 	}
 }
+
+// BypassEventEmitter bridges the authz middleware's BypassAuditEmitter interface
+// (defined in pkg/authz to avoid import cycles) with audit.Event constructors
+// and one or more EventEmitter backends. It satisfies authz.BypassAuditEmitter
+// through Go's structural typing without importing pkg/authz.
+type BypassEventEmitter struct {
+	backends []EventEmitter
+	logger   *slog.Logger
+}
+
+// NewBypassEventEmitter creates an emitter that forwards attestation bypass events
+// to the given backends. If logger is nil, slog.Default() is used.
+func NewBypassEventEmitter(logger *slog.Logger, backends ...EventEmitter) *BypassEventEmitter {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &BypassEventEmitter{
+		backends: backends,
+		logger:   logger,
+	}
+}
+
+// EmitAttestationBypass creates an attestation.bypass Event and writes it to all backends.
+// Errors are logged but do not propagate; audit failures must not block requests.
+func (e *BypassEventEmitter) EmitAttestationBypass(operatorID, ip, dpuID, bypassReason, attestationStatus, requestID string) {
+	ev := NewAttestationBypass(operatorID, ip, dpuID, bypassReason, attestationStatus, requestID)
+	for _, b := range e.backends {
+		if err := b.Emit(ev); err != nil {
+			e.logger.Error("audit emit failed", "event", "attestation.bypass", "error", err)
+		}
+	}
+}

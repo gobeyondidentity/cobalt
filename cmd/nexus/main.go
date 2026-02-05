@@ -131,13 +131,27 @@ func main() {
 	// before the handler can trigger a refresh. This lookup auto-refreshes when needed.
 	attestationLookup := api.NewAutoRefreshAttestationLookup(db, server.Gate()).WithLogger(logger)
 
+	// Create bypass audit emitter (emits attestation.bypass events to syslog)
+	var bypassAuditOpt authz.MiddlewareOption
+	if syslogAudit != nil {
+		bypassEmitter := audit.NewBypassEventEmitter(logger, syslogAudit)
+		bypassAuditOpt = authz.WithBypassAuditEmitter(bypassEmitter)
+	}
+
+	authzOpts := []authz.MiddlewareOption{
+		authz.WithLogger(logger),
+		authz.WithAttestationLookup(attestationLookup),
+	}
+	if bypassAuditOpt != nil {
+		authzOpts = append(authzOpts, bypassAuditOpt)
+	}
+
 	authzMiddleware := authz.NewAuthzMiddleware(
 		authorizer,
 		actionRegistry,
 		principalLookup,
 		resourceExtractor,
-		authz.WithLogger(logger),
-		authz.WithAttestationLookup(attestationLookup),
+		authzOpts...,
 	)
 
 	// Apply middleware: logging -> CORS -> DPoP auth -> Cedar authz -> routes

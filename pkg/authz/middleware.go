@@ -36,6 +36,13 @@ type AttestationLookup interface {
 	GetAttestationStatus(ctx context.Context, dpuID string) (AttestationStatus, error)
 }
 
+// BypassAuditEmitter emits attestation.bypass audit events when force bypass is used.
+// Defined here (not in pkg/audit) to avoid import cycles. Satisfied by
+// audit.BypassEventEmitter through Go's structural typing.
+type BypassAuditEmitter interface {
+	EmitAttestationBypass(operatorID, ip, dpuID, bypassReason, attestationStatus, requestID string)
+}
+
 // AuthzMiddleware enforces Cedar policy authorization on HTTP requests.
 // It sits between DPoP authentication and handlers in the middleware stack.
 type AuthzMiddleware struct {
@@ -44,6 +51,7 @@ type AuthzMiddleware struct {
 	principal    PrincipalLookup
 	resource     ResourceExtractor
 	attestation  AttestationLookup
+	bypassAudit  BypassAuditEmitter
 	logger       *slog.Logger
 }
 
@@ -61,6 +69,15 @@ func WithLogger(l *slog.Logger) MiddlewareOption {
 func WithAttestationLookup(a AttestationLookup) MiddlewareOption {
 	return func(m *AuthzMiddleware) {
 		m.attestation = a
+	}
+}
+
+// WithBypassAuditEmitter sets the audit emitter for attestation bypass events.
+func WithBypassAuditEmitter(e BypassAuditEmitter) MiddlewareOption {
+	return func(m *AuthzMiddleware) {
+		if e != nil {
+			m.bypassAudit = e
+		}
 	}
 }
 
@@ -234,7 +251,22 @@ func (m *AuthzMiddleware) Wrap(next http.Handler) http.Handler {
 		// Not allowed - check if force bypass is applicable
 		if decision.RequiresForceBypass {
 			if m.handleForceBypass(r, &decision, principal, string(action)) {
-				// Force bypass granted - log security warning and proceed
+				// Force bypass granted - emit attestation.bypass audit event
+				if m.bypassAudit != nil {
+					attestStatus := ""
+					if s, ok := authzReq.Context["attestation_status"].(string); ok {
+						attestStatus = s
+					}
+					dpuID := m.extractDPUID(r, resource, principal)
+					m.bypassAudit.EmitAttestationBypass(
+						principal.UID,
+						clientIP(r),
+						dpuID,
+						r.Header.Get("X-Force-Bypass"),
+						attestStatus,
+						requestID,
+					)
+				}
 				ctx = ContextWithDecision(ctx, &decision)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
@@ -386,4 +418,15 @@ func (m *AuthzMiddleware) writeError(w http.ResponseWriter, status int, code, me
 		"error":   code,
 		"message": message,
 	})
+}
+
+// clientIP extracts the client IP from the request, checking proxy headers first.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return xff
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+	return r.RemoteAddr
 }

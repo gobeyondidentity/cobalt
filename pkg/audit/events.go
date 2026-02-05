@@ -219,7 +219,8 @@ func NewLifecycleDecommission(actorID, ip, dpuID, requestID string) Event {
 }
 
 // NewAttestationBypass creates an attestation.bypass event for force bypass usage.
-func NewAttestationBypass(actorID, ip, dpuID, bypassReason, requestID string) Event {
+// attestationStatus is "stale" or "unavailable" (the condition that triggered the bypass).
+func NewAttestationBypass(actorID, ip, dpuID, bypassReason, attestationStatus, requestID string) Event {
 	return Event{
 		Type:      EventAttestationBypass,
 		Severity:  SeverityWarning,
@@ -228,8 +229,10 @@ func NewAttestationBypass(actorID, ip, dpuID, bypassReason, requestID string) Ev
 		IP:        ip,
 		RequestID: requestID,
 		Details: map[string]string{
-			"dpu_id":        dpuID,
-			"bypass_reason": bypassReason,
+			"dpu_id":             dpuID,
+			"operator_id":       actorID,
+			"bypass_reason":     bypassReason,
+			"attestation_status": attestationStatus,
 		},
 	}
 }

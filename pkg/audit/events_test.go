@@ -294,9 +294,9 @@ func TestNewLifecycleDecommission(t *testing.T) {
 
 func TestNewAttestationBypass(t *testing.T) {
 	t.Parallel()
-	t.Log("Verifying NewAttestationBypass captures DPU ID and bypass reason")
+	t.Log("Verifying NewAttestationBypass captures all required fields")
 
-	e := NewAttestationBypass("adm_super", "10.0.0.8", "dpu_stale", "maintenance window", "req-9")
+	e := NewAttestationBypass("adm_super", "10.0.0.8", "dpu_stale", "maintenance window", "stale", "req-9")
 
 	if e.Type != EventAttestationBypass {
 		t.Errorf("Type = %q, want %q", e.Type, EventAttestationBypass)
@@ -304,11 +304,26 @@ func TestNewAttestationBypass(t *testing.T) {
 	if e.Severity != SeverityWarning {
 		t.Errorf("Severity = %d, want %d (WARNING)", e.Severity, SeverityWarning)
 	}
+	if e.ActorID != "adm_super" {
+		t.Errorf("ActorID = %q, want %q", e.ActorID, "adm_super")
+	}
+	if e.IP != "10.0.0.8" {
+		t.Errorf("IP = %q, want %q", e.IP, "10.0.0.8")
+	}
+	if e.RequestID != "req-9" {
+		t.Errorf("RequestID = %q, want %q", e.RequestID, "req-9")
+	}
 	if e.Details["dpu_id"] != "dpu_stale" {
 		t.Errorf("Details[dpu_id] = %q, want %q", e.Details["dpu_id"], "dpu_stale")
 	}
+	if e.Details["operator_id"] != "adm_super" {
+		t.Errorf("Details[operator_id] = %q, want %q", e.Details["operator_id"], "adm_super")
+	}
 	if e.Details["bypass_reason"] != "maintenance window" {
 		t.Errorf("Details[bypass_reason] = %q, want %q", e.Details["bypass_reason"], "maintenance window")
+	}
+	if e.Details["attestation_status"] != "stale" {
+		t.Errorf("Details[attestation_status] = %q, want %q", e.Details["attestation_status"], "stale")
 	}
 }
 
@@ -348,7 +363,7 @@ func TestAllHelpers_SetTimestamp(t *testing.T) {
 		NewLifecycleSuspend("a", "1.2.3.4", "o", "r"),
 		NewLifecycleUnsuspend("a", "1.2.3.4", "o", "r"),
 		NewLifecycleDecommission("a", "1.2.3.4", "d", "r"),
-		NewAttestationBypass("a", "1.2.3.4", "d", "reason", "r"),
+		NewAttestationBypass("a", "1.2.3.4", "d", "reason", "stale", "r"),
 		NewBootstrapComplete("a", "1.2.3.4", "a", "r"),
 	}
 
@@ -372,7 +387,7 @@ func TestAllHelpers_SeverityMatchesMapping(t *testing.T) {
 		NewLifecycleSuspend("a", "1.2.3.4", "o", "r"),
 		NewLifecycleUnsuspend("a", "1.2.3.4", "o", "r"),
 		NewLifecycleDecommission("a", "1.2.3.4", "d", "r"),
-		NewAttestationBypass("a", "1.2.3.4", "d", "reason", "r"),
+		NewAttestationBypass("a", "1.2.3.4", "d", "reason", "stale", "r"),
 		NewBootstrapComplete("a", "1.2.3.4", "a", "r"),
 	}
 
