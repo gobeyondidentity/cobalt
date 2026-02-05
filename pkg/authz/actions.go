@@ -68,6 +68,7 @@ const (
 	ActionHostScan          = "host:scan"
 
 	// Lifecycle management (Phase 4)
+	ActionKeyMakerList      = "keymaker:list"
 	ActionKeyMakerRevoke    = "keymaker:revoke"
 	ActionAdminKeyRevoke    = "adminkey:revoke"
 	ActionOperatorSuspend   = "operator:suspend"
@@ -120,6 +121,7 @@ var validActions = map[string]bool{
 	ActionHostRequestCert:      true,
 	ActionHostScan:             true,
 	// Lifecycle management (Phase 4)
+	ActionKeyMakerList:      true,
 	ActionKeyMakerRevoke:    true,
 	ActionAdminKeyRevoke:    true,
 	ActionOperatorSuspend:   true,
@@ -257,6 +259,7 @@ func NewActionRegistry() *ActionRegistry {
 	r.register("POST", "/api/v1/hosts/{hostname}/scan", Action(ActionHostScan))
 
 	// ----- Lifecycle Management Endpoints (Phase 4) -----
+	r.register("GET", "/api/v1/keymakers", Action(ActionKeyMakerList))
 	r.register("DELETE", "/api/v1/keymakers/{id}", Action(ActionKeyMakerRevoke))
 	r.register("DELETE", "/api/v1/admin-keys/{id}", Action(ActionAdminKeyRevoke))
 	r.register("POST", "/api/v1/operators/{id}/suspend", Action(ActionOperatorSuspend))
