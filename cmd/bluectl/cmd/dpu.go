@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -29,6 +30,9 @@ func init() {
 	dpuAddCmd.Flags().Bool("offline", false, "Skip connectivity check and add DPU anyway")
 	dpuHealthCmd.Flags().BoolP("verbose", "v", false, "Show detailed component health status")
 
+	// Flags for dpu list
+	dpuListCmd.Flags().String("status", "", "Filter by status (pending, active, decommissioned)")
+
 	// Flags for dpu assign
 	dpuAssignCmd.Flags().String("tenant", "", "Tenant to assign the DPU to (required)")
 	dpuAssignCmd.MarkFlagRequired("tenant")
@@ -40,24 +44,49 @@ var dpuCmd = &cobra.Command{
 	Long:  `Commands to list, add, remove, and query registered DPUs.`,
 }
 
+// validDPUStatuses defines the valid status values for DPU list filtering.
+var validDPUStatuses = []string{"pending", "active", "decommissioned"}
+
 var dpuListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List registered DPUs",
+	Long: `List all registered DPUs, optionally filtered by status.
+
+Examples:
+  bluectl dpu list
+  bluectl dpu list --status active
+  bluectl dpu list --status decommissioned`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		statusFilter, _ := cmd.Flags().GetString("status")
+
+		// Validate status if provided
+		if statusFilter != "" {
+			valid := false
+			for _, s := range validDPUStatuses {
+				if statusFilter == s {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return fmt.Errorf("invalid status: %s (must be one of: %s)", statusFilter, strings.Join(validDPUStatuses, ", "))
+			}
+		}
+
 		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-		return listDPUsRemote(cmd.Context(), serverURL)
+		return listDPUsRemote(cmd.Context(), serverURL, statusFilter)
 	},
 }
 
-func listDPUsRemote(ctx context.Context, serverURL string) error {
+func listDPUsRemote(ctx context.Context, serverURL, statusFilter string) error {
 	client, err := NewNexusClientWithDPoP(serverURL)
 	if err != nil {
 		return err
 	}
-	dpus, err := client.ListDPUs(ctx)
+	dpus, err := client.ListDPUs(ctx, statusFilter)
 	if err != nil {
 		return fmt.Errorf("failed to list DPUs from server: %w", err)
 	}

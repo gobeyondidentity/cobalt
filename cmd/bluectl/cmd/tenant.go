@@ -386,7 +386,7 @@ func assignDPURemote(ctx context.Context, serverURL, tenantNameOrID, dpuNameOrID
 	}
 
 	// Resolve DPU name to ID
-	dpus, err := client.ListDPUs(ctx)
+	dpus, err := client.ListDPUs(ctx, "")
 	if err != nil {
 		return fmt.Errorf("failed to list DPUs: %w", err)
 	}
@@ -436,7 +436,7 @@ func unassignDPURemote(ctx context.Context, serverURL, dpuNameOrID string) error
 	}
 
 	// Get DPU list to find the DPU and its tenant
-	dpus, err := client.ListDPUs(ctx)
+	dpus, err := client.ListDPUs(ctx, "")
 	if err != nil {
 		return fmt.Errorf("failed to list DPUs: %w", err)
 	}

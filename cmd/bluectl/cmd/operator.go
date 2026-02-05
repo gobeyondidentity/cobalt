@@ -30,6 +30,7 @@ func init() {
 
 	// Flags for operator list
 	operatorListCmd.Flags().String("tenant", "", "Filter by tenant")
+	operatorListCmd.Flags().String("status", "", "Filter by status (active, suspended)")
 
 	// Flags for operator revoke
 	operatorRevokeCmd.Flags().String("tenant", "", "Tenant name (required)")
@@ -144,31 +145,51 @@ func inviteOperatorRemote(ctx context.Context, serverURL, email, tenantName, rol
 	return nil
 }
 
+// validOperatorStatuses defines the valid status values for operator list filtering.
+var validOperatorStatuses = []string{"active", "suspended"}
+
 var operatorListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List operators",
-	Long: `List all operators, optionally filtered by tenant.
+	Long: `List all operators, optionally filtered by tenant and/or status.
 
 Examples:
   bluectl operator list
-  bluectl operator list --tenant acme`,
+  bluectl operator list --tenant acme
+  bluectl operator list --status suspended
+  bluectl operator list --tenant acme --status active`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tenantFilter, _ := cmd.Flags().GetString("tenant")
+		statusFilter, _ := cmd.Flags().GetString("status")
+
+		// Validate status if provided
+		if statusFilter != "" {
+			valid := false
+			for _, s := range validOperatorStatuses {
+				if statusFilter == s {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return fmt.Errorf("invalid status: %s (must be one of: %s)", statusFilter, strings.Join(validOperatorStatuses, ", "))
+			}
+		}
 
 		serverURL, err := requireServer()
 		if err != nil {
 			return err
 		}
-		return listOperatorsRemote(cmd.Context(), serverURL, tenantFilter)
+		return listOperatorsRemote(cmd.Context(), serverURL, tenantFilter, statusFilter)
 	},
 }
 
-func listOperatorsRemote(ctx context.Context, serverURL, tenantFilter string) error {
+func listOperatorsRemote(ctx context.Context, serverURL, tenantFilter, statusFilter string) error {
 	client, err := NewNexusClientWithDPoP(serverURL)
 	if err != nil {
 		return err
 	}
-	operators, err := client.ListOperators(ctx, tenantFilter)
+	operators, err := client.ListOperators(ctx, tenantFilter, statusFilter)
 	if err != nil {
 		return fmt.Errorf("failed to list operators: %w", err)
 	}
@@ -341,7 +362,7 @@ Examples:
 			deviceIDs = []string{"all"}
 		} else {
 			deviceNames := strings.Split(devicesArg, ",")
-			dpus, err := client.ListDPUs(ctx)
+			dpus, err := client.ListDPUs(ctx, "")
 			if err != nil {
 				return fmt.Errorf("failed to list DPUs: %w", err)
 			}

@@ -221,9 +221,14 @@ func (c *NexusClient) AddDPU(ctx context.Context, name, host string, port int) (
 	return &dpu, nil
 }
 
-// ListDPUs retrieves all registered DPUs from the Nexus server.
-func (c *NexusClient) ListDPUs(ctx context.Context) ([]dpuResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/dpus", nil)
+// ListDPUs retrieves all registered DPUs from the Nexus server, optionally filtered by status.
+func (c *NexusClient) ListDPUs(ctx context.Context, status string) ([]dpuResponse, error) {
+	url := c.baseURL + "/api/v1/dpus"
+	if status != "" {
+		url += "?status=" + status
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -591,11 +596,18 @@ type updateOperatorStatusRequest struct {
 	Status string `json:"status"`
 }
 
-// ListOperators retrieves all operators from the Nexus server, optionally filtered by tenant.
-func (c *NexusClient) ListOperators(ctx context.Context, tenant string) ([]operatorResponse, error) {
+// ListOperators retrieves all operators from the Nexus server, optionally filtered by tenant and/or status.
+func (c *NexusClient) ListOperators(ctx context.Context, tenant, status string) ([]operatorResponse, error) {
 	url := c.baseURL + "/api/v1/operators"
+	params := []string{}
 	if tenant != "" {
-		url += "?tenant=" + tenant
+		params = append(params, "tenant="+tenant)
+	}
+	if status != "" {
+		params = append(params, "status="+status)
+	}
+	if len(params) > 0 {
+		url += "?" + strings.Join(params, "&")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -1136,11 +1148,18 @@ type keymakerResponse struct {
 	Status        string  `json:"status"`
 }
 
-// ListKeyMakers retrieves all KeyMakers from the Nexus server, optionally filtered by operator.
-func (c *NexusClient) ListKeyMakers(ctx context.Context, operatorID string) ([]keymakerResponse, error) {
+// ListKeyMakers retrieves all KeyMakers from the Nexus server, optionally filtered by operator and/or status.
+func (c *NexusClient) ListKeyMakers(ctx context.Context, operatorID, status string) ([]keymakerResponse, error) {
 	url := c.baseURL + "/api/v1/keymakers"
+	params := []string{}
 	if operatorID != "" {
-		url += "?operator_id=" + operatorID
+		params = append(params, "operator_id="+operatorID)
+	}
+	if status != "" {
+		params = append(params, "status="+status)
+	}
+	if len(params) > 0 {
+		url += "?" + strings.Join(params, "&")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

@@ -160,7 +160,7 @@ func TestNexusClient_ListDPUs(t *testing.T) {
 			defer server.Close()
 
 			client := NewNexusClient(server.URL)
-			resp, err := client.ListDPUs(context.Background())
+			resp, err := client.ListDPUs(context.Background(), "")
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListDPUs() error = %v, wantErr %v", err, tt.wantErr)
@@ -1266,7 +1266,7 @@ func TestNexusClient_DPoP_HeaderPresent(t *testing.T) {
 	}
 
 	t.Log("Calling ListDPUs to verify DPoP header is sent")
-	_, err = client.ListDPUs(context.Background())
+	_, err = client.ListDPUs(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1337,7 +1337,7 @@ func TestNexusClient_DPoP_HeaderNotPresentWhenDisabled(t *testing.T) {
 	}
 
 	t.Log("Calling ListDPUs to verify no DPoP header is sent")
-	_, err := client.ListDPUs(context.Background())
+	_, err := client.ListDPUs(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1369,7 +1369,7 @@ func TestNexusClient_DPoP_AllHTTPMethods(t *testing.T) {
 			name:   "GET request (ListDPUs)",
 			method: "GET",
 			callMethod: func(c *NexusClient) error {
-				_, err := c.ListDPUs(context.Background())
+				_, err := c.ListDPUs(context.Background(), "")
 				return err
 			},
 		},
@@ -1516,7 +1516,7 @@ func TestNexusClient_DPoP_AuthErrorHandling(t *testing.T) {
 			client := NewNexusClient(server.URL)
 			client.SetDPoP(proofGen, testKID)
 
-			_, err := client.ListDPUs(context.Background())
+			_, err := client.ListDPUs(context.Background(), "")
 
 			t.Logf("Verifying error message contains expected text for %s", tt.errorCode)
 			if err == nil {
@@ -1556,8 +1556,8 @@ func TestNexusClient_DPoP_FreshProofPerRequest(t *testing.T) {
 	client.SetDPoP(proofGen, testKID)
 
 	t.Log("Making two consecutive requests")
-	_, _ = client.ListDPUs(context.Background())
-	_, _ = client.ListDPUs(context.Background())
+	_, _ = client.ListDPUs(context.Background(), "")
+	_, _ = client.ListDPUs(context.Background(), "")
 
 	if len(proofs) != 2 {
 		t.Fatalf("expected 2 proofs captured, got %d", len(proofs))
@@ -1635,7 +1635,7 @@ func TestNewNexusClientWithDPoPFromPaths_LoadsFromFiles(t *testing.T) {
 	}
 
 	t.Log("Making request to verify DPoP header is sent")
-	_, err = client.ListDPUs(context.Background())
+	_, err = client.ListDPUs(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
