@@ -3,6 +3,7 @@ layout: post
 title: "Why Hardware-Attested Credentials for AI Infrastructure"
 date: 2026-01-20
 author: Beyond Identity
+image: /assets/images/hardware-attestation-hero.svg
 ---
 
 SSH key distribution across hundreds of GPU nodes. Manual MUNGE token provisioning. Rotation fire drills when something expires. Credential management doesn't scale with your GPU fleet.

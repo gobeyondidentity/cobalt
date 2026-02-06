@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#111a27"/>
+    </linearGradient>
+    <radialGradient id="orbitGlow" cx="50%" cy="50%" r="40%">
+      <stop offset="0%" stop-color="#2563eb" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#2563eb" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <circle cx="400" cy="300" r="240" fill="url(#orbitGlow)"/>
+  <!-- Orbital rings -->
+  <g fill="none" stroke-linecap="round">
+    <ellipse cx="400" cy="300" rx="180" ry="60" stroke="#2563eb" stroke-width="0.8" opacity="0.3" transform="rotate(-20,400,300)"/>
+    <ellipse cx="400" cy="300" rx="140" ry="90" stroke="#3b82f6" stroke-width="0.6" opacity="0.25" transform="rotate(35,400,300)"/>
+    <ellipse cx="400" cy="300" rx="200" ry="45" stroke="#1d4ed8" stroke-width="0.7" opacity="0.2" transform="rotate(10,400,300)"/>
+  </g>
+  <!-- Constellation nodes -->
+  <g>
+    <!-- Central node -->
+    <circle cx="400" cy="300" r="6" fill="#3b82f6" opacity="0.9"/>
+    <circle cx="400" cy="300" r="12" fill="none" stroke="#60a5fa" stroke-width="0.5" opacity="0.4"/>
+    <!-- Satellite nodes -->
+    <circle cx="300" cy="240" r="3" fill="#60a5fa" opacity="0.7"/>
+    <circle cx="520" cy="260" r="3.5" fill="#3b82f6" opacity="0.8"/>
+    <circle cx="340" cy="380" r="2.5" fill="#93c5fd" opacity="0.6"/>
+    <circle cx="480" cy="350" r="3" fill="#60a5fa" opacity="0.7"/>
+    <circle cx="260" cy="310" r="2" fill="#3b82f6" opacity="0.5"/>
+    <circle cx="540" cy="320" r="2" fill="#93c5fd" opacity="0.5"/>
+    <circle cx="430" cy="200" r="2.5" fill="#60a5fa" opacity="0.6"/>
+    <circle cx="360" cy="190" r="2" fill="#3b82f6" opacity="0.5"/>
+  </g>
+  <!-- Connection lines -->
+  <g stroke="#2563eb" stroke-width="0.5" opacity="0.25">
+    <line x1="400" y1="300" x2="300" y2="240"/>
+    <line x1="400" y1="300" x2="520" y2="260"/>
+    <line x1="400" y1="300" x2="340" y2="380"/>
+    <line x1="400" y1="300" x2="480" y2="350"/>
+    <line x1="300" y1="240" x2="360" y2="190"/>
+    <line x1="520" y1="260" x2="430" y2="200"/>
+    <line x1="340" y1="380" x2="260" y2="310"/>
+    <line x1="480" y1="350" x2="540" y2="320"/>
+    <line x1="300" y1="240" x2="260" y2="310"/>
+    <line x1="520" y1="260" x2="540" y2="320"/>
+  </g>
+  <!-- Distant stars -->
+  <circle cx="100" cy="80" r="0.8" fill="#60a5fa" opacity="0.3"/>
+  <circle cx="700" cy="100" r="1" fill="#93c5fd" opacity="0.25"/>
+  <circle cx="80" cy="500" r="0.8" fill="#3b82f6" opacity="0.2"/>
+  <circle cx="720" cy="480" r="1" fill="#60a5fa" opacity="0.3"/>
+  <circle cx="200" cy="550" r="0.6" fill="#93c5fd" opacity="0.2"/>
+  <circle cx="600" cy="60" r="0.8" fill="#3b82f6" opacity="0.25"/>
+</svg>

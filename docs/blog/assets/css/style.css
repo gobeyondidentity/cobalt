@@ -144,6 +144,14 @@ img { max-width: 100%; height: auto; }
   border-radius: 12px;
 }
 
+.featured-img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  border-radius: 12px;
+  display: block;
+}
+
 .featured-title {
   font-family: var(--font-serif);
   font-size: clamp(2.5rem, 5vw, 4rem);
@@ -211,6 +219,14 @@ img { max-width: 100%; height: auto; }
   aspect-ratio: 16/9;
   background: linear-gradient(135deg, #2a3a3c 0%, #1a2a2c 50%, #0f1f21 100%);
   border-radius: 12px;
+}
+
+.post-card-img {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  border-radius: 12px;
+  display: block;
 }
 
 .post-card-title {

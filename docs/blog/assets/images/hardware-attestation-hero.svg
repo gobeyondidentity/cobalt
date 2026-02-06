@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#0f1a2e"/>
+    </linearGradient>
+    <linearGradient id="hexFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e40af" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#2563eb" stop-opacity="0.05"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <!-- Hexagonal lattice -->
+  <g fill="url(#hexFill)" stroke="#2563eb" stroke-width="0.5" opacity="0.3">
+    <!-- Row 1 -->
+    <polygon points="400,100 435,120 435,160 400,180 365,160 365,120" />
+    <polygon points="330,140 365,160 365,200 330,220 295,200 295,160" />
+    <polygon points="470,140 505,160 505,200 470,220 435,200 435,160" />
+    <!-- Row 2 -->
+    <polygon points="400,220 435,240 435,280 400,300 365,280 365,240" />
+    <polygon points="330,260 365,280 365,320 330,340 295,320 295,280" />
+    <polygon points="470,260 505,280 505,320 470,340 435,320 435,280" />
+    <polygon points="260,180 295,200 295,240 260,260 225,240 225,200" />
+    <polygon points="540,180 575,200 575,240 540,260 505,240 505,200" />
+    <!-- Row 3 -->
+    <polygon points="400,340 435,360 435,400 400,420 365,400 365,360" />
+    <polygon points="330,380 365,400 365,440 330,460 295,440 295,400" />
+    <polygon points="470,380 505,400 505,440 470,460 435,440 435,400" />
+    <polygon points="260,300 295,320 295,360 260,380 225,360 225,320" />
+    <polygon points="540,300 575,320 575,360 540,380 505,360 505,320" />
+    <!-- Row 4 -->
+    <polygon points="400,460 435,480 435,520 400,540 365,520 365,480" />
+    <polygon points="330,500 365,520 365,560 330,580 295,560 295,520" />
+    <polygon points="470,500 505,520 505,560 470,580 435,560 435,520" />
+  </g>
+  <!-- Highlighted trust chain (3 hexagons) -->
+  <g fill="none" stroke="#3b82f6" stroke-width="1.5">
+    <polygon points="400,220 435,240 435,280 400,300 365,280 365,240" opacity="0.7"/>
+    <polygon points="400,340 435,360 435,400 400,420 365,400 365,360" opacity="0.5"/>
+    <polygon points="400,100 435,120 435,160 400,180 365,160 365,120" opacity="0.9"/>
+  </g>
+  <!-- Trust chain connectors -->
+  <g stroke="#60a5fa" stroke-width="1" opacity="0.4" stroke-dasharray="4,4">
+    <line x1="400" y1="180" x2="400" y2="220"/>
+    <line x1="400" y1="300" x2="400" y2="340"/>
+  </g>
+  <!-- Node indicators on trust chain -->
+  <circle cx="400" cy="140" r="3" fill="#60a5fa" opacity="0.8"/>
+  <circle cx="400" cy="260" r="3" fill="#3b82f6" opacity="0.7"/>
+  <circle cx="400" cy="380" r="3" fill="#2563eb" opacity="0.6"/>
+  <!-- Lock symbol in center hex -->
+  <g transform="translate(400,260)" opacity="0.5">
+    <rect x="-8" y="-2" width="16" height="12" rx="2" fill="none" stroke="#93c5fd" stroke-width="1"/>
+    <path d="M-4,-2 L-4,-7 A4,4 0 0,1 4,-7 L4,-2" fill="none" stroke="#93c5fd" stroke-width="1"/>
+  </g>
+  <!-- Scattered particles -->
+  <circle cx="160" cy="150" r="1" fill="#60a5fa" opacity="0.25"/>
+  <circle cx="640" cy="130" r="1.2" fill="#3b82f6" opacity="0.2"/>
+  <circle cx="130" cy="450" r="0.8" fill="#93c5fd" opacity="0.2"/>
+  <circle cx="670" cy="470" r="1" fill="#60a5fa" opacity="0.25"/>
+</svg>
