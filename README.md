@@ -2,7 +2,7 @@
 
 <div align="center">
 <br>
-<img src="assets/cobalt-logo.svg?v=10" alt="Cobalt" width="200"/>
+<img src="assets/cobalt-logo.png" alt="Cobalt" width="200"/>
 <br><br>
 </div>
 
