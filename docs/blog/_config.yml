@@ -2,8 +2,10 @@ title: Project Cobalt Blog
 description: Updates and announcements from Project Cobalt
 baseurl: "/cobalt"
 url: "https://gobeyondidentity.github.io"
-theme: minima
 
 # Build settings
 markdown: kramdown
 permalink: /:year/:month/:day/:title/
+
+# Excerpt settings
+excerpt_separator: "\n\n"
