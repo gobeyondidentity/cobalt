@@ -1,5 +1,9 @@
 # Cobalt [![CI](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml) [![Release](https://img.shields.io/github/v/release/gobeyondidentity/cobalt)](https://github.com/gobeyondidentity/cobalt/releases/latest) [![Go](https://img.shields.io/github/go-mod/go-version/gobeyondidentity/cobalt)](https://go.dev/) [![License](https://img.shields.io/github/license/gobeyondidentity/cobalt)](LICENSE)
 
+<div align="center">
+<img src="assets/cobalt-logo.svg?v=9" alt="Cobalt" width="200"/>
+</div>
+
 [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 ![Demo](assets/demo-v2.gif)
