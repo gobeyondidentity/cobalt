@@ -48,4 +48,4 @@ GPU clusters hold model weights worth hundreds of millions. When incidents happe
 
 ---
 
-*Secure Infrastructure automates credential distribution to verified GPU infrastructure. No manual key management. No rotation fire drills. See the [quickstart guide](https://github.com/gobeyondidentity/secure-infra/blob/main/docs/guides/quickstart-emulator.md) to try it.*
+*Cobalt automates credential distribution to verified GPU infrastructure. No manual key management. No rotation fire drills. See the [quickstart guide](https://github.com/gobeyondidentity/cobalt/blob/main/docs/guides/quickstart-emulator.md) to try it.*

@@ -74,7 +74,7 @@ docker-compose up -d
 bluectl init --emulator
 ```
 
-The [quickstart guide](https://github.com/gobeyondidentity/secure-infra/blob/main/docs/guides/quickstart-emulator.md) walks through the full flow: create a tenant, register a DPU, set up operators, and push credentials to attested infrastructure.
+The [quickstart guide](https://github.com/gobeyondidentity/cobalt/blob/main/docs/guides/quickstart-emulator.md) walks through the full flow: create a tenant, register a DPU, set up operators, and push credentials to attested infrastructure.
 
 ## Known Limitations
 
