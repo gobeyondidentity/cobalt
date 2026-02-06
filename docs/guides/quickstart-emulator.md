@@ -39,7 +39,7 @@ This guide uses three terminal windows. The server and emulator are long-running
 | Terminal | Purpose | Runs |
 |----------|---------|------|
 | Terminal 1 | Server | `nexus` or `bin/server` (Step 1) |
-| Terminal 2 | Emulator | `dpuemu` or `bin/dpuemu` (Step 3) |
+| Terminal 2 | Emulator | `dpuemu` or `bin/dpuemu` (Step 4) |
 | Terminal 3 | Commands | All other commands |
 
 Open all three now. If you installed via package manager, skip to Step 1. If building from source, run clone/build in Terminal 3 first.
@@ -76,8 +76,10 @@ nexus              # if installed via package manager
 # or: bin/server   # if built from source
 
 # Expected:
-# Fabric Console API v0.6.3 starting...
+# Fabric Console API v0.7.0 starting...
 # HTTP server listening on :18080
+#
+# BOOTSTRAP MODE: Run 'bluectl init' within 10 minutes to create the first admin
 ```
 
 **macOS:** You may see a syslog connection warning on startup. This is expected; macOS uses a different syslog socket path. Audit events fall back to SQLite storage and the server operates normally.
@@ -86,12 +88,37 @@ In Terminal 3, verify it's running:
 
 ```bash
 curl http://localhost:18080/health
-# Expected: {"status":"ok","version":"0.6.3"}
+# Expected: {"status":"ok","version":"0.7.0"}
 ```
 
 ---
 
-## Step 2: Create a Tenant
+## Step 2: Bootstrap the First Admin
+
+On fresh start, nexus enters bootstrap mode for 10 minutes. You must enroll the first admin before the window closes. The server banner in Terminal 1 tells you when bootstrap mode is active.
+
+In Terminal 3:
+
+```bash
+bluectl init
+# or: bin/bluectl init   # if built from source
+
+# Expected:
+# Generating admin keypair...
+# Enrolling with server at http://localhost:18080...
+#
+# Enrolled as admin:
+#   AdminKey: adm_<id>
+#   Role: super:admin
+#
+# Admin credentials saved to ~/.config/bluectl/
+```
+
+The bootstrap window closes immediately after the first admin enrolls. If the window expires, restart nexus to get a new 10-minute window.
+
+---
+
+## Step 3: Create a Tenant
 
 Tenants are organizational boundaries, like teams or environments. Every DPU and operator belongs to exactly one tenant. This keeps production separate from staging, or one team's infrastructure separate from another's.
 
@@ -106,9 +133,9 @@ bluectl tenant add gpu-prod --description "GPU Production Cluster"
 
 ---
 
-## Step 3: Start the DPU Emulator
+## Step 4: Start the DPU Emulator
 
-The emulator simulates a BlueField DPU with mock health check data. The DPU automatically verifies that hardware is healthy and running expected firmware. You'll see this in action in Step 7.
+The emulator simulates a BlueField DPU with mock health check data. The DPU automatically verifies that hardware is healthy and running expected firmware. You'll see this in action in Step 11.
 
 The fixture file defines the emulated DPU's identity: serial number, model, and certificate chain.
 
@@ -129,7 +156,7 @@ Leave this running.
 
 ---
 
-## Step 4: Register the Emulated DPU
+## Step 5: Register the Emulated DPU
 
 The server needs to know about each DPU before it can track health status or authorize credential distribution. Registration connects the running emulator to the control plane.
 
@@ -149,9 +176,9 @@ The CLI verifies connectivity and retrieves DPU details from the emulator.
 
 ---
 
-## Step 5: Assign DPU to Tenant
+## Step 6: Assign DPU to Tenant
 
-Link the DPU to the tenant you created in Step 2. This controls which operators can access the device.
+Link the DPU to the tenant you created in Step 3. This controls which operators can access the device.
 
 ```bash
 bluectl tenant assign gpu-prod bf3
@@ -160,7 +187,7 @@ bluectl tenant assign gpu-prod bf3
 
 ---
 
-## Step 6: Create Operator Invitation
+## Step 7: Create Operator Invitation
 
 Admins manage infrastructure (DPUs, tenants, access grants). Operators push credentials (SSH CAs, certificates) to attested devices. This separation creates an audit trail.
 
@@ -182,7 +209,7 @@ Save the invite code for the next step.
 
 ---
 
-## Step 7: Accept Operator Invitation
+## Step 8: Accept Operator Invitation
 
 ```bash
 km init
@@ -211,7 +238,7 @@ km whoami
 
 ---
 
-## Step 8: Create SSH CA
+## Step 9: Create SSH CA
 
 An SSH CA signs short-lived certificates instead of scattering static keys across servers. No more authorized_keys file management; certificates expire automatically and don't need to be revoked.
 
@@ -222,7 +249,7 @@ km ssh-ca create test-ca
 
 ---
 
-## Step 9: Grant CA Access
+## Step 10: Grant CA Access
 
 Link the operator to specific CAs and devices. Without this grant, the operator can create CAs but can't push them anywhere.
 
@@ -238,7 +265,7 @@ bluectl operator grant operator@example.com gpu-prod test-ca bf3
 
 ---
 
-## Step 10: Submit Attestation
+## Step 11: Submit Attestation
 
 The DPU confirms it's running expected firmware before credentials can be distributed. The emulator provides mock health data for this step.
 
@@ -261,7 +288,7 @@ bluectl attestation bf3
 
 ---
 
-## Step 11: Distribute Credentials
+## Step 12: Distribute Credentials
 
 This is the payoff for automation. The system verifies the host is healthy before pushing credentials. If the DPU fails health checks, distribution pauses automatically until the issue is resolved.
 
@@ -279,7 +306,7 @@ With the emulator, credentials are stored locally. On real hardware, they'd be p
 
 ---
 
-## Step 12: Test Host Agent (Optional)
+## Step 13: Test Host Agent (Optional)
 
 In production, the host agent (sentry) runs on each server and receives credentials from the DPU over a secure channel (ComCh or tmfifo). It also reports the host's security posture.
 
@@ -290,7 +317,7 @@ sentry --dpu-agent http://localhost:9443 --oneshot
 # or: bin/sentry --dpu-agent http://localhost:9443 --oneshot   # if built from source
 
 # Expected:
-# Sentry v0.6.3 starting...
+# Sentry v0.7.0 starting...
 # Initial posture collected: hash=<hash>
 # No ComCh/tmfifo detected. Using network enrollment.
 # DPU Agent: http://localhost:9443
@@ -302,7 +329,7 @@ sentry --dpu-agent http://localhost:9443 --oneshot
 
 ---
 
-## Step 13: Sign a User Certificate
+## Step 14: Sign a User Certificate
 
 Everything you've built leads to this: signing short-lived certificates that grant SSH access without managing authorized_keys files across your fleet.
 
@@ -419,7 +446,7 @@ rm -f ~/.local/share/bluectl/key
 rm -rf ~/.km
 ```
 
-4. **Restart server and emulator** (Steps 1 and 3)
+4. **Restart server and emulator** (Steps 1 and 4)
 
 The server caches data in memory, so you must stop it before deleting the database.
 
