@@ -16,8 +16,8 @@ Choose your installation method:
 
 **macOS (Homebrew):**
 ```bash
-brew tap nmelo/tap
-brew install nmelo/tap/bluectl nmelo/tap/km nmelo/tap/nexus nmelo/tap/dpuemu nmelo/tap/sentry
+brew tap gobeyondidentity/cobalt
+brew install gobeyondidentity/cobalt/bluectl gobeyondidentity/cobalt/km gobeyondidentity/cobalt/nexus gobeyondidentity/cobalt/dpuemu gobeyondidentity/cobalt/sentry
 ```
 
 **Linux (Debian/Ubuntu):**
