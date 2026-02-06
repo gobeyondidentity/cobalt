@@ -276,11 +276,14 @@ bluectl attestation bf3
 # Attestation Status: ATTESTATION_STATUS_VALID
 #
 # Certificate Chain:
-# LEVEL  SUBJECT                         ISSUER                ALGORITHM     VALID UNTIL
-# L0     SERIALNUMBER=EMU-00000001...    SERIALNUMBER=EMU-...  ECDSA-SHA384  9999-12-31T23:59:59Z
-# L1     CN=DPU Emulator CA,O=Cobalt...  CN=DPU Emulator C...  ECDSA-SHA384  9999-12-31T23:59:59Z
+# LEVEL  SUBJECT                         ISSUER                ALGORITHM   VALID UNTIL
+# L0     CN=DPU Device Identity,O=NV...  CN=NVIDIA DICE Ro...  ECDSA-P384  2034-01-01T00:00:00Z
+# L1     CN=DPU Alias Certificate,O=...  CN=DPU Device Ide...  ECDSA-P384  2025-01-01T00:00:00Z
 #
-# Attestation saved: status=verified, last_validated=<timestamp>
+# Measurements:
+#   boot_hash: sha384:emulated000000...
+#   firmware_hash: sha384:emulated111111...
+#   config_hash: sha384:emulated222222...
 ```
 
 ---
