@@ -4,10 +4,10 @@
   --bg: #1a1a1a;
   --bg-elevated: #222222;
   --bg-nav: rgba(30, 30, 30, 0.85);
-  --text: #d6f2f4;
-  --text-muted: #8fa3a5;
+  --text: #dbe4f0;
+  --text-muted: #8b9dc3;
   --border: #333333;
-  --accent: #d6f2f4;
+  --accent: #dbe4f0;
   --font-serif: 'Instrument Serif', 'Times New Roman', serif;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', Menlo, monospace;
@@ -140,7 +140,7 @@ img { max-width: 100%; height: auto; }
 
 .featured-image-placeholder {
   aspect-ratio: 4/3;
-  background: linear-gradient(135deg, #2a3a3c 0%, #1a2a2c 50%, #0f1f21 100%);
+  background: linear-gradient(135deg, #1e2a4a 0%, #152040 50%, #0d1530 100%);
   border-radius: 12px;
 }
 
@@ -217,7 +217,7 @@ img { max-width: 100%; height: auto; }
 
 .post-card-image-placeholder {
   aspect-ratio: 16/9;
-  background: linear-gradient(135deg, #2a3a3c 0%, #1a2a2c 50%, #0f1f21 100%);
+  background: linear-gradient(135deg, #1e2a4a 0%, #152040 50%, #0d1530 100%);
   border-radius: 12px;
 }
 
@@ -349,7 +349,7 @@ img { max-width: 100%; height: auto; }
 
 .post-content pre {
   background: #111111;
-  color: #d6f2f4;
+  color: #dbe4f0;
   padding: 1.25rem 1.5rem;
   border-radius: 8px;
   overflow-x: auto;
