@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/cobalt-logo.svg?v=3" alt="Project Cobalt" width="580"/>
+  <img src="assets/cobalt-logo.svg?v=4" alt="Project Cobalt" width="420"/>
 </p>
 
 [![CI](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml)
