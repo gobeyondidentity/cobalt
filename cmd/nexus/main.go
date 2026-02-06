@@ -149,9 +149,12 @@ func main() {
 		bypassAuditOpt = authz.WithBypassAuditEmitter(bypassEmitter)
 	}
 
+	authorizationLookup := api.NewStoreAuthorizationLookup(db)
+
 	authzOpts := []authz.MiddlewareOption{
 		authz.WithLogger(logger),
 		authz.WithAttestationLookup(attestationLookup),
+		authz.WithAuthorizationLookup(authorizationLookup),
 	}
 	if bypassAuditOpt != nil {
 		authzOpts = append(authzOpts, bypassAuditOpt)

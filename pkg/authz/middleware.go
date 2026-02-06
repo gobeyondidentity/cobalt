@@ -44,16 +44,23 @@ type BypassAuditEmitter interface {
 	EmitAttestationBypass(operatorID, ip, dpuID, bypassReason, attestationStatus, requestID string)
 }
 
+// AuthorizationLookup checks whether an operator has any active authorization grants.
+// Used by the middleware to set context.operator_authorized for Cedar evaluation.
+type AuthorizationLookup interface {
+	HasAuthorization(ctx context.Context, operatorID string) (bool, error)
+}
+
 // AuthzMiddleware enforces Cedar policy authorization on HTTP requests.
 // It sits between DPoP authentication and handlers in the middleware stack.
 type AuthzMiddleware struct {
-	authorizer   *Authorizer
-	registry     *ActionRegistry
-	principal    PrincipalLookup
-	resource     ResourceExtractor
-	attestation  AttestationLookup
-	bypassAudit  BypassAuditEmitter
-	logger       *slog.Logger
+	authorizer    *Authorizer
+	registry      *ActionRegistry
+	principal     PrincipalLookup
+	resource      ResourceExtractor
+	attestation   AttestationLookup
+	authorization AuthorizationLookup
+	bypassAudit   BypassAuditEmitter
+	logger        *slog.Logger
 }
 
 // MiddlewareOption configures the AuthzMiddleware.
@@ -70,6 +77,13 @@ func WithLogger(l *slog.Logger) MiddlewareOption {
 func WithAttestationLookup(a AttestationLookup) MiddlewareOption {
 	return func(m *AuthzMiddleware) {
 		m.attestation = a
+	}
+}
+
+// WithAuthorizationLookup sets the authorization lookup for operator grant checks.
+func WithAuthorizationLookup(a AuthorizationLookup) MiddlewareOption {
+	return func(m *AuthzMiddleware) {
+		m.authorization = a
 	}
 }
 
@@ -226,6 +240,27 @@ func (m *AuthzMiddleware) Wrap(next http.Handler) http.Handler {
 					status = AttestationUnavailable
 				}
 				authzReq.Context["attestation_status"] = string(status)
+			}
+		}
+
+		// Check operator authorization grants. For operator-role principals,
+		// look up whether they have any active authorization grants and set
+		// context.operator_authorized accordingly. The handler does fine-grained
+		// CA+device checks; this is coarse-grained Cedar pre-filtering.
+		if principal.Role == RoleOperator && m.authorization != nil {
+			identity := dpop.IdentityFromContext(ctx)
+			if identity != nil && identity.OperatorID != "" {
+				authorized, err := m.authorization.HasAuthorization(ctx, identity.OperatorID)
+				if err != nil {
+					m.logger.Error("authorization lookup failed",
+						"error", err,
+						"operator_id", identity.OperatorID,
+					)
+					// Default to unauthorized on failure (fail-secure)
+				}
+				if authorized {
+					authzReq.Context["operator_authorized"] = true
+				}
 			}
 		}
 

@@ -130,6 +130,21 @@ func (s *Store) DeleteAuthorization(id string) error {
 	return nil
 }
 
+// HasAnyAuthorization returns true if the operator has at least one active
+// authorization grant. Used by the authz middleware for coarse-grained Cedar
+// pre-filtering (handlers do fine-grained CA+device checks).
+func (s *Store) HasAnyAuthorization(operatorID string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM authorizations WHERE operator_id = ?`,
+		operatorID,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check authorization: %w", err)
+	}
+	return count > 0, nil
+}
+
 // CheckCAAuthorization checks if an operator is authorized for a specific CA.
 // The caIDOrName parameter can be either a CA ID (e.g., "ca_abc123") or
 // a CA name (e.g., "test-ca"). The authorization check will match against

@@ -621,6 +621,76 @@ func BenchmarkAuthorize(b *testing.B) {
 	}
 }
 
+func TestAuthorizer_OperatorCredentialPushWithoutContext(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing: credential:push without operator_authorized in context denies cleanly (no Cedar attribute error)")
+
+	authz := newTestAuthorizer(t)
+
+	req := AuthzRequest{
+		Principal: Principal{
+			UID:       "km_bob",
+			Type:      PrincipalOperator,
+			Role:      RoleOperator,
+			TenantIDs: []string{"tnt_acme"},
+		},
+		Action: ActionCredentialPush,
+		Resource: Resource{
+			UID:      "dpu_xyz",
+			Type:     "DPU",
+			TenantID: "tnt_acme",
+		},
+		Context: map[string]any{
+			"attestation_status": "verified",
+			// NOTE: operator_authorized deliberately omitted
+		},
+	}
+
+	t.Log("Evaluating: should deny without error (not crash on missing attribute)")
+	decision := authz.Authorize(context.Background(), req)
+
+	t.Logf("Decision: allowed=%v, reason=%q", decision.Allowed, decision.Reason)
+
+	if decision.Allowed {
+		t.Error("Expected deny for operator without operator_authorized, got allow")
+	}
+}
+
+func TestAuthorizer_OperatorCredentialPushWithAuthorization(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing: credential:push with operator_authorized=true permits")
+
+	authz := newTestAuthorizer(t)
+
+	req := AuthzRequest{
+		Principal: Principal{
+			UID:       "km_bob",
+			Type:      PrincipalOperator,
+			Role:      RoleOperator,
+			TenantIDs: []string{"tnt_acme"},
+		},
+		Action: ActionCredentialPush,
+		Resource: Resource{
+			UID:      "dpu_xyz",
+			Type:     "DPU",
+			TenantID: "tnt_acme",
+		},
+		Context: map[string]any{
+			"attestation_status":  "verified",
+			"operator_authorized": true,
+		},
+	}
+
+	t.Log("Evaluating: should permit with operator_authorized=true")
+	decision := authz.Authorize(context.Background(), req)
+
+	t.Logf("Decision: allowed=%v, reason=%q", decision.Allowed, decision.Reason)
+
+	if !decision.Allowed {
+		t.Errorf("Expected permit for operator with operator_authorized=true, got deny: %s", decision.Reason)
+	}
+}
+
 func TestAuthorizer_OperatorAuthorizationList(t *testing.T) {
 	t.Parallel()
 	t.Log("Testing: plain operator can list their own authorizations (km whoami)")

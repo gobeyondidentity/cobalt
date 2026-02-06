@@ -206,10 +206,14 @@ func buildCedarRequest(req AuthzRequest) cedar.Request {
 		contextMap["attestation_status"] = cedar.String(statusStr)
 	}
 
-	// Add operator_authorized if present (for authorization-based access)
+	// Always set operator_authorized (default false). Cedar errors on accessing
+	// undefined record fields, so this must be present for the generic operator
+	// permit policy to evaluate without error.
+	operatorAuthorized := false
 	if authorized, ok := req.Context["operator_authorized"].(bool); ok {
-		contextMap["operator_authorized"] = cedar.Boolean(authorized)
+		operatorAuthorized = authorized
 	}
+	contextMap["operator_authorized"] = cedar.Boolean(operatorAuthorized)
 
 	// Add force_bypass_requested if present
 	if bypass, ok := req.Context["force_bypass_requested"].(bool); ok {

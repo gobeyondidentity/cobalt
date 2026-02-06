@@ -8,13 +8,16 @@
 // ROLE-BASED ACCESS: Three-tier role model
 // ============================================================================
 
-// Operators can only access resources they have explicit authorization for
+// Operators can only access resources they have explicit authorization for.
+// Uses "has" to guard against missing context attribute (Cedar errors on
+// accessing undefined record fields instead of returning false).
 permit(
     principal is Operator,
     action,
     resource
 ) when {
     principal.role == "operator" &&
+    context has operator_authorized &&
     context.operator_authorized == true
 };
 

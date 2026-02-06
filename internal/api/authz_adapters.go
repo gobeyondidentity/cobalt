@@ -268,6 +268,21 @@ func (e *StoreResourceExtractor) getResourceTenantID(resourceID, resourceType st
 	return ""
 }
 
+// StoreAuthorizationLookup checks operator authorization grants using the store.
+type StoreAuthorizationLookup struct {
+	store *store.Store
+}
+
+// NewStoreAuthorizationLookup creates an authorization lookup backed by the store.
+func NewStoreAuthorizationLookup(s *store.Store) *StoreAuthorizationLookup {
+	return &StoreAuthorizationLookup{store: s}
+}
+
+// HasAuthorization returns true if the operator has any active authorization grants.
+func (l *StoreAuthorizationLookup) HasAuthorization(ctx context.Context, operatorID string) (bool, error) {
+	return l.store.HasAnyAuthorization(operatorID)
+}
+
 // StoreAttestationLookup retrieves attestation status from the store.
 type StoreAttestationLookup struct {
 	store *store.Store
