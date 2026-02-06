@@ -87,6 +87,7 @@ func TestTmfifoClient_handleCredentialPush_sshCA(t *testing.T) {
 	client.credInstaller = &CredentialInstaller{
 		TrustedCADir:   tmpDir,
 		SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
+		SshdReloader:   func() error { return nil },
 	}
 
 	// Create sshd_config
@@ -354,6 +355,7 @@ func TestTmfifoClient_ReportPosture_handlesCredentialPushBeforeAck(t *testing.T)
 		credInstaller: &CredentialInstaller{
 			TrustedCADir:   tmpDir,
 			SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
+			SshdReloader:   func() error { return nil },
 		},
 		stopCh: make(chan struct{}),
 	}
@@ -410,6 +412,7 @@ func TestTmfifoClient_ReportPosture_multipleCredentialPushesBeforeAck(t *testing
 		credInstaller: &CredentialInstaller{
 			TrustedCADir:   tmpDir,
 			SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
+			SshdReloader:   func() error { return nil },
 		},
 		stopCh: make(chan struct{}),
 	}
@@ -455,6 +458,7 @@ func TestTmfifoClient_ReportPosture_ackStillRequired(t *testing.T) {
 		credInstaller: &CredentialInstaller{
 			TrustedCADir:   tmpDir,
 			SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
+			SshdReloader:   func() error { return nil },
 		},
 		stopCh: make(chan struct{}),
 	}

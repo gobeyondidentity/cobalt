@@ -354,6 +354,7 @@ func TestCredentialInstaller_RemoveSSHCA(t *testing.T) {
 	c := &CredentialInstaller{
 		TrustedCADir:   tmpDir,
 		SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
+		SshdReloader:   func() error { return nil },
 	}
 
 	// Create a CA file
@@ -362,11 +363,10 @@ func TestCredentialInstaller_RemoveSSHCA(t *testing.T) {
 		t.Fatalf("create CA file: %v", err)
 	}
 
-	// Remove it (will fail on sshd reload, but file should be gone)
+	// Remove it
 	err := c.RemoveSSHCA("test-ca")
-	// We expect reload to fail in test environment
-	if err != nil && !strings.Contains(err.Error(), "sshd reload failed") {
-		t.Fatalf("RemoveSSHCA unexpected error: %v", err)
+	if err != nil {
+		t.Fatalf("RemoveSSHCA failed: %v", err)
 	}
 
 	// Verify file is gone

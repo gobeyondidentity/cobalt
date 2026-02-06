@@ -26,6 +26,7 @@ func TestClient_ReportPosture_handlesCredentialPushBeforeAck(t *testing.T) {
 		credInstaller: &CredentialInstaller{
 			TrustedCADir:   tmpDir,
 			SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
+			SshdReloader:   func() error { return nil },
 		},
 		stopCh: make(chan struct{}),
 	}
@@ -93,6 +94,7 @@ func TestClient_ReportPosture_multipleCredentialPushesBeforeAck(t *testing.T) {
 		credInstaller: &CredentialInstaller{
 			TrustedCADir:   tmpDir,
 			SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
+			SshdReloader:   func() error { return nil },
 		},
 		stopCh: make(chan struct{}),
 	}
@@ -151,6 +153,7 @@ func TestClient_ReportPosture_ackStillRequired(t *testing.T) {
 		credInstaller: &CredentialInstaller{
 			TrustedCADir:   tmpDir,
 			SshdConfigPath: filepath.Join(tmpDir, "sshd_config"),
+			SshdReloader:   func() error { return nil },
 		},
 		stopCh: make(chan struct{}),
 	}

@@ -25,6 +25,10 @@ const (
 type CredentialInstaller struct {
 	TrustedCADir   string
 	SshdConfigPath string
+
+	// SshdReloader reloads the SSH daemon after config changes.
+	// If nil, the default systemctl/service reload chain is used.
+	SshdReloader func() error
 }
 
 // NewCredentialInstaller creates a new installer with default paths.
@@ -78,7 +82,7 @@ func (c *CredentialInstaller) InstallSSHCA(caName string, publicKey []byte) (*In
 	result.ConfigUpdated = configUpdated
 
 	// Step 4: Reload sshd to apply changes
-	if err := c.reloadSshd(); err != nil {
+	if err := c.reloadSshdFn(); err != nil {
 		// Log warning but don't fail; key is installed
 		log.Printf("[CRED-DELIVERY] sentry: credential installed but sshd reload failed: %v", err)
 		return result, fmt.Errorf("sentry: reload sshd (key installed but reload failed): %w", err)
@@ -171,6 +175,15 @@ func (c *CredentialInstaller) ensureSshdConfig() (bool, error) {
 	}
 
 	return true, nil
+}
+
+// reloadSshdFn calls the SshdReloader hook if set, otherwise falls back to
+// the default systemctl/service reload chain.
+func (c *CredentialInstaller) reloadSshdFn() error {
+	if c.SshdReloader != nil {
+		return c.SshdReloader()
+	}
+	return c.reloadSshd()
 }
 
 // reloadSshd reloads the SSH daemon to apply configuration changes.
@@ -268,7 +281,7 @@ func (c *CredentialInstaller) RemoveSSHCA(caName string) error {
 	}
 
 	// Reload sshd to apply the removal
-	if err := c.reloadSshd(); err != nil {
+	if err := c.reloadSshdFn(); err != nil {
 		return fmt.Errorf("CA removed but sshd reload failed: %w", err)
 	}
 
