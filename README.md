@@ -1,9 +1,7 @@
 # Cobalt [![CI](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml) [![Release](https://img.shields.io/github/v/release/gobeyondidentity/cobalt)](https://github.com/gobeyondidentity/cobalt/releases/latest) [![Go](https://img.shields.io/github/go-mod/go-version/gobeyondidentity/cobalt)](https://go.dev/) [![License](https://img.shields.io/github/license/gobeyondidentity/cobalt)](LICENSE)
 
 <div align="center">
-<br>
-<img src="assets/cobalt-logo.png" alt="Cobalt" width="200"/>
-<br><br>
+<img src="assets/cobalt-logo.png" alt="Cobalt" width="240"/>
 </div>
 
 Cobalt is a credential lifecycle manager for GPU clusters that uses [NVIDIA BlueField DPUs](https://www.nvidia.com/en-us/networking/products/data-processing-unit/) as hardware trust anchors to automatically distribute, rotate, and revoke SSH certificates and signing keys across on-prem AI infrastructure without manual intervention.
