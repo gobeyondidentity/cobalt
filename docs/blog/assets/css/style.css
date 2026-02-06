@@ -81,6 +81,13 @@ img { max-width: 100%; height: auto; }
 
 .site-logo svg { flex-shrink: 0; }
 
+.site-logo-img {
+  height: 24px;
+  width: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .site-nav-links {
   display: flex;
   align-items: center;
