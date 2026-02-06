@@ -4,86 +4,58 @@
       <stop offset="0%" style="stop-color:#0d1117"/>
       <stop offset="100%" style="stop-color:#161b28"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#2563eb"/>
+    <linearGradient id="mark-light" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="mark-dark" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1d4ed8"/>
       <stop offset="100%" style="stop-color:#0047AB"/>
     </linearGradient>
-    <linearGradient id="shield" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#3b82f6"/>
-      <stop offset="100%" style="stop-color:#1d4ed8"/>
+    <linearGradient id="mark-mid" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb"/>
+      <stop offset="100%" style="stop-color:#1e40af"/>
     </linearGradient>
   </defs>
 
   <!-- Background -->
   <rect width="900" height="300" rx="12" fill="url(#bg)"/>
 
-  <!-- Subtle grid pattern -->
-  <g opacity="0.03" stroke="#ffffff" stroke-width="0.5" fill="none">
-    <line x1="0" y1="60" x2="900" y2="60"/>
-    <line x1="0" y1="120" x2="900" y2="120"/>
-    <line x1="0" y1="180" x2="900" y2="180"/>
-    <line x1="0" y1="240" x2="900" y2="240"/>
-    <line x1="150" y1="0" x2="150" y2="300"/>
-    <line x1="300" y1="0" x2="300" y2="300"/>
-    <line x1="450" y1="0" x2="450" y2="300"/>
-    <line x1="600" y1="0" x2="600" y2="300"/>
-    <line x1="750" y1="0" x2="750" y2="300"/>
-  </g>
+  <!-- Geometric mark: Angular 'C' crystal inside hexagon -->
+  <g transform="translate(130, 150)">
+    <!-- Outer hexagon - the container -->
+    <polygon points="0,-75 65,-37.5 65,37.5 0,75 -65,37.5 -65,-37.5" fill="none" stroke="#2563eb" stroke-width="2.5" opacity="0.25"/>
 
-  <!-- Icon group: hexagonal shield with lock/chip motif -->
-  <g transform="translate(120, 150)">
-    <!-- Outer hexagon glow -->
-    <polygon points="0,-72 62,-36 62,36 0,72 -62,36 -62,-36" fill="url(#accent)" opacity="0.15"/>
-    <!-- Main hexagon -->
-    <polygon points="0,-60 52,-30 52,30 0,60 -52,30 -52,-30" fill="url(#shield)" opacity="0.9"/>
-    <!-- Inner hexagon border -->
-    <polygon points="0,-60 52,-30 52,30 0,60 -52,30 -52,-30" fill="none" stroke="#60a5fa" stroke-width="1.5" opacity="0.5"/>
+    <!-- The bold C-shape built from three angular facets -->
+    <!-- Top facet (lighter) - angles down-right -->
+    <polygon points="-42,-52 30,-52 18,-30 -42,-30" fill="url(#mark-light)"/>
 
-    <!-- Shield shape inside hexagon -->
-    <path d="M0,-35 L22,-22 L22,5 C22,22 0,35 0,35 C0,35 -22,22 -22,5 L-22,-22 Z" fill="#0d1117" opacity="0.6"/>
-    <path d="M0,-35 L22,-22 L22,5 C22,22 0,35 0,35 C0,35 -22,22 -22,5 L-22,-22 Z" fill="none" stroke="#93c5fd" stroke-width="1.2"/>
+    <!-- Left facet (medium) - vertical bar of the C -->
+    <polygon points="-42,-52 -42,52 -18,40 -18,-40" fill="url(#mark-mid)"/>
 
-    <!-- Lock body inside shield -->
-    <rect x="-8" y="-4" width="16" height="14" rx="2" fill="none" stroke="#93c5fd" stroke-width="1.5"/>
-    <!-- Lock shackle -->
-    <path d="M-5,-4 L-5,-10 C-5,-16 5,-16 5,-10 L5,-4" fill="none" stroke="#93c5fd" stroke-width="1.5"/>
-    <!-- Lock keyhole -->
-    <circle cx="0" cy="3" r="2.5" fill="#93c5fd"/>
-    <rect x="-1" y="3" width="2" height="4" fill="#93c5fd"/>
+    <!-- Bottom facet (darker) - angles up-right -->
+    <polygon points="-42,52 30,52 18,30 -42,30" fill="url(#mark-dark)"/>
 
-    <!-- Chip pins (hardware motif) -->
-    <g stroke="#3b82f6" stroke-width="1.5" opacity="0.6">
-      <!-- Top pins -->
-      <line x1="-15" y1="-55" x2="-15" y2="-65"/>
-      <line x1="0" y1="-58" x2="0" y2="-68"/>
-      <line x1="15" y1="-55" x2="15" y2="-65"/>
-      <!-- Bottom pins -->
-      <line x1="-15" y1="55" x2="-15" y2="65"/>
-      <line x1="0" y1="58" x2="0" y2="68"/>
-      <line x1="15" y1="55" x2="15" y2="65"/>
-      <!-- Left pins -->
-      <line x1="-50" y1="-15" x2="-60" y2="-15"/>
-      <line x1="-52" y1="0" x2="-62" y2="0"/>
-      <line x1="-50" y1="15" x2="-60" y2="15"/>
-      <!-- Right pins -->
-      <line x1="50" y1="-15" x2="60" y2="-15"/>
-      <line x1="52" y1="0" x2="62" y2="0"/>
-      <line x1="50" y1="15" x2="60" y2="15"/>
-    </g>
+    <!-- Inner negative-space cut: creates the C opening and adds depth -->
+    <!-- This triangle cuts into the right side, creating the C gap -->
+    <polygon points="18,-30 42,-8 42,8 18,30 6,18 6,-18" fill="#0d1117"/>
+
+    <!-- Depth facet: small parallelogram inside the C creating 3D feel -->
+    <polygon points="-18,-40 -4,-28 -4,28 -18,40" fill="#1a2332" opacity="0.7"/>
   </g>
 
   <!-- Text group -->
   <g transform="translate(240, 0)">
     <!-- "Beyond Identity" label -->
-    <text x="0" y="125" fill="#8b949e" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="500" letter-spacing="3">BEYOND IDENTITY</text>
+    <text x="0" y="118" fill="#8b949e" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" letter-spacing="4">BEYOND IDENTITY</text>
 
     <!-- "Project Cobalt" main title -->
-    <text x="0" y="185" fill="#f0f6fc" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="56" font-weight="700" letter-spacing="1">Project Cobalt</text>
+    <text x="0" y="178" fill="#f0f6fc" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="56" font-weight="700" letter-spacing="1">Project Cobalt</text>
 
     <!-- Tagline -->
-    <text x="0" y="218" fill="#4a6a8a" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="400">Hardware-enforced Zero Trust for AI infrastructure</text>
+    <text x="0" y="212" fill="#4a6a8a" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="400">Hardware-enforced Zero Trust for AI infrastructure</text>
   </g>
 
   <!-- Accent line -->
-  <rect x="240" y="228" width="80" height="2" rx="1" fill="url(#accent)" opacity="0.6"/>
+  <rect x="240" y="224" width="60" height="2.5" rx="1.25" fill="#2563eb" opacity="0.5"/>
 </svg>
