@@ -1,4 +1,4 @@
-# Contributing to Project Cobalt
+# Contributing to Cobalt
 
 ## Building Packages Locally
 

@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Project Cobalt v0.7.0: Bender"
+title: "Cobalt v0.7.0: Bender"
 date: 2026-02-05
 author: Beyond Identity
 image: /assets/images/bender-hero.svg
@@ -54,4 +54,4 @@ Also available via Docker and Linux packages. Source and full changelog on [GitH
 
 ---
 
-*Project Cobalt v0.7.0 "Bender" - February 2026*
+*Cobalt v0.7.0 "Bender" - February 2026*

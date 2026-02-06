@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Project Cobalt v0.6.0: Astro"
+title: "Cobalt v0.6.0: Astro"
 date: 2026-01-20
 author: Beyond Identity
 image: /assets/images/astro-hero.svg
@@ -101,4 +101,4 @@ We're building hardware-bound credential management for AI infrastructure. Astro
 
 ---
 
-*Project Cobalt v0.6.0 "Astro" - January 2026*
+*Cobalt v0.6.0 "Astro" - January 2026*

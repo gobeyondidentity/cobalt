@@ -1,6 +1,6 @@
 # Quickstart: DPU Emulator
 
-Run Project Cobalt locally using an emulated DPU instead of real hardware. By the end, you'll automate SSH CA distribution without manual key copying or authorized_keys management.
+Run Cobalt locally using an emulated DPU instead of real hardware. By the end, you'll automate SSH CA distribution without manual key copying or authorized_keys management.
 
 **What's a DPU?** A Data Processing Unit is a SmartNIC that handles credential distribution automatically. In production, it verifies host health before delivering credentials, eliminating manual rotation and key sprawl.
 

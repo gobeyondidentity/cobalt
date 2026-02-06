@@ -1,6 +1,6 @@
 # Hardware Setup: BlueField DPU
 
-Deploy Project Cobalt with real BlueField DPUs. This guide covers the full production path including trust relationships between hosts.
+Deploy Cobalt with real BlueField DPUs. This guide covers the full production path including trust relationships between hosts.
 
 ## Prerequisites
 

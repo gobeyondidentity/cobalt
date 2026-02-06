@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Project Cobalt project will be documented in this file.
+All notable changes to the Cobalt project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.0] - 2026-02-05 "Bender"
 
 This release delivers the full si-d2y epic: five phases of authentication, enrollment,
-authorization, lifecycle management, and audit logging for Project Cobalt.
+authorization, lifecycle management, and audit logging for Cobalt.
 
 ### Added
 
@@ -80,7 +80,7 @@ authorization, lifecycle management, and audit logging for Project Cobalt.
 
 ### Changed
 
-- **Project Rename**: Secure Infrastructure renamed to Project Cobalt (module path, docs, URLs)
+- **Project Rename**: Secure Infrastructure renamed to Cobalt (module path, docs, URLs)
 - **CLI Flags**: `--control-plane` migrated to `--server` across aegis and km; `SERVER_URL` env var standardized
 - **DPoP JWT Primitives**: Refactored to use go-jose library instead of manual JWT handling
 - **`operator activate` renamed to `unsuspend`** for clarity

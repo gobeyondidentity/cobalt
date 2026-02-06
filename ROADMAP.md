@@ -1,4 +1,4 @@
-# Project Cobalt Roadmap
+# Cobalt Roadmap
 
 **Last Updated**: January 2026
 

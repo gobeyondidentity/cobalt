@@ -16,7 +16,7 @@ Cobalt is a credential lifecycle manager for GPU clusters that uses [NVIDIA Blue
 
 ## Overview
 
-Project Cobalt eliminates credential management overhead in GPU clusters. Push credentials once; the system handles distribution, rotation, and cleanup automatically. When you reimage a node, fresh credentials appear without tickets or manual intervention.
+Cobalt eliminates credential management overhead in GPU clusters. Push credentials once; the system handles distribution, rotation, and cleanup automatically. When you reimage a node, fresh credentials appear without tickets or manual intervention.
 
 This works because credentials are tied to specific hardware via NVIDIA BlueField DPUs. They can't accidentally spread to other machines, so reimaging a node doesn't require hunting down credentials elsewhere. The DPU verifies host health before any credential operation, giving you automated distribution at scale.
 
