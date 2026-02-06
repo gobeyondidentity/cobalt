@@ -1,6 +1,14 @@
 # Project Cobalt
 
-**v0.6.12** | [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
+[![CI](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml)
+[![Go](https://img.shields.io/github/go-mod/go-version/gobeyondidentity/cobalt)](https://go.dev/)
+[![Release](https://img.shields.io/github/v/release/gobeyondidentity/cobalt)](https://github.com/gobeyondidentity/cobalt/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gobeyondidentity/cobalt)](https://goreportcard.com/report/github.com/gobeyondidentity/cobalt)
+[![License](https://img.shields.io/github/license/gobeyondidentity/cobalt)](LICENSE)
+[![GHCR](https://img.shields.io/badge/containers-ghcr.io-blue)](https://github.com/orgs/gobeyondidentity/packages?repo_name=cobalt)
+[![Go Reference](https://pkg.go.dev/badge/github.com/gobeyondidentity/cobalt.svg)](https://pkg.go.dev/github.com/gobeyondidentity/cobalt)
+
+[Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 ![Demo](assets/demo-v2.gif)
 
