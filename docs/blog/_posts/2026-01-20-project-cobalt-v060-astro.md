@@ -3,7 +3,7 @@ layout: post
 title: "Cobalt v0.6.0: Astro"
 date: 2026-01-20
 author: Beyond Identity
-image: /assets/images/astro-hero.svg
+image: /assets/images/astro-hero.png
 ---
 
 Astro is our first public release. Two things blocked design partner pilots: installation friction and transport reliability. Astro fixes both.
