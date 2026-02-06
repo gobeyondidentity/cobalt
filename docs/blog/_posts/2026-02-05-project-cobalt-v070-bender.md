@@ -3,7 +3,7 @@ layout: post
 title: "Cobalt v0.7.0: Bender"
 date: 2026-02-05
 author: Beyond Identity
-image: /assets/images/bender-hero.svg
+image: /assets/images/bender-hero.png
 ---
 
 Bender makes the Cobalt control plane production-ready for security review. API authentication, policy-driven authorization, identity lifecycle controls, and SIEM-ready audit logging all ship in this release. If your team is evaluating hardware-enforced credential management for GPU infrastructure, this is the starting point.
