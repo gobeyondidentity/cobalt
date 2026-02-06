@@ -76,14 +76,16 @@ nexus              # if installed via package manager
 # or: bin/server   # if built from source
 
 # Expected:
-# Project Cobalt Control Plane v0.6.3 starting...
+# Fabric Console API v0.6.3 starting...
 # HTTP server listening on :18080
 ```
+
+**macOS:** You may see a syslog connection warning on startup. This is expected; macOS uses a different syslog socket path. Audit events fall back to SQLite storage and the server operates normally.
 
 In Terminal 3, verify it's running:
 
 ```bash
-curl http://localhost:18080/api/health
+curl http://localhost:18080/health
 # Expected: {"status":"ok","version":"0.6.3"}
 ```
 
@@ -412,7 +414,7 @@ pkill -f "bin/server" && pkill -f "bin/dpuemu"
 
 3. **Delete state files:**
 ```bash
-rm -f ~/.local/share/bluectl/dpus.db
+rm -f ~/.local/share/nexus/nexus.db
 rm -f ~/.local/share/bluectl/key
 rm -rf ~/.km
 ```
