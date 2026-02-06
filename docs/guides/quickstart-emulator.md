@@ -100,8 +100,8 @@ On fresh start, nexus enters bootstrap mode for 10 minutes. You must enroll the 
 In Terminal 3:
 
 ```bash
-bluectl init
-# or: bin/bluectl init   # if built from source
+bluectl init --server http://localhost:18080
+# or: bin/bluectl init --server http://localhost:18080   # if built from source
 
 # Expected:
 # Generating admin keypair...
