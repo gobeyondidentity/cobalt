@@ -1,14 +1,18 @@
 # Cobalt [![CI](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml) [![Release](https://img.shields.io/github/v/release/gobeyondidentity/cobalt)](https://github.com/gobeyondidentity/cobalt/releases/latest) [![Go](https://img.shields.io/github/go-mod/go-version/gobeyondidentity/cobalt)](https://go.dev/) [![License](https://img.shields.io/github/license/gobeyondidentity/cobalt)](LICENSE)
 
 <div align="center">
-<img src="assets/cobalt-logo.svg?v=9" alt="Cobalt" width="200"/>
+<br>
+<img src="assets/cobalt-logo.svg?v=10" alt="Cobalt" width="200"/>
+<br><br>
 </div>
+
+Cobalt is a credential lifecycle manager for GPU clusters that uses [NVIDIA BlueField DPUs](https://www.nvidia.com/en-us/networking/products/data-processing-unit/) as hardware trust anchors to automatically distribute, rotate, and revoke SSH certificates and signing keys across on-prem AI infrastructure without manual intervention.
+
+---
 
 [Demo](scripts/demo) | [Quickstart](docs/guides/quickstart-emulator.md) | [Hardware Setup](docs/guides/setup-hardware.md) | [Changelog](CHANGELOG.md)
 
 ![Demo](assets/demo-v2.gif)
-
-Automated credential lifecycle for AI infrastructure. No manual rotation. No secret sprawl. Credentials refresh automatically when you reimage nodes.
 
 ## Overview
 
