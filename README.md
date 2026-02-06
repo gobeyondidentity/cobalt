@@ -69,7 +69,7 @@ Run `./scripts/demo` to watch the full credential lifecycle in 2 minutes.
 ### macOS (Homebrew)
 
 ```bash
-brew install nmelo/tap/bluectl nmelo/tap/km
+brew install gobeyondidentity/cobalt/bluectl gobeyondidentity/cobalt/km
 ```
 
 ### Linux
