@@ -228,13 +228,14 @@ km init
 
 km whoami
 # Expected:
-# Operator: operator@example.com
+# Using file-based key storage (MVP mode). Hardware binding required for production.
+# Identity: km_<id>
 # Server:   http://localhost:18080
 #
 # Authorizations: none
 ```
 
-"Authorizations: none" is expected. You'll grant access in the next step.
+The MVP mode warning is expected during development. "Authorizations: none" is also expected. You'll grant access in the next step.
 
 ---
 
