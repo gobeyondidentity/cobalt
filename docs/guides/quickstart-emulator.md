@@ -443,6 +443,7 @@ pkill -f "bin/server" && pkill -f "bin/dpuemu"
 ```bash
 rm -f ~/.local/share/nexus/nexus.db
 rm -f ~/.local/share/bluectl/key
+rm -rf ~/.config/bluectl
 rm -rf ~/.km
 ```
 
