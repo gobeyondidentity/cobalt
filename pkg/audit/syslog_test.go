@@ -526,6 +526,31 @@ func TestSyslogWriter_ReconnectBackoff(t *testing.T) {
 	t.Logf("Second error (backoff gated): %v", err2)
 }
 
+func TestSyslogWriter_NilReceiverSafety(t *testing.T) {
+	t.Log("Verifying nil *SyslogAuditLogger does not panic on Emit, LogDecision, or Close")
+
+	var w *SyslogAuditLogger
+
+	t.Log("Calling Emit on nil receiver")
+	if err := w.Emit(Event{Type: EventAuthSuccess}); err != nil {
+		t.Errorf("Emit on nil receiver returned error: %v", err)
+	}
+
+	t.Log("Calling LogDecision on nil receiver")
+	if err := w.LogDecision(context.Background(), authz.AuthzAuditEntry{
+		Principal: "km_test",
+		Action:    "credential:push",
+		Decision:  "allow",
+	}); err != nil {
+		t.Errorf("LogDecision on nil receiver returned error: %v", err)
+	}
+
+	t.Log("Calling Close on nil receiver")
+	if err := w.Close(); err != nil {
+		t.Errorf("Close on nil receiver returned error: %v", err)
+	}
+}
+
 func TestDeriveEventType(t *testing.T) {
 	t.Log("Testing event type derivation from AuthzAuditEntry fields")
 

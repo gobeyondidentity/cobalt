@@ -82,7 +82,11 @@ func NewSyslogWriter(cfg SyslogConfig) (*SyslogAuditLogger, error) {
 
 // LogDecision converts an authorization audit entry to an RFC 5424 message
 // and writes it to the syslog socket. Implements authz.AuditLogger.
+// Safe to call on a nil receiver (returns nil).
 func (w *SyslogAuditLogger) LogDecision(_ context.Context, entry authz.AuthzAuditEntry) error {
+	if w == nil {
+		return nil
+	}
 	eventType, severity := deriveEventType(entry)
 
 	params := []SDParam{
@@ -131,7 +135,11 @@ func (w *SyslogAuditLogger) LogDecision(_ context.Context, entry authz.AuthzAudi
 
 // Emit converts an audit Event to an RFC 5424 message and writes it to the
 // syslog socket. Implements EventEmitter for authentication and enrollment events.
+// Safe to call on a nil receiver (returns nil).
 func (w *SyslogAuditLogger) Emit(ev Event) error {
+	if w == nil {
+		return nil
+	}
 	params := make([]SDParam, 0, 6)
 	if ev.ActorID != "" {
 		params = append(params, SDParam{Name: "actor_id", Value: ev.ActorID})
@@ -218,7 +226,11 @@ func (w *SyslogAuditLogger) reconnectLocked() error {
 }
 
 // Close closes the syslog socket connection.
+// Safe to call on a nil receiver (returns nil).
 func (w *SyslogAuditLogger) Close() error {
+	if w == nil {
+		return nil
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.conn.Close()

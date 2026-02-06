@@ -93,11 +93,17 @@ func main() {
 		log.Printf("Syslog audit writer initialized (RFC 5424)")
 	}
 
-	// Create API server with configuration
-	server := api.NewServerWithConfig(db, api.ServerConfig{
+	// Create API server with configuration.
+	// Only pass syslogAudit when non-nil to avoid the Go nil-interface trap:
+	// a nil *SyslogAuditLogger satisfies EventEmitter with a non-nil interface value,
+	// bypassing the NopEmitter fallback in NewServerWithConfig.
+	serverCfg := api.ServerConfig{
 		AttestationStaleAfter: staleAfter,
-		AuditEmitter:         syslogAudit,
-	})
+	}
+	if syslogAudit != nil {
+		serverCfg.AuditEmitter = syslogAudit
+	}
+	server := api.NewServerWithConfig(db, serverCfg)
 
 	// Set up HTTP server
 	mux := http.NewServeMux()
