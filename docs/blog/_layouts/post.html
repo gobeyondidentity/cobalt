@@ -3,6 +3,12 @@ layout: default
 ---
 
 <article class="post">
+  {% if page.image %}
+  <div class="post-hero">
+    <img src="{{ page.image | relative_url }}" alt="{{ page.title }}" class="post-hero-img">
+  </div>
+  {% endif %}
+
   <div class="container">
     <div class="post-header">
       <h1 class="post-title">{{ page.title }}</h1>

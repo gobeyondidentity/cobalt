@@ -257,9 +257,29 @@ img { max-width: 100%; height: auto; }
   overflow: hidden;
 }
 
+/* ---- Post hero image ---- */
+.post-hero {
+  width: 100%;
+  max-height: 480px;
+  overflow: hidden;
+  margin-top: 5rem;
+}
+
+.post-hero-img {
+  width: 100%;
+  height: 100%;
+  max-height: 480px;
+  object-fit: cover;
+  display: block;
+}
+
 /* ---- Single post ---- */
 .post-header {
-  padding: 8rem 0 2rem;
+  padding: 3rem 0 2rem;
+}
+
+.post-hero + .container .post-header {
+  padding-top: 3rem;
 }
 
 .post-title {
