@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Why Hardware-Attested Credentials for AI Infrastructure"
-date: 2026-01-20
+date: 2026-01-18
 author: Beyond Identity
 image: /assets/images/hardware-attestation-hero.png
 ---
