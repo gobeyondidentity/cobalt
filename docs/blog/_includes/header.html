@@ -1,16 +1,14 @@
 <header class="site-header">
-  <div class="container">
+  <nav class="site-nav-pill">
     <a class="site-logo" href="{{ '/' | relative_url }}">
-      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect width="32" height="32" rx="8" fill="#261eae"/>
-        <path d="M8 16c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
-        <circle cx="16" cy="16" r="3" fill="#fff"/>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#d6f2f4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <span class="site-logo-text">Project Cobalt</span>
+      <span>Project Cobalt</span>
     </a>
-    <nav class="site-nav">
-      <a href="https://github.com/gobeyondidentity/cobalt">GitHub</a>
-      <a href="https://github.com/gobeyondidentity/cobalt/tree/main/docs">Docs</a>
-    </nav>
-  </div>
+    <div class="site-nav-links">
+      <a href="{{ '/' | relative_url }}" class="nav-link">BLOG</a>
+      <a href="https://github.com/gobeyondidentity/cobalt" class="nav-button">GITHUB</a>
+    </div>
+  </nav>
 </header>

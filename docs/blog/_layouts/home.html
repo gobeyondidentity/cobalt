@@ -3,34 +3,38 @@ layout: default
 ---
 
 <div class="container">
-  <div class="blog-hero">
-    <h1>The Cobalt Blog</h1>
-    <p>{{ site.description }}</p>
-  </div>
+  {% assign featured = site.posts.first %}
+  {% if featured %}
+  <a href="{{ featured.url | relative_url }}" class="featured-post">
+    <div class="featured-image">
+      <div class="featured-image-placeholder"></div>
+    </div>
+    <div class="featured-content">
+      <h1 class="featured-title">{{ featured.title }}</h1>
+      <p class="featured-excerpt">{{ featured.excerpt | strip_html | truncate: 200 }}</p>
+      <div class="featured-meta">
+        <span class="meta-author">{{ featured.author | default: "Beyond Identity" }}</span>
+        <span class="meta-date">{{ featured.date | date: "%B %-d, %Y" }}</span>
+      </div>
+    </div>
+  </a>
+  {% endif %}
+
+  <hr class="section-divider">
 
   <div class="posts-grid">
-    {% for post in site.posts %}
-    <article class="post-card">
-      <a href="{{ post.url | relative_url }}">
-        <div class="post-card-accent"></div>
-        <div class="post-card-body">
-          <div class="post-card-date">{{ post.date | date: "%d %b %Y" }}</div>
-          <h2 class="post-card-title">{{ post.title }}</h2>
-          <p class="post-card-excerpt">{{ post.excerpt | strip_html | truncate: 160 }}</p>
-        </div>
-        <div class="post-card-footer">
-          {% if post.tags.size > 0 %}
-            {% for tag in post.tags limit:2 %}
-            <span class="post-card-tag">{{ tag }}</span>
-            {% endfor %}
-          {% elsif post.title contains "v0." %}
-            <span class="post-card-tag">Release</span>
-          {% else %}
-            <span class="post-card-tag">Article</span>
-          {% endif %}
-        </div>
-      </a>
-    </article>
+    {% for post in site.posts offset:1 %}
+    <a href="{{ post.url | relative_url }}" class="post-card">
+      <div class="post-card-image">
+        <div class="post-card-image-placeholder"></div>
+      </div>
+      <h2 class="post-card-title">{{ post.title }}</h2>
+      <p class="post-card-excerpt">{{ post.excerpt | strip_html | truncate: 160 }}</p>
+      <div class="post-card-meta">
+        <span class="meta-author">{{ post.author | default: "Beyond Identity" }}</span>
+        <span class="meta-date">{{ post.date | date: "%B %-d, %Y" }}</span>
+      </div>
+    </a>
     {% endfor %}
   </div>
 </div>
