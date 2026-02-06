@@ -1,6 +1,6 @@
-<p align="center">
-  <img src="assets/cobalt-logo.svg?v=4" alt="Project Cobalt" width="420"/>
-</p>
+<div align="center">
+<img src="assets/cobalt-logo.svg?v=5" alt="Project Cobalt" width="500"/>
+</div>
 
 [![CI](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/gobeyondidentity/cobalt/actions/workflows/ci.yaml)
 [![Go](https://img.shields.io/github/go-mod/go-version/gobeyondidentity/cobalt)](https://go.dev/)
