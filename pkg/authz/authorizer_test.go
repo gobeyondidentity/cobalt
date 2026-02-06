@@ -621,6 +621,38 @@ func BenchmarkAuthorize(b *testing.B) {
 	}
 }
 
+func TestAuthorizer_OperatorAuthorizationList(t *testing.T) {
+	t.Parallel()
+	t.Log("Testing: plain operator can list their own authorizations (km whoami)")
+
+	authz := newTestAuthorizer(t)
+
+	req := AuthzRequest{
+		Principal: Principal{
+			UID:       "km_bob",
+			Type:      PrincipalOperator,
+			Role:      RoleOperator,
+			TenantIDs: []string{"tnt_acme"},
+		},
+		Action: ActionAuthorizationList,
+		Resource: Resource{
+			UID:      "",
+			Type:     "Authorization",
+			TenantID: "tnt_acme",
+		},
+		Context: map[string]any{},
+	}
+
+	t.Log("Evaluating authorization decision for authorization:list without operator_authorized")
+	decision := authz.Authorize(context.Background(), req)
+
+	t.Logf("Decision: allowed=%v, reason=%q", decision.Allowed, decision.Reason)
+
+	if !decision.Allowed {
+		t.Errorf("Expected permit for operator listing own authorizations, got deny: %s", decision.Reason)
+	}
+}
+
 // newTestAuthorizer creates an authorizer with a discarding logger for tests.
 func newTestAuthorizer(t *testing.T) *Authorizer {
 	t.Helper()

@@ -73,10 +73,10 @@ permit(
     principal.tenant_ids.contains(resource.tenant)
 };
 
-// Operators can check their own authorizations
+// Operators can list and check their own authorizations
 permit(
     principal is Operator,
-    action == Action::"authorization:check",
+    action in [Action::"authorization:list", Action::"authorization:check"],
     resource
 );
 
