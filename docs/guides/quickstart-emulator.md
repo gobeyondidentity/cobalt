@@ -148,7 +148,7 @@ dpuemu serve              # if installed via package manager (uses built-in fixt
 # Expected:
 # Loading fixture...
 # dpuemu gRPC server listening on :18051
-# emulating: bluefield3 (serial: MT2542600N23)
+# emulating: dpuemu-local (serial: EMU-00000001)
 # dpuemu local API listening on :9443
 ```
 
@@ -165,8 +165,8 @@ bluectl dpu add localhost --name bf3
 # Expected:
 # Checking connectivity to localhost:18051...
 # Connected to DPU:
-#   Hostname: bluefield3
-#   Serial:   MT2542600N23
+#   Hostname: dpuemu-local
+#   Serial:   EMU-00000001
 # Added DPU 'bf3' at localhost:18051.
 #
 # Next: Assign to a tenant with 'bluectl tenant assign <tenant> bf3'
@@ -276,12 +276,8 @@ bluectl attestation bf3
 #
 # Certificate Chain:
 # LEVEL  SUBJECT                         ISSUER                ALGORITHM     VALID UNTIL
-# L0     SERIALNUMBER=5C49421FED63EA...  SERIALNUMBER=4E66...  ECDSA-SHA384  9999-12-31T23:59:59Z
-# L1     SERIALNUMBER=4E6655514E870B...  SERIALNUMBER=4B07...  ECDSA-SHA384  9999-12-31T23:59:59Z
-# L2     SERIALNUMBER=4B070AC0363900...  SERIALNUMBER=7042...  ECDSA-SHA384  9999-12-31T23:59:59Z
-# L3     SERIALNUMBER=7042F3D1DC1B48...  CN=NVIDIA BF3 Ide...  ECDSA-SHA384  9999-12-31T23:59:59Z
-# L4     CN=NVIDIA BF3 Identity,O=NV...  CN=NVIDIA Device ...  ECDSA-SHA384  9999-12-31T23:59:59Z
-# L5     CN=NVIDIA Device Identity C...  CN=NVIDIA Device ...  ECDSA-SHA384  9999-12-31T23:59:59Z
+# L0     SERIALNUMBER=EMU-00000001...    SERIALNUMBER=EMU-...  ECDSA-SHA384  9999-12-31T23:59:59Z
+# L1     CN=DPU Emulator CA,O=Cobalt...  CN=DPU Emulator C...  ECDSA-SHA384  9999-12-31T23:59:59Z
 #
 # Attestation saved: status=verified, last_validated=<timestamp>
 ```
@@ -322,7 +318,7 @@ sentry --dpu-agent http://localhost:9443 --oneshot
 # No ComCh/tmfifo detected. Using network enrollment.
 # DPU Agent: http://localhost:9443
 # Hostname: <your-hostname>
-# Paired with DPU: bluefield3
+# Paired with DPU: dpuemu-local
 # Registered as host <host_id> via DPU Agent
 # Oneshot mode: exiting after successful registration
 ```
